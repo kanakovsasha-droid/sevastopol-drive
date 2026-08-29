@@ -53,6 +53,7 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody }) {
 // aWall: x — метры вдоль стены, y — метры от основания, z — полная высота дома
 // aKind: 0 фасад · 1 черепичная кровля · 2 глухая стена · 3 плоская кровля
 //        4 рыночный ряд (ролеты) · 5 профнастил кровли · 6 тент · 7 фасад с парадным ордером
+//        8 ворота гаража · 9 стена гаража из блоков
 export function buildingMaterial() {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.84, metalness: 0.0 });
   return inject(mat, 'sev-building', {
@@ -65,7 +66,7 @@ export function buildingMaterial() {
         vec3 c = diffuseColor.rgb;
         float rough = 0.84;
 
-        if (vKind < 0.5 || vKind > 6.5) {
+        if (vKind < 0.5 || (vKind > 6.5 && vKind < 7.5)) {
           // ---- фасад ----
           // Севастопольский центр — послевоенный фонд 1950-х: 3–5 этажей,
           // высокие окна с белыми наличниками, межэтажные тяги, карниз поверху.
@@ -231,12 +232,56 @@ export function buildingMaterial() {
           c *= 0.93 + 0.12 * hash21(floor(vWall.xy * vec2(0.3, 0.8)));   // подтёки и ржавь
           c = mix(c, c * vec3(1.05, 0.94, 0.84), 0.35 * hash21(floor(vWall.xy * 0.22)));
           rough = 0.55;
-        } else {
+        } else if (vKind < 6.5) {
           // ---- тент над проходом: полосы поперёк ----
           float st = step(0.5, fract(vWall.x / 0.55));
           c = mix(vec3(0.94, 0.93, 0.90), c, st);
           c *= 0.93 + 0.10 * hash21(floor(vWall.xy * 3.0));
           rough = 0.80;
+        } else if (vKind < 8.5) {
+          // ---- ворота гаражного бокса: две крашеные створки ----
+          // x здесь — доля поперёк бокса, y — метры от подошвы (она в грунте).
+          float fx = vWall.x;
+          float ty = vWall.z - vWall.y;                 // метров ниже верха
+          float hi = 0.52, lo = vWall.z - 0.95;         // проём по вертикали
+          float leaf = smoothstep(0.10, 0.13, fx) * (1.0 - smoothstep(0.87, 0.90, fx))
+                     * smoothstep(hi, hi + 0.05, ty) * (1.0 - smoothstep(lo - 0.06, lo, ty));
+          // стена вокруг проёма — блоки, как у боковых стен
+          vec2 blk = vec2(vWall.x * 3.4 / 0.39, vWall.y / 0.19);
+          blk.x += step(0.5, fract(blk.y)) * 0.5;
+          vec2 fb = abs(fract(blk) - 0.5);
+          float seam = smoothstep(0.39, 0.48, max(fb.x, fb.y));
+          vec3 wallC = vec3(0.78, 0.76, 0.72) * (0.93 + 0.12 * hash21(floor(blk)));
+          wallC *= 1.0 - 0.26 * seam;
+          // створки: горизонтальные пояса жёсткости и шов посередине
+          vec3 dc = c;
+          float rib = 1.0 - smoothstep(0.03, 0.07, abs(fract(vWall.y / 0.34) - 0.5));
+          dc *= 0.88 + 0.20 * rib;
+          float split = 1.0 - smoothstep(0.010, 0.022, abs(fx - 0.5));
+          dc = mix(dc, dc * 0.35, split);
+          // ржавчина понизу и по краям
+          float rust = fbm(vec2(vWall.x * 9.0, vWall.y * 2.2)) * smoothstep(0.9, 2.1, ty);
+          dc = mix(dc, vec3(0.42, 0.24, 0.13), clamp(rust - 0.42, 0.0, 1.0) * 0.9);
+          // засов и петли
+          float hasp = (1.0 - smoothstep(0.03, 0.05, abs(fx - 0.5)))
+                     * (1.0 - smoothstep(0.10, 0.16, abs(ty - (lo - 0.85))));
+          dc = mix(dc, vec3(0.20, 0.19, 0.18), hasp);
+          // притолока и откосы чуть темнее — проём утоплен
+          float reveal = (1.0 - leaf) * (smoothstep(0.06, 0.10, fx) * (1.0 - smoothstep(0.90, 0.94, fx)))
+                       * smoothstep(hi - 0.10, hi, ty);
+          c = mix(wallC, dc, leaf);
+          c *= 1.0 - 0.22 * reveal;
+          rough = mix(0.92, 0.48, leaf);
+        } else {
+          // ---- глухая стена бокса: бетонные блоки под побелкой ----
+          vec2 blk = vec2(vWall.x / 0.39, vWall.y / 0.19);
+          blk.x += step(0.5, fract(blk.y)) * 0.5;
+          vec2 fb = abs(fract(blk) - 0.5);
+          float seam = smoothstep(0.39, 0.48, max(fb.x, fb.y));
+          c *= 0.92 + 0.14 * hash21(floor(blk));
+          c *= 1.0 - 0.24 * seam;
+          c *= 1.0 - 0.12 * smoothstep(1.2, 0.2, vWall.y);
+          rough = 0.94;
         }
         diffuseColor.rgb = c;
         procRough = rough;

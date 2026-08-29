@@ -322,7 +322,7 @@ function toggleMode() {
     const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
     walk.x = car.pos.x - fz * 2.2;      // выходим вбок, а не в стену
     walk.z = car.pos.z + fx * 2.2;
-    walk.yaw = car.yaw + Math.PI / 2;
+    walk.yaw = car.yaw;                 // выходим и смотрим туда же, куда ехали
     walk.pitch = 0;
     document.body.classList.add('walk');
     $('mode').textContent = 'Пешком';
@@ -364,7 +364,10 @@ function updateCamera(dt) {
     const eye = terrain.gridHeightAt(walk.x, walk.z) + 1.68;
     camera.position.set(walk.x, eye, walk.z);
     camera.rotation.set(0, 0, 0);
-    camera.rotateY(walk.yaw);
+    // Камера Three смотрит вдоль -Z, а «вперёд» в этом мире — +(sin, cos):
+    // так едет машина, так же считается направление на миникарте. Без разворота
+    // на пол-оборота W уводил назад, и стрелка на карте смотрела в затылок.
+    camera.rotateY(walk.yaw + Math.PI);
     camera.rotateX(walk.pitch);
     return;
   }

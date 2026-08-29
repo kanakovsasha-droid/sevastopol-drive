@@ -76,6 +76,14 @@ const ROOFS_FLAT = [[0.318, 0.310, 0.294], [0.286, 0.310, 0.325], [0.361, 0.349,
 const MARKET_WALLS = [[0.878, 0.871, 0.855], [0.827, 0.831, 0.827], [0.906, 0.894, 0.867], [0.784, 0.796, 0.796]];
 const MARKET_ROOF = [0.812, 0.831, 0.843];
 const hexRGB = h => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
+// гаражный кооператив: побелка и блоки по стенам, крашеная жесть на воротах
+const GAR_WALL = [[0.792, 0.776, 0.729], [0.729, 0.714, 0.678], [0.851, 0.835, 0.788],
+                  [0.686, 0.678, 0.655], [0.812, 0.769, 0.686], [0.749, 0.741, 0.722]];
+const GAR_DOOR = [[0.325, 0.376, 0.427], [0.286, 0.361, 0.310], [0.451, 0.318, 0.259],
+                  [0.404, 0.408, 0.396], [0.263, 0.310, 0.396], [0.514, 0.427, 0.290],
+                  [0.573, 0.529, 0.427], [0.353, 0.333, 0.310]];
+const GAR_ROOF = [[0.435, 0.443, 0.435], [0.388, 0.373, 0.353], [0.478, 0.470, 0.443],
+                  [0.361, 0.388, 0.392], [0.502, 0.427, 0.353]];
 const AWNINGS = [[0.729, 0.180, 0.161], [0.847, 0.639, 0.180], [0.243, 0.365, 0.561], [0.216, 0.396, 0.267]];
 const ROAD_COLORS = [
   // Все проезжие классы — ОДИН асфальт. Разные оттенки делали видимым каждое
@@ -815,6 +823,141 @@ function obb(poly) {
   return best;
 }
 
+// ------------------------------------------------------- гаражный кооператив
+// В OSM кооператив обведён РЯДАМИ: один контур — целая линия боксов, иногда
+// с изломом. Выдавленный как есть, он даёт глухую плиту в 80 м длиной.
+// Режем контур поперёк сканирующей линией и ставим отдельные боксы: у каждого
+// свои ворота, своя земля под ногами и своя высота — на склоне ряд ступенькой.
+function garageBoxes(poly, terrain, pushV, rnd) {
+  const box = obb(poly);
+  if (!box) return 0;
+
+  // Сканируем вдоль обеих осей рамки и берём ту, где полосы поперёк короче:
+  // у ряда это его глубина, ~6 м, а не длина в 80.
+  const spansAt = (ax, az, s) => {
+    const n = poly.length / 2, hits = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const x1 = poly[i * 2], z1 = poly[i * 2 + 1];
+      const x2 = poly[j * 2], z2 = poly[j * 2 + 1];
+      const s1 = x1 * ax + z1 * az, s2 = x2 * ax + z2 * az;
+      if ((s1 > s) === (s2 > s)) continue;
+      const t = (s - s1) / (s2 - s1);
+      hits.push((-x1 * az + z1 * ax) + t * ((-x2 * az + z2 * ax) - (-x1 * az + z1 * ax)));
+    }
+    hits.sort((a, b) => a - b);
+    const out = [];
+    for (let i = 0; i + 1 < hits.length; i += 2) out.push([hits[i], hits[i + 1]]);
+    return out;
+  };
+  const axes = [
+    { ax: box.ux, az: box.uz, a0: box.u0, a1: box.u1 },
+    { ax: -box.uz, az: box.ux, a0: box.v0, a1: box.v1 },
+  ];
+  for (const A of axes) {
+    const w = [];
+    for (let k = 1; k <= 9; k++) {
+      const s = A.a0 + (A.a1 - A.a0) * k / 10;
+      for (const [p0, p1] of spansAt(A.ax, A.az, s)) w.push(p1 - p0);
+    }
+    w.sort((a, b) => a - b);
+    A.med = w.length ? w[w.length >> 1] : Infinity;
+  }
+  const A = axes[0].med <= axes[1].med ? axes[0] : axes[1];
+  if (!isFinite(A.med)) return 0;
+
+  const STEP = 3.45;                          // ширина бокса
+  const len = A.a1 - A.a0;
+  const nS = Math.max(1, Math.round(len / STEP));
+  const step = len / nS;
+  const XZ = (s, p) => [s * A.ax - p * A.az, s * A.az + p * A.ax];
+
+  const wall = GAR_WALL[(rnd() * GAR_WALL.length) | 0];
+  const roofC = GAR_ROOF[(rnd() * GAR_ROOF.length) | 0];
+  let hBase = 2.55 + rnd() * 0.45;
+  let runLeft = 3 + ((rnd() * 5) | 0);
+  let made = 0;
+
+  for (let i = 0; i < nS; i++) {
+    const s0 = A.a0 + i * step, s1 = s0 + step, sm = (s0 + s1) / 2;
+    if (--runLeft <= 0) {                     // ряд идёт ступенями по склону
+      hBase = Math.max(2.35, Math.min(3.25, hBase + (rnd() - 0.5) * 0.5));
+      runLeft = 3 + ((rnd() * 5) | 0);
+    }
+    for (const [q0, q1] of spansAt(A.ax, A.az, sm)) {
+      const D = q1 - q0;
+      if (D < 2.4) continue;
+      const nr = Math.max(1, Math.round(D / 6.4));
+      const rd = D / nr;
+      for (let r = 0; r < nr; r++) {
+        const p0 = q0 + r * rd, p1 = p0 + rd;
+        const c = XZ(sm, (p0 + p1) / 2);
+        const g = terrain.gridHeightAt(c[0], c[1]);
+        const H = hBase + (rnd() - 0.5) * 0.10;
+        const yb = g - 0.9, yt = g + H;
+        const Hb = yt - yb;
+        const door = GAR_DOOR[(rnd() * GAR_DOOR.length) | 0];
+        const tint = 0.94 + rnd() * 0.12;
+        const wc = [Math.min(1, wall[0] * tint), Math.min(1, wall[1] * tint), Math.min(1, wall[2] * tint)];
+
+        // четыре стены; поперечные (шириной STEP) — с воротами
+        const quad = (P1, P2, P3, P4, col, kind, uv) => {
+          const e1 = [P2[0] - P1[0], P2[1] - P1[1], P2[2] - P1[2]];
+          const e2 = [P3[0] - P1[0], P3[1] - P1[1], P3[2] - P1[2]];
+          let nx = e1[1] * e2[2] - e1[2] * e2[1];
+          let ny = e1[2] * e2[0] - e1[0] * e2[2];
+          let nz = e1[0] * e2[1] - e1[1] * e2[0];
+          const ln = Math.hypot(nx, ny, nz) || 1;
+          nx /= ln; ny /= ln; nz /= ln;
+          const V = [P1, P2, P3, P1, P3, P4], T = [uv[0], uv[1], uv[2], uv[0], uv[2], uv[3]];
+          for (let k = 0; k < 6; k++)
+            pushV(V[k][0], V[k][1], V[k][2], nx, ny, nz, col, T[k][0], T[k][1], Hb, kind);
+        };
+        const P = (s, p, y) => { const q = XZ(s, p); return [q[0], y, q[1]]; };
+
+        // торцы с воротами: наружу смотрят обе стороны бокса
+        for (const [pf, out] of [[p0, -1], [p1, 1]]) {
+          const Aq = P(s0, pf, yb), Bq = P(s1, pf, yb);
+          const Cq = P(s1, pf, yt), Dq = P(s0, pf, yt);
+          const uv = [[0, 0], [1, 0], [1, Hb], [0, Hb]];
+          if (out < 0) quad(Bq, Aq, Dq, Cq, door, 8, [[0, 0], [1, 0], [1, Hb], [0, Hb]]);
+          else quad(Aq, Bq, Cq, Dq, door, 8, uv);
+        }
+        // боковые (общие) стены — глухие блоки
+        for (const [sf, out] of [[s0, -1], [s1, 1]]) {
+          const Aq = P(sf, p0, yb), Bq = P(sf, p1, yb);
+          const Cq = P(sf, p1, yt), Dq = P(sf, p0, yt);
+          const uv = [[0, 0], [rd, 0], [rd, Hb], [0, Hb]];
+          if (out > 0) quad(Aq, Bq, Cq, Dq, wc, 9, uv);
+          else quad(Bq, Aq, Dq, Cq, wc, 9, [[0, 0], [rd, 0], [rd, Hb], [0, Hb]]);
+        }
+        // пологая двускатная кровля из профнастила, конёк вдоль ряда
+        const O = 0.16, hr = 0.32;
+        const pm = (p0 + p1) / 2;
+        for (const [pa, pb] of [[p0 - O, pm], [p1 + O, pm]]) {
+          const ya = yt, yy = yt + hr;
+          const Aq = P(s0 - O, pa, ya), Bq = P(s1 + O, pa, ya);
+          const Cq = P(s1 + O, pb, yy), Dq = P(s0 - O, pb, yy);
+          const uv = [[s0, pa], [s1, pa], [s1, pb], [s0, pb]];
+          const e1 = [Bq[0] - Aq[0], 0, Bq[2] - Aq[2]];
+          const e2 = [Cq[0] - Aq[0], yy - ya, Cq[2] - Aq[2]];
+          let nx = e1[1] * e2[2] - e1[2] * e2[1];
+          let ny = e1[2] * e2[0] - e1[0] * e2[2];
+          let nz = e1[0] * e2[1] - e1[1] * e2[0];
+          const ln = Math.hypot(nx, ny, nz) || 1;
+          nx /= ln; ny /= ln; nz /= ln;
+          if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+          const V = [Aq, Bq, Cq, Aq, Cq, Dq], T = [uv[0], uv[1], uv[2], uv[0], uv[2], uv[3]];
+          for (let k = 0; k < 6; k++)
+            pushV(V[k][0], V[k][1], V[k][2], nx, ny, nz, roofC, T[k][0], T[k][1], Hb, 5);
+        }
+        made++;
+      }
+    }
+  }
+  return made;
+}
+
 // ---------------------------------------------------------------- здания
 export function buildBuildings(world, terrain, chunk = 500) {
   const chunks = new Map();
@@ -846,6 +989,11 @@ export function buildBuildings(world, terrain, chunk = 500) {
     const yTop = gmax + b.h;
     const Hb = yTop - yBase;
     cur = bucket(poly[0], poly[1]);
+
+    // гаражи разбираем на боксы: контур OSM — это ряд, а не один дом
+    if (/^garage/.test(b.t || '')) {
+      if (garageBoxes(poly, terrain, pushV, rand) > 0) continue;
+    }
 
     const area = polyArea(poly);
     const market = b.k === 'market';
