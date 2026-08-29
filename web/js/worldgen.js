@@ -1003,7 +1003,7 @@ export function buildBuildings(world, terrain, chunk = 500) {
                         : WALLS[(rand() * WALLS.length) | 0];
     // до 5 этажей и небольшим пятном в Севастополе почти всегда скатная черепица;
     // крупные корпуса и высотки — плоская кровля
-    const pitched = market || wantHip || (b.h <= 18 && area <= 900 && n >= 4 && rand() < 0.92);
+    const pitched = market || wantHip || (b.fx !== 'glass' && b.h <= 18 && area <= 900 && n >= 4 && rand() < 0.92);
     const flatRoof = !pitched;
     const roof = b.rc ? hexRGB(b.rc)
       : market ? MARKET_ROOF
@@ -1012,7 +1012,7 @@ export function buildBuildings(world, terrain, chunk = 500) {
     const tint = 0.93 + rand() * 0.15;
     const w = [Math.min(1, wall[0] * tint), Math.min(1, wall[1] * tint), Math.min(1, wall[2] * tint)];
     // гараж, сарай, будка — окон не рисуем
-    const wallKind = market ? 4 : b.go ? 7 : (b.h < 4.2 || area < 38) ? 2 : 0;
+    const wallKind = market ? 4 : b.fx === 'glass' ? 10 : b.go ? 7 : (b.h < 4.2 || area < 38) ? 2 : 0;
     const roofKind = flatRoof ? 3 : 1;
 
     let u = 0;

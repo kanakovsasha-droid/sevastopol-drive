@@ -4,6 +4,7 @@ import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen
 import { buildStreetProps } from './props.js';
 import { buildFurniture } from './furniture.js';
 import { buildLandmarks } from './landmarks.js';
+import { buildSigns } from './signs.js';
 import { audit } from './audit.js';
 import { buildMap, drawMini, drawFull } from './minimap.js';
 import { Collider, RoadIndex } from './collision.js';
@@ -98,10 +99,15 @@ async function boot() {
     miniCtx = $('mini').getContext('2d');
     mapCtx = $('mapcv').getContext('2d');
 
+    await step('вешаю вывески…', 95);
+    const sg = buildSigns(world, terrain, roads);
+    scene.add(sg);
+
     await step('строю памятные здания…', 96);
     const lm = buildLandmarks(world, terrain, landmarkDefs, roads);
     scene.add(lm);
     console.log('памятные здания:', lm.userData.stats);
+    console.log('вывесок на фасадах:', sg.userData.count);
 
     car = new Car(terrain, collider);
     carMesh = createCarMesh();

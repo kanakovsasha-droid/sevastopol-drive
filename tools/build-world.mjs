@@ -8,8 +8,9 @@ const osm = JSON.parse(readFileSync(DIR + 'osm-raw.json', 'utf8'));
 // один раз посмотрел дом — он навсегда описан здесь, а не заново каждый заход.
 let HOUSES = [];
 try { HOUSES = JSON.parse(readFileSync(DIR + 'houses.json', 'utf8')); } catch { /* файла может не быть */ }
-let ZONES = [];
+let ZONES = [], SHOPS = [];
 try { ZONES = JSON.parse(readFileSync(DIR + 'zones.json', 'utf8')); } catch { /* файла может не быть */ }
+try { SHOPS = JSON.parse(readFileSync(DIR + 'shops.json', 'utf8')); } catch { /* файла может не быть */ }
 
 // ---------- классы дорог: ширина в метрах + категория для материала ----------
 const ROADS = {
@@ -442,6 +443,78 @@ function reverse(p) {
   }
   world.handChecked = applied;
   console.log(`описаний домов применено ${applied} из ${HOUSES.length}`);
+}
+
+// ---------- вывески: сажаем заведения OSM на их дома ----------
+// Без этого весь центр — безымянные коробки. Названия не выдуманы:
+// магазины, кафе, кинотеатры и ТЦ взяты из OSM (tools/fetch-shops.mjs).
+{
+  const inside = (x, z, p) => {
+    let c = false;
+    for (let i = 0, j = p.length / 2 - 1; i < p.length / 2; j = i++) {
+      const xi = p[i * 2], zi = p[i * 2 + 1], xj = p[j * 2], zj = p[j * 2 + 1];
+      if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c;
+    }
+    return c;
+  };
+  // сетка по 80 м, иначе 909 × 10201 перебором
+  const CELL = 80, grid = new Map();
+  const key = (x, z) => Math.floor(x / CELL) + ',' + Math.floor(z / CELL);
+  world.buildings.forEach((b, i) => {
+    const p = b.poly, n = p.length / 2;
+    let cx = 0, cz = 0, x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (let k = 0; k < n; k++) {
+      const x = p[k * 2], z = p[k * 2 + 1];
+      cx += x; cz += z;
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (z < z0) z0 = z; if (z > z1) z1 = z;
+    }
+    b.__c = [cx / n, cz / n];
+    for (let gx = Math.floor(x0 / CELL); gx <= Math.floor(x1 / CELL); gx++)
+      for (let gz = Math.floor(z0 / CELL); gz <= Math.floor(z1 / CELL); gz++) {
+        const k = gx + ',' + gz;
+        if (!grid.has(k)) grid.set(k, []);
+        grid.get(k).push(i);
+      }
+  });
+
+  let placed = 0, orphan = 0;
+  for (const s of SHOPS) {
+    let hit = -1, bd = Infinity;
+    for (let gx = -1; gx <= 1; gx++)
+      for (let gz = -1; gz <= 1; gz++) {
+        const list = grid.get(key(s.x + gx * CELL, s.z + gz * CELL));
+        if (!list) continue;
+        for (const i of list) {
+          const b = world.buildings[i];
+          if (inside(s.x, s.z, b.poly)) { hit = i; bd = 0; }
+          else if (bd > 0) {
+            const d = Math.hypot(b.__c[0] - s.x, b.__c[1] - s.z);
+            if (d < bd && d < 26) { bd = d; hit = i; }
+          }
+        }
+        if (bd === 0) break;
+      }
+    if (hit < 0) { orphan++; continue; }
+    const b = world.buildings[hit];
+    if (!b.sg) b.sg = [];
+    if (b.sg.length >= 3) continue;                // на фасад больше трёх не лезет
+    if (b.sg.some(o => o.n === s.n)) continue;
+    b.sg.push({ n: s.n, c: s.c });
+    placed++;
+  }
+  // ТЦ, кинотеатры и универмаги — не такие же коробки, как жильё вокруг:
+  // им положен витражный фасад, иначе «Плаза» неотличима от хрущёвки.
+  let glass = 0;
+  for (const b of world.buildings) {
+    const big = b.poly.length >= 8;
+    const kind = (b.sg || []).some(o => o.c === 'mall' || o.c === 'cinema');
+    const byTag = /^(retail|commercial|supermarket|department_store|mall)$/.test(b.t || '');
+    if (big && (kind || byTag) && b.h >= 5) { b.fx = 'glass'; glass++; }
+  }
+  console.log(`витражных фасадов ${glass}`);
+  for (const b of world.buildings) delete b.__c;
+  console.log(`вывесок размещено ${placed}, без дома ${orphan}`);
 }
 
 const nw = project(BBOX.north, BBOX.west), se = project(BBOX.south, BBOX.east);

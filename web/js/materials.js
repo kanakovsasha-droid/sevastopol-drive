@@ -53,7 +53,7 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody }) {
 // aWall: x — метры вдоль стены, y — метры от основания, z — полная высота дома
 // aKind: 0 фасад · 1 черепичная кровля · 2 глухая стена · 3 плоская кровля
 //        4 рыночный ряд (ролеты) · 5 профнастил кровли · 6 тент · 7 фасад с парадным ордером
-//        8 ворота гаража · 9 стена гаража из блоков
+//        8 ворота гаража · 9 стена гаража из блоков · 10 витраж ТЦ
 export function buildingMaterial() {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.84, metalness: 0.0 });
   return inject(mat, 'sev-building', {
@@ -272,6 +272,31 @@ export function buildingMaterial() {
           c = mix(wallC, dc, leaf);
           c *= 1.0 - 0.22 * reveal;
           rough = mix(0.92, 0.48, leaf);
+        } else if (vKind > 9.5) {
+          // ---- витраж торгового центра или кинотеатра ----
+          // Лента остекления на этаж 3.6 м, между лентами composite-панель,
+          // импосты через 1.35 м, ригель посередине ленты.
+          float band = 3.60;
+          float fy = fract(vWall.y / band);
+          float glassBand = smoothstep(0.09, 0.13, fy) * (1.0 - smoothstep(0.76, 0.80, fy));
+          float fr = fract(vWall.x / 1.35);
+          float dm = min(fr, 1.0 - fr);
+          float mull = 1.0 - smoothstep(0.016, 0.038, dm);           // импост ~2 см
+          float transom = 1.0 - smoothstep(0.014, 0.032, abs(fy - 0.45));
+          // стекло тёмное с зеленцой: сверху небо, снизу нутро зала
+          float sky = smoothstep(0.10, 0.78, fy);
+          vec3 gl = mix(vec3(0.030, 0.048, 0.052), vec3(0.16, 0.29, 0.32), sky * sky);
+          gl += vec3(0.10, 0.13, 0.14) * smoothstep(0.66, 0.78, fy);  // отблеск у ригеля
+          gl *= 0.86 + 0.30 * hash21(floor(vec2(vWall.x / 1.35, vWall.y / band)));
+          vec3 frame = vec3(0.255, 0.263, 0.271);
+          vec3 pier = mix(c, vec3(0.44, 0.45, 0.46), 0.55)
+                    * (0.90 + 0.14 * hash21(floor(vWall.xy * vec2(0.7, 1.4))));
+          c = mix(pier, gl, glassBand);
+          c = mix(c, frame, max(mull, transom * glassBand));
+          c *= mix(0.66, 1.0, smoothstep(0.0, 1.3, vWall.y));         // цоколь
+          float cor = smoothstep(vWall.z - 0.80, vWall.z - 0.40, vWall.y);
+          c = mix(c, vec3(0.80, 0.80, 0.79), cor * 0.85);             // парапет
+          rough = mix(0.84, 0.07, glassBand * (1.0 - max(mull, transom)));
         } else {
           // ---- глухая стена бокса: бетонные блоки под побелкой ----
           vec2 blk = vec2(vWall.x / 0.39, vWall.y / 0.19);
