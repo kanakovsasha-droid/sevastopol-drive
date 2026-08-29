@@ -56,6 +56,10 @@ function obb(poly) {
   return best;
 }
 
+const GRANITE = [0.44, 0.42, 0.43];
+const GRANITE_D = [0.33, 0.32, 0.33];
+const BRONZE = [0.30, 0.24, 0.15];
+const BRONZE_L = [0.38, 0.31, 0.19];
 const GOLD = [0.98, 0.76, 0.08];
 const RED = [0.72, 0.11, 0.11];
 const STONE = [0.918, 0.898, 0.851];
@@ -86,6 +90,87 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
   const stats = [];
 
   for (const d of defs) {
+    // Памятник: ступенчатый стилобат, гранитный пьедестал с барельефами
+    // и бронзовая фигура. Лицом к бухте — на север.
+    if (d.style === 'monument') {
+      const parts = [];
+      const y0 = terrain.gridHeightAt(d.x, d.z);
+      const a = d.facing ?? 0;
+      const put = (geo, col) => { geo.rotateY(a); geo.translate(d.x, 0, d.z); parts.push({ geo, color: col }); };
+      const at = (geo, col, y) => { geo.translate(0, y, 0); put(geo, col); };
+
+      // стилобат: три гранитные ступени
+      const steps = [[9.4, 0.42], [8.0, 0.42], [6.8, 0.42]];
+      let yy = y0;
+      for (const [w, h] of steps) {
+        const g = new THREE.BoxGeometry(w, h, w);
+        at(g, w > 8 ? GRANITE_D : GRANITE, yy + h / 2);
+        yy += h;
+      }
+
+      // цоколь и пьедестал с лёгким сужением кверху
+      const baseH = 1.15, pedH = 6.6, capH = 0.55;
+      at(new THREE.BoxGeometry(5.4, baseH, 5.4), GRANITE_D, yy + baseH / 2);
+      yy += baseH;
+      const ped = new THREE.CylinderGeometry(2.05, 2.35, pedH, 4);
+      ped.rotateY(Math.PI / 4);
+      at(ped, GRANITE, yy + pedH / 2);
+
+      // бронзовые барельефы на трёх гранях
+      for (let k = 0; k < 3; k++) {
+        const t = k / 4 * Math.PI * 2;
+        const rel = new THREE.BoxGeometry(2.5, 3.0, 0.16);
+        rel.rotateY(t);
+        rel.translate(Math.sin(t) * 2.16, yy + pedH * 0.46, Math.cos(t) * 2.16);
+        put(rel, BRONZE);
+        const frm = new THREE.BoxGeometry(2.9, 3.4, 0.09);
+        frm.rotateY(t);
+        frm.translate(Math.sin(t) * 2.12, yy + pedH * 0.46, Math.cos(t) * 2.12);
+        put(frm, BRONZE_L);
+      }
+      yy += pedH;
+      at(new THREE.BoxGeometry(5.0, capH, 5.0), GRANITE_D, yy + capH / 2);
+      yy += capH;
+
+      // фигура адмирала: шинель, торс, плечи, голова, вытянутая рука
+      const figH = 6.0;
+      const coat = new THREE.CylinderGeometry(0.72, 1.05, figH * 0.56, 10);
+      at(coat, BRONZE, yy + figH * 0.28);
+      const torso = new THREE.CylinderGeometry(0.62, 0.74, figH * 0.26, 10);
+      at(torso, BRONZE, yy + figH * 0.56 + figH * 0.13);
+      const shoulders = new THREE.BoxGeometry(1.62, 0.34, 0.78);
+      at(shoulders, BRONZE_L, yy + figH * 0.83);
+      const neck = new THREE.CylinderGeometry(0.2, 0.24, 0.24, 8);
+      at(neck, BRONZE, yy + figH * 0.88);
+      const head = new THREE.SphereGeometry(0.36, 12, 10);
+      at(head, BRONZE_L, yy + figH * 0.955);
+      // рука с подзорной трубой, отведена вперёд
+      const arm = new THREE.CylinderGeometry(0.16, 0.19, 1.5, 8);
+      arm.rotateX(Math.PI / 2.6);
+      arm.translate(0.62, yy + figH * 0.70, 0.52);
+      put(arm, BRONZE);
+      // плащ за спиной
+      const cape = new THREE.BoxGeometry(1.5, figH * 0.62, 0.28);
+      cape.translate(0, yy + figH * 0.44, -0.62);
+      put(cape, BRONZE);
+
+      // бронзовые венки по углам стилобата
+      for (const [sx, sz] of [[-3.4, -3.4], [3.4, -3.4], [-3.4, 3.4], [3.4, 3.4]]) {
+        const w = new THREE.TorusGeometry(0.42, 0.11, 6, 12);
+        w.rotateX(Math.PI / 2);
+        w.translate(sx, y0 + 1.32, sz);
+        put(w, BRONZE_L);
+      }
+
+      const mm = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.62, metalness: 0.32,
+      }));
+      mm.castShadow = true; mm.receiveShadow = true;
+      group.add(mm);
+      stats.push({ name: d.name, ok: true, vysota: +(yy - y0 + figH).toFixed(1) + ' м' });
+      continue;
+    }
+
     // Рынок: длинные ряды павильонов со светлой волнистой кровлей.
     // В OSM их нет вовсе, вписаны по спутниковому снимку.
     if (d.style === 'market') {
