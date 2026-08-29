@@ -493,6 +493,171 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       return [wx + (qx - wx) / dist * out, wz + (qz - wz) / dist * out];
     };
 
+    // ---- храм: барабан, купол, крест и порталы с диоритовыми колоннами ----
+    // Владимирский собор — неовизантийский крестово-купольный, 32.5 м с крестом.
+    // Корпус даёт контур OSM (он крестообразный), сверху ставим четверик,
+    // барабан с арочными окнами, приплюснутый купол и восьмиконечный крест.
+    if (d.style === 'cathedral') {
+      const parts = [];
+      const STONE_W = [0.871, 0.824, 0.722];     // инкерманский камень
+      const DIORITE = [0.145, 0.150, 0.140];
+      const LEAD = [0.239, 0.251, 0.247];        // тёмный купол
+      const GOLD2 = [0.94, 0.74, 0.16];
+
+      const dx = d.dome ? d.dome[0] : d.x, dz = d.dome ? d.dome[1] : d.z;
+      let gmaxL = -Infinity;
+      for (let i = 0; i < b.poly.length / 2; i++)
+        gmaxL = Math.max(gmaxL, terrain.gridHeightAt(b.poly[i * 2], b.poly[i * 2 + 1]));
+      const yBody = gmaxL + b.h;                 // верх стен корпуса
+
+      // карниз по контуру: плита с небольшим выносом
+      {
+        const p = b.poly, n = p.length / 2;
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n;
+          const ax = p[i * 2], az = p[i * 2 + 1], bx = p[j * 2], bz = p[j * 2 + 1];
+          const l = Math.hypot(bx - ax, bz - az);
+          if (l < 0.3) continue;
+          const cor = new THREE.BoxGeometry(0.9, 0.45, l + 0.5);
+          cor.rotateY(Math.atan2(bx - ax, bz - az));
+          cor.translate((ax + bx) / 2, yBody + 0.22, (az + bz) / 2);
+          parts.push({ geo: cor, color: STONE_D });
+        }
+      }
+
+      // подкупольный четверик
+      const SQ = d.pedestal ?? 15.0, sqH = 1.6;
+      const ped = new THREE.BoxGeometry(SQ, sqH, SQ);
+      ped.rotateY(d.facing ?? 0);
+      ped.translate(dx, yBody + 0.45 + sqH / 2, dz);
+      parts.push({ geo: ped, color: STONE });
+      const pedCor = new THREE.BoxGeometry(SQ + 1.0, 0.4, SQ + 1.0);
+      pedCor.rotateY(d.facing ?? 0);
+      pedCor.translate(dx, yBody + 0.45 + sqH + 0.2, dz);
+      parts.push({ geo: pedCor, color: STONE_D });
+
+      // барабан с лопатками и арочными окнами
+      const drumR = d.drumR ?? 5.6, drumH = 6.2;
+      const yDrum = yBody + 0.45 + sqH + 0.4;
+      const drum = new THREE.CylinderGeometry(drumR, drumR, drumH, 24);
+      drum.translate(dx, yDrum + drumH / 2, dz);
+      parts.push({ geo: drum, color: STONE });
+      for (let i = 0; i < 8; i++) {
+        const a = i / 8 * Math.PI * 2 + Math.PI / 8;
+        const px = dx + Math.cos(a) * drumR, pz = dz + Math.sin(a) * drumR;
+        const pil = new THREE.BoxGeometry(0.55, drumH, 0.75);
+        pil.rotateY(-a);
+        pil.translate(px, yDrum + drumH / 2, pz);
+        parts.push({ geo: pil, color: STONE_D });
+        // окно между лопатками
+        const aw = a + Math.PI / 8;
+        const wx = dx + Math.cos(aw) * (drumR - 0.12), wz = dz + Math.sin(aw) * (drumR - 0.12);
+        const win = new THREE.BoxGeometry(0.3, 3.1, 1.15);
+        win.rotateY(-aw);
+        win.translate(wx, yDrum + drumH * 0.52, wz);
+        parts.push({ geo: win, color: [0.075, 0.085, 0.095] });
+        const arc = new THREE.CylinderGeometry(0.58, 0.58, 0.3, 12, 1, false, 0, Math.PI);
+        arc.rotateZ(Math.PI / 2); arc.rotateY(-aw + Math.PI / 2);
+        arc.translate(wx, yDrum + drumH * 0.52 + 1.55, wz);
+        parts.push({ geo: arc, color: [0.075, 0.085, 0.095] });
+      }
+      // карниз барабана
+      const dc = new THREE.CylinderGeometry(drumR + 0.55, drumR + 0.35, 0.5, 24);
+      dc.translate(dx, yDrum + drumH + 0.25, dz);
+      parts.push({ geo: dc, color: STONE_D });
+
+      // приплюснутый купол
+      const yDome = yDrum + drumH + 0.5;
+      const dome = new THREE.SphereGeometry(drumR + 0.7, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2);
+      dome.scale(1, 0.64, 1);
+      dome.translate(dx, yDome, dz);
+      parts.push({ geo: dome, color: LEAD });
+      const domeH = (drumR + 0.7) * 0.64;
+
+      // яблоко и восьмиконечный крест
+      const orbY = yDome + domeH;
+      const orb = new THREE.SphereGeometry(0.42, 12, 8);
+      orb.translate(dx, orbY + 0.3, dz);
+      parts.push({ geo: orb, color: GOLD2 });
+      const crossH = d.crossH ?? 2.6;
+      const stem = new THREE.BoxGeometry(0.16, crossH, 0.16);
+      stem.translate(dx, orbY + 0.6 + crossH / 2, dz);
+      parts.push({ geo: stem, color: GOLD2 });
+      const barY = [orbY + 0.6 + crossH * 0.82, orbY + 0.6 + crossH * 0.55, orbY + 0.6 + crossH * 0.22];
+      const barW = [0.62, 1.30, 0.86];
+      for (let i = 0; i < 3; i++) {
+        const bar = new THREE.BoxGeometry(barW[i], 0.14, 0.14);
+        if (i === 2) bar.rotateZ(0.32);                 // косая нижняя перекладина
+        bar.translate(dx, barY[i], dz);
+        parts.push({ geo: bar, color: GOLD2 });
+      }
+
+      // порталы: две диоритовые колонны и арка над входом
+      for (const w of (d.portals || [])) {
+        const [x0, z0, x1, z1] = w;
+        const l = Math.hypot(x1 - x0, z1 - z0) || 1;
+        const ux = (x1 - x0) / l, uz = (z1 - z0) / l;
+        let nX = -uz, nZ = ux;
+        const p = b.poly, np = p.length / 2;
+        let cx = 0, cz = 0;
+        for (let k = 0; k < np; k++) { cx += p[k * 2]; cz += p[k * 2 + 1]; }
+        cx /= np; cz /= np;
+        const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+        if (nX * (cx - mx) + nZ * (cz - mz) > 0) { nX = -nX; nZ = -nZ; }
+        const at = (t, o) => [x0 + (x1 - x0) * t + nX * o, z0 + (z1 - z0) * t + nZ * o];
+
+        const colH = 5.4;
+        for (const t of [0.16, 0.84]) {
+          const [px, pz] = at(t, 1.75);
+          const g0 = terrain.gridHeightAt(px, pz);
+          const base = new THREE.BoxGeometry(1.0, 0.35, 1.0); base.translate(px, g0 + 0.175, pz);
+          const sh = new THREE.CylinderGeometry(0.36, 0.42, colH, 14);
+          sh.translate(px, g0 + 0.35 + colH / 2, pz);
+          const cap = new THREE.BoxGeometry(0.95, 0.42, 0.95);
+          cap.translate(px, g0 + 0.35 + colH + 0.21, pz);
+          parts.push({ geo: base, color: DIORITE }, { geo: sh, color: DIORITE },
+                      { geo: cap, color: STONE_D });
+        }
+        const [ex, ez] = at(0.5, 1.75);
+        const ge = terrain.gridHeightAt(ex, ez);
+        const ang = Math.atan2(x1 - x0, z1 - z0);
+        const ent = new THREE.BoxGeometry(2.4, 0.85, l + 0.8);
+        ent.rotateY(ang); ent.translate(ex, ge + 0.35 + colH + 0.42 + 0.42, ez);
+        parts.push({ geo: ent, color: STONE });
+        // проём с полуциркульным завершением
+        const [dxp, dzp] = at(0.5, 0.18);
+        const gd = terrain.gridHeightAt(dxp, dzp);
+        const door = new THREE.BoxGeometry(0.4, 3.5, 2.3);
+        door.rotateY(ang); door.translate(dxp, gd + 1.75, dzp);
+        parts.push({ geo: door, color: [0.16, 0.11, 0.08] });
+        const arch = new THREE.CylinderGeometry(1.15, 1.15, 0.4, 16, 1, false, 0, Math.PI);
+        arch.rotateZ(Math.PI / 2); arch.rotateY(ang + Math.PI / 2);
+        arch.translate(dxp, gd + 3.5, dzp);
+        parts.push({ geo: arch, color: [0.16, 0.11, 0.08] });
+      }
+
+      // мемориальные плиты адмиралов на северном и южном фасадах
+      for (const pl of (d.plaques || [])) {
+        const [px, pz, pa] = pl;
+        const g0 = terrain.gridHeightAt(px, pz);
+        const sl = new THREE.BoxGeometry(0.16, 1.35, 0.95);
+        sl.rotateY(pa); sl.translate(px, g0 + 3.2, pz);
+        parts.push({ geo: sl, color: [0.105, 0.110, 0.105] });
+        const fr = new THREE.BoxGeometry(0.10, 1.55, 1.15);
+        fr.rotateY(pa); fr.translate(px, g0 + 3.2, pz);
+        parts.push({ geo: fr, color: STONE_D });
+      }
+
+      const mm = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.80, metalness: 0.06,
+      }));
+      mm.castShadow = true; mm.receiveShadow = true;
+      group.add(mm);
+      stats.push({ name: d.name, ok: true, kontur: bi, vysota: +(b.h + 0.45 + sqH + 6.2 + 0.5
+        + (drumR + 0.7) * 0.64 + 0.6 + (d.crossH ?? 2.6)).toFixed(1) + ' м' });
+      continue;
+    }
+
     // ---- портик с фронтоном: послевоенная классика (больница им. Пирогова) ----
     if (d.style === 'portico') {
       const parts = [];

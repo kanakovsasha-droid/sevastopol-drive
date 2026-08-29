@@ -79,7 +79,10 @@ export function drawMini(ctx, map, px, pz, yaw, size, scaleM) {
   ctx.clearRect(0, 0, size, size);
   ctx.beginPath(); ctx.arc(r, r, r - 2, 0, Math.PI * 2); ctx.clip();
   ctx.translate(r, r);
-  ctx.rotate(yaw);                      // север карты вращается, машина смотрит вверх
+  // Курс в мире — это +(sin, cos), то есть на холсте (sin, cos) при оси Y вниз.
+  // Чтобы он смотрел ВВЕРХ, полотно надо повернуть на yaw + пол-оборота:
+  // при простом rotate(yaw) курс уезжал ровно вниз, карта была задом наперёд.
+  ctx.rotate(yaw + Math.PI);
   const k = size / (scaleM * PX_PER_M);
   ctx.scale(k, k);
   ctx.translate(-map.X(px), -map.Z(pz));
@@ -124,7 +127,9 @@ export function drawFull(ctx, map, w, h, px, pz, yaw, marks) {
   }
   const [sx, sy] = toS(px, pz);
   ctx.save();
-  ctx.translate(sx, sy); ctx.rotate(-yaw);
+  // Стрелка нарисована остриём вверх (0,-11); чтобы остриё легло на курс
+  // (sin yaw, cos yaw) на карте «север вверху», поворот равен π - yaw.
+  ctx.translate(sx, sy); ctx.rotate(Math.PI - yaw);
   ctx.fillStyle = '#d1573f';
   ctx.beginPath();
   ctx.moveTo(0, -11); ctx.lineTo(7, 9); ctx.lineTo(0, 5); ctx.lineTo(-7, 9);

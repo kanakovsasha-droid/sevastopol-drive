@@ -25,6 +25,9 @@ const COLORS = {
   sport:     ['#1d4d3a', '#ffffff'],
   office:    ['#334155', '#e2e8f0'],
   shop:      ['#5b2b6b', '#ffffff'],
+  school:    ['#1b3a63', '#ffffff'],
+  church:    ['#4a2018', '#f0d9a8'],
+  civic:     ['#2f3a2b', '#f2efe4'],
 };
 
 function sheetTexture(names, from, count) {

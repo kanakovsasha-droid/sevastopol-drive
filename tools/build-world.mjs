@@ -244,12 +244,14 @@ for (const w of ways.values()) {
   if (!p) continue;
   if (t.building || t['building:part']) {
     const aM = Math.abs(area(p));
-    let h = parseH(t) ?? estimateHeight(t, p, aM);
+    const hTag = parseH(t);
+    let h = hTag ?? estimateHeight(t, p, aM);
     // даже теги OSM бывают ошибочны: 48 м на пятне 750 м² — опечатка, не дом
     h = Math.min(h, maxFloorsForArea(aM) * FLOOR * 1.35 + 2);
     const nm = t['name:ru'] || t.name;
     world.buildings.push({
       h: R1(h), poly: p,
+      ...(hTag != null ? { lv: 1 } : {}),
       ...(nm ? { n: nm } : {}),
       ...(t.building && t.building !== 'yes' ? { t: t.building } : {}),
       ...(t['roof:shape'] ? { rs: t['roof:shape'] } : {}),
@@ -432,6 +434,8 @@ function reverse(p) {
     if (h.floors) b.h = R1(h.floors * 3.2 + 1.1);
     if (h.height) b.h = R1(h.height);
     if (h.grandOrder) b.go = 1;
+    if (h.arch) b.arch = 1;
+    if (h.sign) { b.sg = b.sg || []; b.sg.unshift({ n: h.sign, c: h.signKind || 'civic' }); }
     if (h.addr) b.n = h.addr;
     if (h.roof) b.rs = h.roof;
     if (h.roofColor) b.rc = h.roofColor;
@@ -515,6 +519,36 @@ function reverse(p) {
   console.log(`витражных фасадов ${glass}`);
   for (const b of world.buildings) delete b.__c;
   console.log(`вывесок размещено ${placed}, без дома ${orphan}`);
+}
+
+// ---------- школы: один узнаваемый тип ----------
+// Школа в OSM — просто building=school без этажности, и оценщик разносил их
+// от 7 до 32 м: одна выглядела бараком, другая башней. Типовая советская школа
+// — три этажа с широкими окнами; приводим к этому и вешаем табличку с номером.
+{
+  let n = 0, named = 0;
+  for (const b of world.buildings) {
+    if (!/^(school|college|kindergarten|university)$/.test(b.t || '')) continue;
+    if (b.hand) continue;                       // осмотренные руками не трогаем
+    b.school = 1;
+    const kg = b.t === 'kindergarten';
+    if (!b.lv) b.h = R1((kg ? 2 : 3) * 3.9 + 1.0 + hashAt(b.poly[0], b.poly[1]) * 0.8);
+    n++;
+    if (b.n && !(b.sg || []).length) { b.sg = [{ n: b.n, c: 'school' }]; named++; }
+  }
+  console.log(`школьных корпусов ${n}, с табличкой ${named}`);
+}
+
+// ---------- храмы: камень, а не штукатурка с балконами ----------
+{
+  let n = 0;
+  for (const b of world.buildings) {
+    if (!/^(church|cathedral|chapel|mosque|synagogue|temple)$/.test(b.t || '')) continue;
+    b.temple = 1;
+    if (b.n && !(b.sg || []).length) b.sg = [{ n: b.n, c: 'church' }];
+    n++;
+  }
+  console.log(`культовых зданий ${n}`);
 }
 
 const nw = project(BBOX.north, BBOX.west), se = project(BBOX.south, BBOX.east);

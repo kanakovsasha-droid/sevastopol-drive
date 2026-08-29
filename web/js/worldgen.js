@@ -946,8 +946,11 @@ function garageBoxes(poly, terrain, pushV, rnd) {
           let nz = e1[0] * e2[1] - e1[1] * e2[0];
           const ln = Math.hypot(nx, ny, nz) || 1;
           nx /= ln; ny /= ln; nz /= ln;
-          if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
-          const V = [Aq, Bq, Cq, Aq, Cq, Dq], T = [uv[0], uv[1], uv[2], uv[0], uv[2], uv[3]];
+          let flip = false;
+          if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; flip = true; }
+          const V = flip ? [Aq, Cq, Bq, Aq, Dq, Cq] : [Aq, Bq, Cq, Aq, Cq, Dq];
+          const T = flip ? [uv[0], uv[2], uv[1], uv[0], uv[3], uv[2]]
+                         : [uv[0], uv[1], uv[2], uv[0], uv[2], uv[3]];
           for (let k = 0; k < 6; k++)
             pushV(V[k][0], V[k][1], V[k][2], nx, ny, nz, roofC, T[k][0], T[k][1], Hb, 5);
         }
@@ -1003,7 +1006,7 @@ export function buildBuildings(world, terrain, chunk = 500) {
                         : WALLS[(rand() * WALLS.length) | 0];
     // до 5 этажей и небольшим пятном в Севастополе почти всегда скатная черепица;
     // крупные корпуса и высотки — плоская кровля
-    const pitched = market || wantHip || (b.fx !== 'glass' && b.h <= 18 && area <= 900 && n >= 4 && rand() < 0.92);
+    const pitched = market || wantHip || (b.fx !== 'glass' && !b.school && !b.temple && b.h <= 18 && area <= 900 && n >= 4 && rand() < 0.92);
     const flatRoof = !pitched;
     const roof = b.rc ? hexRGB(b.rc)
       : market ? MARKET_ROOF
@@ -1012,7 +1015,9 @@ export function buildBuildings(world, terrain, chunk = 500) {
     const tint = 0.93 + rand() * 0.15;
     const w = [Math.min(1, wall[0] * tint), Math.min(1, wall[1] * tint), Math.min(1, wall[2] * tint)];
     // гараж, сарай, будка — окон не рисуем
-    const wallKind = market ? 4 : b.fx === 'glass' ? 10 : b.go ? 7 : (b.h < 4.2 || area < 38) ? 2 : 0;
+    const wallKind = market ? 4 : b.temple ? 13 : b.school ? 12
+      : b.fx === 'glass' ? 10 : b.arch ? 11 : b.go ? 7
+      : (b.h < 4.2 || area < 38) ? 2 : 0;
     const roofKind = flatRoof ? 3 : 1;
 
     let u = 0;
@@ -1061,10 +1066,12 @@ export function buildBuildings(world, terrain, chunk = 500) {
             let nz = e1[0] * e2[1] - e1[1] * e2[0];
             const ln = Math.hypot(nx, ny, nz) || 1;
             nx /= ln; ny /= ln; nz /= ln;
-            if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
-            pushV(p1[0], y1, p1[1], nx, ny, nz, col, t1[0], t1[1], Hb, kind);
-            pushV(p2[0], y2, p2[1], nx, ny, nz, col, t2[0], t2[1], Hb, kind);
-            pushV(p3[0], y3, p3[1], nx, ny, nz, col, t3[0], t3[1], Hb, kind);
+            let flip = false;
+            if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; flip = true; }
+            const V = flip ? [[p3, y3, t3], [p2, y2, t2], [p1, y1, t1]]
+                           : [[p1, y1, t1], [p2, y2, t2], [p3, y3, t3]];
+            for (const [q, qy, qt] of V)
+              pushV(q[0], qy, q[1], nx, ny, nz, col, qt[0], qt[1], Hb, kind);
           };
           tri(A, ay, B, by, C, cy, uv[0], uv[1], uv[2]);
           tri(A, ay, C, cy, D, dy, uv[0], uv[2], uv[3]);
@@ -1150,10 +1157,14 @@ export function buildBuildings(world, terrain, chunk = 500) {
         let nz = e1[0] * e2[1] - e1[1] * e2[0];
         const ln = Math.hypot(nx, ny, nz) || 1;
         nx /= ln; ny /= ln; nz /= ln;
-        if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }   // кровля всегда наружу
-        pushV(A[0], ay, A[1], nx, ny, nz, roof, A[0], A[1], Hb, 1);
-        pushV(B[0], by, B[1], nx, ny, nz, roof, B[0], B[1], Hb, 1);
-        pushV(C[0], cy, C[1], nx, ny, nz, roof, C[0], C[1], Hb, 1);
+        // Развернуть НОРМАЛЬ мало: лицевую сторону задаёт порядок обхода.
+        // Пока переворачивали только нормаль, половина скатов уходила изнанкой
+        // наружу и отсекалась — в кровлях зияли дыры.
+        let flip = false;
+        if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; flip = true; }
+        const V = flip ? [[C, cy], [B, by], [A, ay]] : [[A, ay], [B, by], [C, cy]];
+        for (const [q, qy] of V)
+          pushV(q[0], qy, q[1], nx, ny, nz, roof, q[0], q[1], Hb, 1);
       };
       // два ската-трапеции и две вальмы
       tri(c1, eaveY, c2, eaveY, r2, ridgeY); tri(c1, eaveY, r2, ridgeY, r1, ridgeY);
@@ -1219,10 +1230,11 @@ export function buildBuildings(world, terrain, chunk = 500) {
             let nz = u1[0] * u2[1] - u1[1] * u2[0];
             const ln = Math.hypot(nx, ny, nz) || 1;
             nx /= ln; ny /= ln; nz /= ln;
-            if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
-            pushV(p1[0], y1, p1[1], nx, ny, nz, roof, p1[0], p1[1], Hb, 1);
-            pushV(p2[0], y2, p2[1], nx, ny, nz, roof, p2[0], p2[1], Hb, 1);
-            pushV(p3[0], y3, p3[1], nx, ny, nz, roof, p3[0], p3[1], Hb, 1);
+            let flip = false;
+            if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; flip = true; }
+            const V = flip ? [[p3, y3], [p2, y2], [p1, y1]] : [[p1, y1], [p2, y2], [p3, y3]];
+            for (const [q, qy] of V)
+              pushV(q[0], qy, q[1], nx, ny, nz, roof, q[0], q[1], Hb, 1);
           };
           tri(A, eaveY, B, eaveY, C, ridgeY);
           tri(A, eaveY, C, ridgeY, D, ridgeY);

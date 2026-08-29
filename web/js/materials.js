@@ -54,6 +54,7 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody }) {
 // aKind: 0 фасад · 1 черепичная кровля · 2 глухая стена · 3 плоская кровля
 //        4 рыночный ряд (ролеты) · 5 профнастил кровли · 6 тент · 7 фасад с парадным ордером
 //        8 ворота гаража · 9 стена гаража из блоков · 10 витраж ТЦ
+//        11 парадный ордер с арками · 12 школа · 13 храм
 export function buildingMaterial() {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.84, metalness: 0.0 });
   return inject(mat, 'sev-building', {
@@ -66,13 +67,14 @@ export function buildingMaterial() {
         vec3 c = diffuseColor.rgb;
         float rough = 0.84;
 
-        if (vKind < 0.5 || (vKind > 6.5 && vKind < 7.5)) {
+        if (vKind < 0.5 || (vKind > 6.5 && vKind < 7.5) || (vKind > 10.5 && vKind < 11.5)) {
           // ---- фасад ----
           // Севастопольский центр — послевоенный фонд 1950-х: 3–5 этажей,
           // высокие окна с белыми наличниками, межэтажные тяги, карниз поверху.
           // парадный ордер (kind 7): этаж 5.2 м вместо 3.3 — послевоенная
           // классика с высокими залами, иначе двухэтажный корпус режется на четыре
           float fh0 = vKind > 6.5 ? 5.20 : 3.30;
+          float forceArch = step(10.5, vKind);          // 11 — окна заведомо арочные
           float nf = max(1.0, floor(vWall.z / fh0 + 0.35));
           float fh = vWall.z / nf;
           float fpos = vWall.y / fh;
@@ -94,7 +96,7 @@ export function buildingMaterial() {
           // одинаковый ритм, одинаковый низ. Стиль постоянен для здания —
           // берётся из его же высоты, поэтому не мерцает.
           float style = hash21(vec2(seed, 11.0));
-          float arch = step(0.70, style);      // полуциркульные завершения окон
+          float arch = max(forceArch, step(0.70, style));   // полуциркульные завершения окон
           float hasBalc = step(style, 0.38);   // балконы на верхних этажах
 
           float ax = clamp((fx - (x0 + x1) * 0.5) / max(0.001, (x1 - x0) * 0.5), -1.0, 1.0);
@@ -238,6 +240,87 @@ export function buildingMaterial() {
           c = mix(vec3(0.94, 0.93, 0.90), c, st);
           c *= 0.93 + 0.10 * hash21(floor(vWall.xy * 3.0));
           rough = 0.80;
+        } else if (vKind > 11.5 && vKind < 12.5) {
+          // ---- школа: широкие ленты окон, простенки, лестничный витраж ----
+          // Типовая советская школа узнаётся по ритму: окна класса идут
+          // тройками во всю ширину пролёта, между пролётами глухой простенок,
+          // а лестничная клетка — сплошная вертикальная лента стекла.
+          float fh = 3.90;
+          float fpos = vWall.y / fh;
+          float fi = floor(fpos), fy = fract(fpos);
+          float seed = floor(vWall.z * 5.0);
+          float BAY = 6.60;                              // пролёт класса
+          float bp = vWall.x / BAY;
+          float bi = floor(bp), fx = fract(bp);
+          // лестничная клетка: каждый пятый пролёт — витраж во всю высоту
+          float stair = step(0.80, fract(bi * 0.2 + hash21(vec2(seed, 3.0))));
+          float ground = step(fpos, 1.0);
+
+          // тройное окно класса
+          float win3 = 0.0;
+          for (int k = 0; k < 3; k++) {
+            float c0 = 0.135 + float(k) * 0.265;
+            win3 += smoothstep(c0 - 0.02, c0, fx) * (1.0 - smoothstep(c0 + 0.205, c0 + 0.225, fx));
+          }
+          float wy = smoothstep(0.16, 0.20, fy) * (1.0 - smoothstep(0.80, 0.84, fy));
+          float win = win3 * wy * (1.0 - stair);
+          // витраж лестницы: сплошной по вертикали, с ригелями по этажам
+          float sv = smoothstep(0.16, 0.20, fx) * (1.0 - smoothstep(0.80, 0.84, fx))
+                   * smoothstep(0.35, 0.55, vWall.y)
+                   * (1.0 - smoothstep(vWall.z - 1.15, vWall.z - 0.85, vWall.y));
+          float rig = 1.0 - smoothstep(0.02, 0.05, abs(fy - 0.06));
+          win = max(win, stair * sv * (1.0 - rig * 0.85));
+
+          vec3 glass = mix(vec3(0.085, 0.105, 0.120), vec3(0.235, 0.290, 0.315), 1.0 - fy);
+          glass *= 0.88 + 0.26 * hash21(vec2(bi * 3.0 + floor(fx * 4.0), fi) + seed);
+          float mull = 1.0 - smoothstep(0.010, 0.024, abs(fract(fx * 12.0) - 0.5) - 0.46);
+          glass = mix(glass, vec3(0.80, 0.79, 0.76), mull * win * 0.5);
+
+          c *= 0.95 + 0.09 * hash21(floor(vWall.xy * vec2(0.35, 0.30)));
+          c *= mix(0.74, 1.0, smoothstep(0.0, 1.10, vWall.y));          // цоколь
+          float ledge = 1.0 - 0.16 * (1.0 - smoothstep(0.0, 0.06, fy)); // межэтажная тяга
+          c *= ledge;
+          float cornice = smoothstep(vWall.z - 0.70, vWall.z - 0.40, vWall.y);
+          c = mix(c, c * 1.14 + 0.05, cornice);
+          win *= 1.0 - cornice;
+          // светлый откос вокруг проёма
+          float o = 0.03;
+          float outer = win3 * smoothstep(0.13, 0.16, fy) * (1.0 - smoothstep(0.84, 0.87, fy));
+          c = mix(c, vec3(0.93, 0.92, 0.89), clamp(outer - win, 0.0, 1.0) * 0.7 * (1.0 - stair));
+          c = mix(c, glass, win);
+          // тонкая полоса цоколя под первым этажом — плитка
+          c *= 1.0 - 0.10 * ground * step(fy, 0.10);
+          rough = mix(0.88, 0.12, win);
+        } else if (vKind > 12.5) {
+          // ---- храм: инкерманский камень, диоритовый цоколь, арочные окна ----
+          float plinth = 1.0 - smoothstep(2.2, 2.6, vWall.y);
+          vec3 diorite = vec3(0.145, 0.150, 0.140) * (0.85 + 0.30 * hash21(floor(vWall.xy * 1.1)));
+          // квадры инкерманского камня 1.1 x 0.55 м
+          vec2 blk = vec2(vWall.x / 1.10, vWall.y / 0.55);
+          blk.x += step(0.5, fract(blk.y)) * 0.5;
+          vec2 fb = abs(fract(blk) - 0.5);
+          float seam = smoothstep(0.42, 0.49, max(fb.x, fb.y));
+          c *= 0.94 + 0.10 * hash21(floor(blk));
+          c *= 1.0 - 0.18 * seam;
+          // высокие полуциркульные окна через 4.4 м
+          float bp2 = vWall.x / 4.40;
+          float fx2 = fract(bp2);
+          float y0 = 4.6, y1 = min(vWall.z - 2.6, 10.6);
+          float ax = clamp((fx2 - 0.5) / 0.115, -1.0, 1.0);
+          float top = y1 - 0.52 * (1.0 - sqrt(max(0.0, 1.0 - ax * ax)));
+          float win = smoothstep(0.383, 0.392, fx2) * (1.0 - smoothstep(0.608, 0.617, fx2))
+                    * smoothstep(y0 - 0.08, y0, vWall.y) * (1.0 - smoothstep(top, top + 0.08, vWall.y));
+          float band = smoothstep(0.365, 0.376, fx2) * (1.0 - smoothstep(0.624, 0.635, fx2))
+                     * smoothstep(y0 - 0.30, y0 - 0.22, vWall.y)
+                     * (1.0 - smoothstep(top + 0.30, top + 0.38, vWall.y));
+          c = mix(c, vec3(0.90, 0.88, 0.83), clamp(band - win, 0.0, 1.0) * 0.8);  // архивольт
+          vec3 glass = mix(vec3(0.045, 0.055, 0.060), vec3(0.16, 0.19, 0.21), 1.0 - vWall.y / max(1.0, y1));
+          c = mix(c, glass, win);
+          // диоритовый цоколь и карниз
+          c = mix(c, diorite, plinth * 0.92);
+          float cor = smoothstep(vWall.z - 1.15, vWall.z - 0.75, vWall.y);
+          c = mix(c, vec3(0.88, 0.86, 0.80), cor * 0.85);
+          rough = mix(0.90, 0.20, win);
         } else if (vKind < 8.5) {
           // ---- ворота гаражного бокса: две крашеные створки ----
           // x здесь — доля поперёк бокса, y — метры от подошвы (она в грунте).
