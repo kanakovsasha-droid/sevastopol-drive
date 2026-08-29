@@ -72,6 +72,11 @@ const WALLS = [
 ];
 const ROOFS_TILE = [[0.545, 0.271, 0.196], [0.494, 0.239, 0.169], [0.612, 0.325, 0.216], [0.463, 0.255, 0.192]];
 const ROOFS_FLAT = [[0.318, 0.310, 0.294], [0.286, 0.310, 0.325], [0.361, 0.349, 0.329], [0.255, 0.267, 0.275]];
+// рынок: белёные ролеты и профнастил, тенты цветные
+const MARKET_WALLS = [[0.878, 0.871, 0.855], [0.827, 0.831, 0.827], [0.906, 0.894, 0.867], [0.784, 0.796, 0.796]];
+const MARKET_ROOF = [0.812, 0.831, 0.843];
+const hexRGB = h => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
+const AWNINGS = [[0.729, 0.180, 0.161], [0.847, 0.639, 0.180], [0.243, 0.365, 0.561], [0.216, 0.396, 0.267]];
 const ROAD_COLORS = [
   // Все проезжие классы — ОДИН асфальт. Разные оттенки делали видимым каждое
   // наложение полотен на перекрёстке: в жизни асфальт там один и тот же.
@@ -413,6 +418,7 @@ export function buildTerrain(terrain, world, opts = {}) {
     park:  [0.353, 0.443, 0.247], grass: [0.427, 0.478, 0.271],
     wood:  [0.235, 0.325, 0.192], scrub: [0.435, 0.451, 0.294],
     pitch: [0.318, 0.443, 0.259], sand:  [0.827, 0.769, 0.616],
+    yard:  [0.396, 0.388, 0.373],
   };
   const ROCK = [0.686, 0.643, 0.553];
 
@@ -842,18 +848,23 @@ export function buildBuildings(world, terrain, chunk = 500) {
     cur = bucket(poly[0], poly[1]);
 
     const area = polyArea(poly);
-    const wall = WALLS[(rand() * WALLS.length) | 0];
+    const market = b.k === 'market';
+    const wantHip = b.rs === 'hipped';
+    const wall = b.wc ? hexRGB(b.wc)
+               : market ? MARKET_WALLS[(rand() * MARKET_WALLS.length) | 0]
+                        : WALLS[(rand() * WALLS.length) | 0];
     // до 5 этажей и небольшим пятном в Севастополе почти всегда скатная черепица;
     // крупные корпуса и высотки — плоская кровля
-    const pitched = b.h <= 18 && area <= 900 && n >= 4 && rand() < 0.92;
+    const pitched = market || wantHip || (b.h <= 18 && area <= 900 && n >= 4 && rand() < 0.92);
     const flatRoof = !pitched;
-    const roof = flatRoof
-      ? ROOFS_FLAT[(rand() * ROOFS_FLAT.length) | 0]
+    const roof = b.rc ? hexRGB(b.rc)
+      : market ? MARKET_ROOF
+      : flatRoof ? ROOFS_FLAT[(rand() * ROOFS_FLAT.length) | 0]
       : ROOFS_TILE[(rand() * ROOFS_TILE.length) | 0];
     const tint = 0.93 + rand() * 0.15;
     const w = [Math.min(1, wall[0] * tint), Math.min(1, wall[1] * tint), Math.min(1, wall[2] * tint)];
     // гараж, сарай, будка — окон не рисуем
-    const wallKind = (b.h < 4.2 || area < 38) ? 2 : 0;
+    const wallKind = market ? 4 : b.go ? 7 : (b.h < 4.2 || area < 38) ? 2 : 0;
     const roofKind = flatRoof ? 3 : 1;
 
     let u = 0;
@@ -875,6 +886,85 @@ export function buildBuildings(world, terrain, chunk = 500) {
       pushV(ax, yBase, az, nx, 0, nz, w, u0, 0, Hb, wallKind);
       pushV(ax, yTop, az, nx, 0, nz, w, u0, Hb, Hb, wallKind);
       pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wallKind);
+    }
+
+    // Рыночный ряд: длинный сарай под двускатной ребристой кровлей, по бокам
+    // тент над проходом. Вальма из общего кода тут не годится — ряд узкий
+    // и длинный, у него конёк во всю длину, а не четыре ската.
+    if (market) {
+      const box = obb(poly);
+      if (box) {
+        const { ux, uz } = box;
+        const toXZ = (u, v) => [u * ux - v * uz, u * uz + v * ux];
+        const along = (box.u1 - box.u0) >= (box.v1 - box.v0);
+        const EAVE = 0.55;
+        const a0 = (along ? box.u0 : box.v0) - 0.2, a1 = (along ? box.u1 : box.v1) + 0.2;
+        const c0 = (along ? box.v0 : box.u0) - EAVE, c1 = (along ? box.v1 : box.u1) + EAVE;
+        const cMid = (c0 + c1) / 2;
+        const P = (a, c) => along ? toXZ(a, c) : toXZ(c, a);
+        const eaveY = yTop, ridgeY = yTop + Math.min(1.15, (c1 - c0) * 0.15);
+
+        const quad = (A, ay, B, by, C, cy, D, dy, kind, col, uv) => {
+          const tri = (p1, y1, p2, y2, p3, y3, t1, t2, t3) => {
+            const e1 = [p2[0] - p1[0], y2 - y1, p2[1] - p1[1]];
+            const e2 = [p3[0] - p1[0], y3 - y1, p3[1] - p1[1]];
+            let nx = e1[1] * e2[2] - e1[2] * e2[1];
+            let ny = e1[2] * e2[0] - e1[0] * e2[2];
+            let nz = e1[0] * e2[1] - e1[1] * e2[0];
+            const ln = Math.hypot(nx, ny, nz) || 1;
+            nx /= ln; ny /= ln; nz /= ln;
+            if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+            pushV(p1[0], y1, p1[1], nx, ny, nz, col, t1[0], t1[1], Hb, kind);
+            pushV(p2[0], y2, p2[1], nx, ny, nz, col, t2[0], t2[1], Hb, kind);
+            pushV(p3[0], y3, p3[1], nx, ny, nz, col, t3[0], t3[1], Hb, kind);
+          };
+          tri(A, ay, B, by, C, cy, uv[0], uv[1], uv[2]);
+          tri(A, ay, C, cy, D, dy, uv[0], uv[2], uv[3]);
+        };
+
+        // два ската
+        for (const side of [-1, 1]) {
+          const cE = side < 0 ? c0 : c1;
+          const A = P(a0, cE), B = P(a1, cE), C = P(a1, cMid), D = P(a0, cMid);
+          quad(A, eaveY, B, eaveY, C, ridgeY, D, ridgeY, 5, roof,
+               [[a0, cE], [a1, cE], [a1, cMid], [a0, cMid]]);
+        }
+        // фронтоны: треугольник между стеной и коньком
+        for (const aE of [a0, a1]) {
+          const L = P(aE, c0), R = P(aE, c1), T = P(aE, cMid);
+          const e1 = [R[0] - L[0], 0, R[1] - L[1]];
+          const e2 = [T[0] - L[0], ridgeY - eaveY, T[1] - L[1]];
+          let nx = e1[1] * e2[2] - e1[2] * e2[1];
+          let ny = e1[2] * e2[0] - e1[0] * e2[2];
+          let nz = e1[0] * e2[1] - e1[1] * e2[0];
+          const ln = Math.hypot(nx, ny, nz) || 1;
+          nx /= ln; ny /= ln; nz /= ln;
+          const flip = (aE === a0) ? -1 : 1;
+          for (const sgn of [1, -1]) {   // фронтон виден с обеих сторон
+            const o = sgn * flip;
+            pushV(L[0], eaveY, L[1], nx * o, ny * o, nz * o, wall, 0, 0, Hb, 2);
+            if (o > 0) {
+              pushV(R[0], eaveY, R[1], nx * o, ny * o, nz * o, wall, c1 - c0, 0, Hb, 2);
+              pushV(T[0], ridgeY, T[1], nx * o, ny * o, nz * o, wall, (c1 - c0) / 2, ridgeY - eaveY, Hb, 2);
+            } else {
+              pushV(T[0], ridgeY, T[1], nx * o, ny * o, nz * o, wall, (c1 - c0) / 2, ridgeY - eaveY, Hb, 2);
+              pushV(R[0], eaveY, R[1], nx * o, ny * o, nz * o, wall, c1 - c0, 0, Hb, 2);
+            }
+          }
+        }
+        // тент над проходом с обеих длинных сторон
+        const awn = AWNINGS[(rand() * AWNINGS.length) | 0];
+        const yA = yTop - 1.45;          // тент ниже полосы вывесок
+        for (const side of [-1, 1]) {
+          const cW = side < 0 ? c0 + EAVE : c1 - EAVE;     // у самой стены
+          const cO = cW + side * 1.65;                      // вынос наружу
+          const A = P(a0 + 0.4, cW), B = P(a1 - 0.4, cW);
+          const C = P(a1 - 0.4, cO), D = P(a0 + 0.4, cO);
+          quad(A, yA, B, yA, C, yA - 0.42, D, yA - 0.42, 6, awn,
+               [[a0, 0], [a1, 0], [a1, 1.7], [a0, 1.7]]);
+        }
+        continue;
+      }
     }
 
     // Скатная кровля вместо плоской плиты — именно плоский верх и делал город
@@ -923,6 +1013,85 @@ export function buildBuildings(world, terrain, chunk = 500) {
       tri(c4, eaveY, c1, eaveY, r1, ridgeY);
       tri(c2, eaveY, c3, eaveY, r2, ridgeY);
       continue;
+    }
+
+    // Вальма по контуру для корпусов, которым габаритная рамка не годится:
+    // у Г-образного здания она висит углом над двором. Здесь скат идёт вдоль
+    // КАЖДОЙ стены внутрь, а середину закрывает плоская палуба по коньку.
+    if (wantHip) {
+      // Контуры OSM замкнуты дублем первой точки, а рядом попадаются вершины
+      // в паре сантиметров: биссектриса на нулевом ребре уводит скат в стену.
+      const poly2 = [];
+      for (let i = 0; i < n; i++) {
+        const x = poly[i * 2], z = poly[i * 2 + 1];
+        const m = poly2.length;
+        if (m >= 2 && Math.hypot(x - poly2[m - 2], z - poly2[m - 1]) < 0.2) continue;
+        poly2.push(x, z);
+      }
+      if (poly2.length >= 6 &&
+          Math.hypot(poly2[0] - poly2[poly2.length - 2], poly2[1] - poly2[poly2.length - 1]) < 0.2)
+        poly2.length -= 2;
+      const n2 = poly2.length / 2;
+      const RW = Math.min(3.6, Math.sqrt(area) * 0.22), RH = Math.min(2.0, RW * 0.5);
+      const inner = new Array(n2 * 2);
+      let okIn = n2 >= 4;
+      for (let i = 0; okIn && i < n2; i++) {
+        const h = (i - 1 + n2) % n2, j = (i + 1) % n2;
+        const e1x = poly2[i * 2] - poly2[h * 2], e1z = poly2[i * 2 + 1] - poly2[h * 2 + 1];
+        const e2x = poly2[j * 2] - poly2[i * 2], e2z = poly2[j * 2 + 1] - poly2[i * 2 + 1];
+        const l1 = Math.hypot(e1x, e1z) || 1, l2 = Math.hypot(e2x, e2z) || 1;
+        // контур обходится против часовой, внутренняя нормаль ребра — (-dz, dx)
+        const n1x = -e1z / l1, n1z = e1x / l1, n2x = -e2z / l2, n2z = e2x / l2;
+        let mx = n1x + n2x, mz = n1z + n2z;
+        const ml = Math.hypot(mx, mz);
+        if (ml < 0.2) { okIn = false; break; }
+        mx /= ml; mz /= ml;
+        const k = Math.min(2.4, 1 / Math.max(0.42, (mx * n1x + mz * n1z)));
+        inner[i * 2] = poly2[i * 2] + mx * RW * k;
+        inner[i * 2 + 1] = poly2[i * 2 + 1] + mz * RW * k;
+      }
+      const aIn = okIn ? polyArea(inner) : 0;
+      if (okIn && aIn > area * 0.16) {
+        const eaveY = yTop, ridgeY = yTop + RH;
+        const EAVE_OUT = 0.45;
+        for (let i = 0; i < n2; i++) {
+          const j = (i + 1) % n2;
+          const ax = poly2[i * 2], az = poly2[i * 2 + 1];
+          const bx2 = poly2[j * 2], bz2 = poly2[j * 2 + 1];
+          const dx = bx2 - ax, dz = bz2 - az, l = Math.hypot(dx, dz);
+          if (l < 0.2) continue;
+          const ox = dz / l * EAVE_OUT, oz = -dx / l * EAVE_OUT;   // наружу
+          const A = [ax + ox, az + oz], B = [bx2 + ox, bz2 + oz];
+          const C = [inner[j * 2], inner[j * 2 + 1]], D = [inner[i * 2], inner[i * 2 + 1]];
+          const tri = (p1, y1, p2, y2, p3, y3) => {
+            const u1 = [p2[0] - p1[0], y2 - y1, p2[1] - p1[1]];
+            const u2 = [p3[0] - p1[0], y3 - y1, p3[1] - p1[1]];
+            let nx = u1[1] * u2[2] - u1[2] * u2[1];
+            let ny = u1[2] * u2[0] - u1[0] * u2[2];
+            let nz = u1[0] * u2[1] - u1[1] * u2[0];
+            const ln = Math.hypot(nx, ny, nz) || 1;
+            nx /= ln; ny /= ln; nz /= ln;
+            if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+            pushV(p1[0], y1, p1[1], nx, ny, nz, roof, p1[0], p1[1], Hb, 1);
+            pushV(p2[0], y2, p2[1], nx, ny, nz, roof, p2[0], p2[1], Hb, 1);
+            pushV(p3[0], y3, p3[1], nx, ny, nz, roof, p3[0], p3[1], Hb, 1);
+          };
+          tri(A, eaveY, B, eaveY, C, ridgeY);
+          tri(A, eaveY, C, ridgeY, D, ridgeY);
+        }
+        const cIn = [];
+        for (let i = 0; i < n2; i++) cIn.push(new THREE.Vector2(inner[i * 2], inner[i * 2 + 1]));
+        let fIn = [];
+        try { fIn = THREE.ShapeUtils.triangulateShape(cIn, []); } catch { fIn = []; }
+        for (const f of fIn) {
+          const p0 = cIn[f[0]], p1 = cIn[f[1]], p2 = cIn[f[2]];
+          if (!p0 || !p1 || !p2) continue;
+          const cr = (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
+          const t = cr > 0 ? [p0, p2, p1] : [p0, p1, p2];
+          for (const q of t) pushV(q.x, ridgeY, q.y, 0, 1, 0, roof, q.x, q.y, Hb, 1);
+        }
+        continue;
+      }
     }
 
     const contour = [];
@@ -1007,7 +1176,7 @@ export function buildTrees(world, terrain, limit = 40000) {
 
   const spots = [];
   const rand = rng(777);
-  const DENSITY = { wood: 95, scrub: 240, park: 165, grass: 520, pitch: 0, sand: 0 };
+  const DENSITY = { wood: 95, scrub: 240, park: 165, grass: 520, pitch: 0, sand: 0, yard: 0 };
   for (const g of world.green) {
     const d = DENSITY[g.kind] ?? 0;
     if (!d) continue;

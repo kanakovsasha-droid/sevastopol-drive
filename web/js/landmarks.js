@@ -173,75 +173,6 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
 
     // Рынок: длинные ряды павильонов со светлой волнистой кровлей.
     // В OSM их нет вовсе, вписаны по спутниковому снимку.
-    if (d.style === 'market') {
-      const parts = [];
-      const rows = d.rows ?? 7, RL = d.rowLen ?? 78, RW = d.rowWidth ?? 11;
-      const gap = d.gap ?? 6.5, HT = d.height ?? 4.2;
-      const a = d.angle ?? 0;
-      const ux = Math.cos(a), uz = Math.sin(a);        // вдоль ряда
-      const nx = -uz, nz = ux;                          // поперёк
-      const span = (rows - 1) * (RW + gap);
-      let sd = 7717;
-      const rnd = () => (sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296;
-
-      for (let r = 0; r < rows; r++) {
-        const off = -span / 2 + r * (RW + gap);
-        const cx = d.x + nx * off, cz = d.z + nz * off;
-        const g0 = terrain.gridHeightAt(cx, cz);
-        const len = RL * (0.86 + rnd() * 0.28);
-
-        // стойки-стенки по краям
-        for (const s2 of [-1, 1]) {
-          const wl = new THREE.BoxGeometry(0.35, HT * 0.62, len);
-          wl.rotateY(Math.atan2(ux, uz));
-          wl.translate(cx + nx * s2 * RW / 2, g0 + HT * 0.31, cz + nz * s2 * RW / 2);
-          parts.push({ geo: wl, color: [0.72, 0.70, 0.66] });
-        }
-        // двускатная волнистая кровля: два ската навстречу
-        for (const s2 of [-1, 1]) {
-          const slope = new THREE.BoxGeometry(RW / 2 + 0.5, 0.16, len + 1.2);
-          slope.rotateZ(s2 * 0.20);
-          slope.rotateY(Math.atan2(ux, uz));
-          slope.translate(cx + nx * s2 * RW / 4, g0 + HT + 0.30, cz + nz * s2 * RW / 4);
-          parts.push({ geo: slope, color: [0.86, 0.88, 0.90] });
-        }
-        // конёк
-        const ridge = new THREE.BoxGeometry(0.55, 0.22, len + 1.4);
-        ridge.rotateY(Math.atan2(ux, uz));
-        ridge.translate(cx, g0 + HT + 1.32, cz);
-        parts.push({ geo: ridge, color: [0.74, 0.77, 0.80] });
-
-        // прилавки внутри ряда
-        const nStall = Math.floor(len / 3.4);
-        for (let k = 0; k < nStall; k++) {
-          const t = (k + 0.5) / nStall - 0.5;
-          const sx2 = cx + ux * t * len, sz2 = cz + uz * t * len;
-          for (const s2 of [-1, 1]) {
-            const px = sx2 + nx * s2 * RW * 0.28, pz = sz2 + nz * s2 * RW * 0.28;
-            const gp = terrain.gridHeightAt(px, pz);
-            const top = new THREE.BoxGeometry(RW * 0.22, 0.12, 2.5);
-            top.rotateY(Math.atan2(ux, uz));
-            top.translate(px, gp + 0.92, pz);
-            const leg = new THREE.BoxGeometry(RW * 0.18, 0.86, 2.2);
-            leg.rotateY(Math.atan2(ux, uz));
-            leg.translate(px, gp + 0.45, pz);
-            const CR = [[0.72, 0.28, 0.22], [0.80, 0.64, 0.22], [0.30, 0.46, 0.28], [0.60, 0.60, 0.62]];
-            const c = CR[(rnd() * CR.length) | 0];
-            parts.push({ geo: leg, color: [0.52, 0.50, 0.47] }, { geo: top, color: c });
-          }
-        }
-      }
-
-      // асфальт проходов чуть темнее — площадка рынка
-      const mm = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
-        vertexColors: true, roughness: 0.85, metalness: 0.05,
-      }));
-      mm.castShadow = true; mm.receiveShadow = true;
-      group.add(mm);
-      stats.push({ name: d.name, ok: true, ryadov: rows, dlina: RL, vysota: HT });
-      continue;
-    }
-
     // Приподнятая клумба: низкий каменный борт по контуру газона, земля внутри,
     // кусты и несколько деревьев. Голый газон с одним деревом смотрелся пусто.
     if (d.style === 'island') {
@@ -383,6 +314,81 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       continue;
     }
 
+    // Прожекторная мачта стадиона «Чайка»: решётчатая ферма из четырёх
+    // поясов с раскосами и рама с прожекторами наверху. Поле давно застроено
+    // рынком, а мачты стоят.
+    if (d.style === 'floodlight') {
+      const parts = [];
+      const y0 = terrain.gridHeightAt(d.x, d.z);
+      const H = d.height ?? 33;
+      const wBot = d.base ?? 3.2, wTop = 1.5;
+      const STEEL = [0.365, 0.302, 0.259];      // сурик по стали
+      const STEEL_D = [0.290, 0.243, 0.212];
+      const at = (u, y) => {                    // угол фермы на высоте y
+        const t = y / H, w = (wBot + (wTop - wBot) * t) / 2;
+        return [d.x + u[0] * w, y0 + y, d.z + u[1] * w];
+      };
+      const CORN = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+      const bar = (A, B, r, col) => {
+        const dx = B[0] - A[0], dy = B[1] - A[1], dz = B[2] - A[2];
+        const L = Math.hypot(dx, dy, dz);
+        if (L < 0.05) return;
+        const g = new THREE.CylinderGeometry(r, r, L, 5);
+        g.rotateX(Math.PI / 2);
+        const q = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 0, 1), new THREE.Vector3(dx / L, dy / L, dz / L));
+        g.applyQuaternion(q);
+        g.translate((A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2);
+        parts.push({ geo: g, color: col });
+      };
+      // пояса
+      for (const u of CORN) bar(at(u, 0), at(u, H), 0.11, STEEL);
+      // панели раскосов и горизонтали
+      const PAN = 2.6, np = Math.round(H / PAN);
+      for (let k = 0; k < np; k++) {
+        const ya = k * H / np, yb = (k + 1) * H / np;
+        for (let e = 0; e < 4; e++) {
+          const u1 = CORN[e], u2 = CORN[(e + 1) % 4];
+          bar(at(u1, yb), at(u2, yb), 0.055, STEEL_D);                 // горизонталь
+          bar(at(k % 2 ? u1 : u2, ya), at(k % 2 ? u2 : u1, yb), 0.05, STEEL_D);  // раскос
+        }
+      }
+      // рама с прожекторами
+      const RW = wTop * 2.6, RH = 3.4;
+      const top = y0 + H;
+      for (let r2 = 0; r2 < 3; r2++) {
+        const yy = top + 0.7 + r2 * 1.15;
+        const beam = new THREE.BoxGeometry(RW, 0.12, 0.28);
+        beam.translate(d.x, yy, d.z + 0.55);
+        parts.push({ geo: beam, color: STEEL_D });
+        const nL = 6;
+        for (let k = 0; k < nL; k++) {
+          const xx = d.x - RW / 2 + RW * (k + 0.5) / nL;
+          const lamp = new THREE.BoxGeometry(0.52, 0.62, 0.34);
+          lamp.rotateX(-0.32);
+          lamp.translate(xx, yy + 0.30, d.z + 0.72);
+          parts.push({ geo: lamp, color: [0.62, 0.61, 0.58] });
+          const gl = new THREE.BoxGeometry(0.44, 0.50, 0.05);
+          gl.rotateX(-0.32);
+          gl.translate(xx, yy + 0.36, d.z + 0.90);
+          parts.push({ geo: gl, color: [0.86, 0.88, 0.84] });
+        }
+      }
+      // стойки рамы и лесенка сбоку
+      for (const sx of [-1, 1]) {
+        const st = new THREE.BoxGeometry(0.14, RH + 1.2, 0.14);
+        st.translate(d.x + sx * RW / 2, top + RH / 2 + 0.4, d.z + 0.55);
+        parts.push({ geo: st, color: STEEL_D });
+      }
+      const m = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.72, metalness: 0.35,
+      }));
+      m.castShadow = true;
+      group.add(m);
+      stats.push({ name: d.name, ok: true, style: 'floodlight', vysota: H });
+      continue;
+    }
+
     // ближайший контур к заданной точке
     let bi = -1, bd = Infinity;
     world.buildings.forEach((b, i) => {
@@ -444,11 +450,21 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
     }
     // Явно заданная улица важнее близости: у отеля вплотную проходит боковая
     // Айвазовского, а парадный фасад с колоннадой смотрит на Нахимова.
-    if (d.facade && sides.some(o => isFinite(o.facadeDist)))
+    // Явная точка фасада — последний довод, когда на улицу смотрят сразу две
+    // стены корпуса: у больницы фасад ломается посередине, и «ближайшая к
+    // дороге» стена оказывается не та, на которой стоит портик.
+    if (d.facadeAt) {
+      for (const sd of sides) {
+        const [mx, mz] = sd.Q(0.5, 0);
+        sd.pickDist = Math.hypot(mx - d.facadeAt[0], mz - d.facadeAt[1]);
+      }
+      sides.sort((p1, p2) => p1.pickDist - p2.pickDist);
+    }
+    else if (d.facade && sides.some(o => isFinite(o.facadeDist)))
       sides.sort((p1, p2) => (p1.facadeDist - p2.facadeDist) || (p2.len - p1.len));
     else
       sides.sort((p1, p2) => (p1.roadDist - p2.roadDist) || (p2.len - p1.len));
-    const S = sides[0];
+    let S = sides[0];
 
     // Ближайшая точка НА КОНТУРЕ здания. Габаритный прямоугольник у П-образного
     // корпуса отстоит от стены на десятки метров — портик, отмеренный от него,
@@ -470,12 +486,136 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       return [bx, bz, Math.sqrt(bd)];
     };
     // точка на стене + вынос наружу вдоль нормали от стены к габаритной рамке
-    const atWall = (t, out) => {
+    let atWall = (t, out) => {
       const [qx, qz] = S.Q(t, 0);
       const [wx, wz, dist] = onWall(qx, qz);
       if (dist < 0.05) return [qx, qz];
       return [wx + (qx - wx) / dist * out, wz + (qz - wz) / dist * out];
     };
+
+    // ---- портик с фронтоном: послевоенная классика (больница им. Пирогова) ----
+    if (d.style === 'portico') {
+      const parts = [];
+      // Явный отрезок стены. Габаритная рамка у Г-образного корпуса лежит
+      // поперёк обоих крыльев, и «сторона рамки» — не стена: портик от неё
+      // уезжал во двор. Отрезок берётся из контура OSM, наружу — от центра дома.
+      if (d.wall) {
+        const [wx0, wz0, wx1, wz1] = d.wall;
+        const wdx = wx1 - wx0, wdz = wz1 - wz0;
+        const wl = Math.hypot(wdx, wdz) || 1;
+        let nX = -wdz / wl, nZ = wdx / wl;
+        const p = b.poly, np = p.length / 2;
+        let cx = 0, cz = 0;
+        for (let k = 0; k < np; k++) { cx += p[k * 2]; cz += p[k * 2 + 1]; }
+        cx /= np; cz /= np;
+        const mx = (wx0 + wx1) / 2, mz = (wz0 + wz1) / 2;
+        if (nX * (cx - mx) + nZ * (cz - mz) > 0) { nX = -nX; nZ = -nZ; }   // наружу
+        S = { a0: 0, a1: wl, len: wl, roadName: d.facade || null,
+              Q: (t, o) => [wx0 + wdx * t + nX * o, wz0 + wdz * t + nZ * o] };
+        atWall = (t, out) => S.Q(t, out);
+      }
+      const colN = d.columns ?? 6;
+      const R = d.colR ?? 0.55;
+      const step = d.colStep ?? 3.4;
+      const spanM = (colN - 1) * step;
+      const half = Math.min(0.46, spanM / (2 * (S.a1 - S.a0)));
+      const t0 = 0.5 - half, t1 = 0.5 + half;
+      const OUT = d.depth ?? 3.0;            // вынос портика от стены
+
+      const entTop = yTop - 0.30;            // верх антаблемента
+      const entH = 1.45;
+      const entBot = entTop - entH;
+
+      // стилобат: три ступени во всю ширину портика
+      const [px0, pz0] = atWall(t0 - 0.05, OUT + 0.9), [px1, pz1] = atWall(t1 + 0.05, OUT + 0.9);
+      const pAng = Math.atan2(px1 - px0, pz1 - pz0);
+      const pLen = Math.hypot(px1 - px0, pz1 - pz0);
+      const gStep = terrain.gridHeightAt((px0 + px1) / 2, (pz0 + pz1) / 2);
+      for (let k = 0; k < 3; k++) {
+        const [sx0, sz0] = atWall(0.5, OUT + 0.9 - k * 0.34);
+        const st = new THREE.BoxGeometry(OUT * 2 + 1.8 - k * 0.68, 0.19, pLen - k * 0.7);
+        st.rotateY(pAng); st.translate(sx0, gStep + 0.095 + k * 0.19, sz0);
+        parts.push({ geo: st, color: k === 2 ? STONE : STONE_D });
+      }
+      const plat = gStep + 0.57;
+
+      // колонны: ствол с лёгким сужением, база и капитель
+      for (let i = 0; i < colN; i++) {
+        const t = t0 + (t1 - t0) * (i / (colN - 1));
+        const [x, z] = atWall(t, OUT);
+        const capH = 0.50, baseH = 0.38;
+        const shaftH = Math.max(3.0, entBot - plat - baseH - capH);
+        const base = new THREE.BoxGeometry(1.42, baseH, 1.42); base.translate(x, plat + baseH / 2, z);
+        const shaft = new THREE.CylinderGeometry(R * 0.86, R, shaftH, 16);
+        shaft.translate(x, plat + baseH + shaftH / 2, z);
+        const neck = new THREE.CylinderGeometry(R * 0.94, R * 0.86, 0.16, 16);
+        neck.translate(x, plat + baseH + shaftH + 0.08, z);
+        const cap = new THREE.BoxGeometry(1.36, capH - 0.16, 1.36);
+        cap.translate(x, plat + baseH + shaftH + 0.16 + (capH - 0.16) / 2, z);
+        parts.push({ geo: base, color: STONE_D }, { geo: shaft, color: STONE },
+                    { geo: neck, color: STONE }, { geo: cap, color: STONE });
+      }
+
+      // антаблемент и карниз над колоннадой
+      const [ex0, ez0] = atWall(t0 - 0.045, OUT), [ex1, ez1] = atWall(t1 + 0.045, OUT);
+      const eAng = Math.atan2(ex1 - ex0, ez1 - ez0);
+      const eLen = Math.hypot(ex1 - ex0, ez1 - ez0);
+      const eMidX = (ex0 + ex1) / 2, eMidZ = (ez0 + ez1) / 2;
+      {
+        const ent = new THREE.BoxGeometry(OUT + 1.3, entH, eLen);
+        ent.rotateY(eAng); ent.translate(eMidX, entBot + entH / 2, eMidZ);
+        parts.push({ geo: ent, color: STONE });
+        const cor = new THREE.BoxGeometry(OUT + 2.1, 0.36, eLen + 0.9);
+        cor.rotateY(eAng); cor.translate(eMidX, entTop + 0.18, eMidZ);
+        parts.push({ geo: cor, color: STONE_D });
+      }
+
+      // фронтон: треугольник над карнизом, тимпан и скаты
+      {
+        const fH = eLen * 0.135;
+        const A = [ex0, ez0], B = [ex1, ez1];
+        const y0f = entTop + 0.36;
+        const depth = OUT + 1.5;
+        const ox = (eMidX - atWall(0.5, 0)[0]), oz = (eMidZ - atWall(0.5, 0)[1]);
+        const ol = Math.hypot(ox, oz) || 1;
+        const back = [-ox / ol * depth, -oz / ol * depth];
+        const tri3 = (P1, y1, P2, y2, P3, y3, col) => {
+          const u1 = [P2[0] - P1[0], y2 - y1, P2[1] - P1[1]];
+          const u2 = [P3[0] - P1[0], y3 - y1, P3[1] - P1[1]];
+          let a = u1[1] * u2[2] - u1[2] * u2[1];
+          let bq = u1[2] * u2[0] - u1[0] * u2[2];
+          let cq = u1[0] * u2[1] - u1[1] * u2[0];
+          const ln = Math.hypot(a, bq, cq) || 1;
+          const g = new THREE.BufferGeometry();
+          g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+            P1[0], y1, P1[1], P2[0], y2, P2[1], P3[0], y3, P3[1]]), 3));
+          g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array([
+            a / ln, bq / ln, cq / ln, a / ln, bq / ln, cq / ln, a / ln, bq / ln, cq / ln]), 3));
+          parts.push({ geo: g, color: col });
+        };
+        const T = [eMidX, eMidZ];
+        // лицевой тимпан (две грани, чтобы был виден с обеих сторон)
+        tri3(A, y0f, B, y0f, T, y0f + fH, STONE);
+        tri3(B, y0f, A, y0f, T, y0f + fH, STONE);
+        // скаты фронтона в глубину
+        const A2 = [A[0] + back[0], A[1] + back[1]];
+        const B2 = [B[0] + back[0], B[1] + back[1]];
+        const T2 = [T[0] + back[0], T[1] + back[1]];
+        for (const [P, Q, P2q, Q2q] of [[A, T, A2, T2], [T, B, T2, B2]]) {
+          const yP = P === T ? y0f + fH : y0f, yQ = Q === T ? y0f + fH : y0f;
+          tri3(P, yP, Q, yQ, Q2q, yQ, STONE_D);
+          tri3(P, yP, Q2q, yQ, P2q, yP, STONE_D);
+        }
+      }
+
+      group.add(new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.80, metalness: 0.02,
+      })));
+      skip.add(bi);
+      stats.push({ name: d.name, ok: true, dist: +bd.toFixed(0), kontur: bi,
+                   colonn: colN, fasadNa: S.roadName });
+      continue;
+    }
 
     // ---- фастфуд: навес над входом, золотые арки на стойке, летняя терраса ----
     if (d.style === 'fastfood') {

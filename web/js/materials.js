@@ -52,6 +52,7 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody }) {
 // ---------------------------------------------------------------- дома
 // aWall: x — метры вдоль стены, y — метры от основания, z — полная высота дома
 // aKind: 0 фасад · 1 черепичная кровля · 2 глухая стена · 3 плоская кровля
+//        4 рыночный ряд (ролеты) · 5 профнастил кровли · 6 тент · 7 фасад с парадным ордером
 export function buildingMaterial() {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.84, metalness: 0.0 });
   return inject(mat, 'sev-building', {
@@ -64,11 +65,14 @@ export function buildingMaterial() {
         vec3 c = diffuseColor.rgb;
         float rough = 0.84;
 
-        if (vKind < 0.5) {
+        if (vKind < 0.5 || vKind > 6.5) {
           // ---- фасад ----
           // Севастопольский центр — послевоенный фонд 1950-х: 3–5 этажей,
           // высокие окна с белыми наличниками, межэтажные тяги, карниз поверху.
-          float nf = max(1.0, floor(vWall.z / 3.30 + 0.35));
+          // парадный ордер (kind 7): этаж 5.2 м вместо 3.3 — послевоенная
+          // классика с высокими залами, иначе двухэтажный корпус режется на четыре
+          float fh0 = vKind > 6.5 ? 5.20 : 3.30;
+          float nf = max(1.0, floor(vWall.z / fh0 + 0.35));
           float fh = vWall.z / nf;
           float fpos = vWall.y / fh;
           float fi = floor(fpos), fy = fract(fpos);
@@ -160,11 +164,79 @@ export function buildingMaterial() {
         } else if (vKind < 2.5) {
           // ---- глухая стена: штукатурка ----
           c *= 0.91 + 0.14 * hash21(floor(vWall.xy * 0.55));
-        } else {
+        } else if (vKind < 3.5) {
           // ---- плоская кровля: рубероид с гравием ----
           c *= 0.84 + 0.28 * hash21(floor(vWall.xy * 1.7));
           c *= 0.95 + 0.09 * hash21(floor(vWall.xy * 0.35));
           rough = 0.95;
+        } else if (vKind < 4.5) {
+          // ---- рыночный ряд: ролетные ставни и вывески ----
+          // Всё меряем ВНИЗ ОТ КАРНИЗА: низ стены уходит в грунт на метр с
+          // лишним (иначе на склоне под домом щель), и от основания отсчитывать
+          // нечего — ставни оказались бы под землёй.
+          float ty = vWall.z - vWall.y;             // метров ниже карниза
+          float bay = 3.2;
+          float bi = floor(vWall.x / bay), fx = fract(vWall.x / bay);
+          float r = hash21(vec2(bi, floor(vWall.z * 13.0)));
+          float inBay = smoothstep(0.13, 0.16, fx) * (1.0 - smoothstep(0.84, 0.87, fx));
+
+          // профлист: вертикальная гофра, потёки, тёмный низ
+          float corr = abs(fract(vWall.x / 0.11) - 0.5) * 2.0;
+          c *= 0.90 + 0.15 * corr;
+          c *= 0.93 + 0.11 * hash21(floor(vWall.xy * 0.4));
+          c *= 1.0 - 0.16 * smoothstep(3.3, 4.4, ty);
+          c *= 1.0 - 0.09 * smoothstep(3.4, 2.6, ty) * hash21(floor(vWall.xy * 1.3));
+
+          // ролета: горизонтальные ламели 7 см
+          float shut = inBay * smoothstep(3.55, 3.48, ty) * smoothstep(1.28, 1.34, ty);
+          float slat = abs(fract(vWall.y / 0.07) - 0.5) * 2.0;
+          vec3 shutC = mix(vec3(0.72, 0.72, 0.71), vec3(0.55, 0.56, 0.57), r);
+          shutC *= 0.88 + 0.20 * slat;
+          // открытая лавка: сумрак внутри, светлый прилавок и товар на нём
+          if (r > 0.84) {
+            float depth = smoothstep(3.5, 1.5, ty);
+            shutC = mix(vec3(0.185, 0.170, 0.155), vec3(0.085, 0.080, 0.078), depth);
+            float counter = smoothstep(3.32, 3.26, ty) * smoothstep(3.02, 3.08, ty);
+            shutC = mix(shutC, vec3(0.60, 0.57, 0.52), counter * 0.85);
+            float goods = step(0.55, hash21(vec2(floor(vWall.x / 0.34), 9.0)))
+                        * smoothstep(3.02, 2.96, ty) * smoothstep(2.72, 2.78, ty);
+            vec3 gc = 0.30 + 0.55 * vec3(hash21(vec2(floor(vWall.x / 0.34), 2.0)),
+                                         hash21(vec2(floor(vWall.x / 0.34), 4.0)),
+                                         hash21(vec2(floor(vWall.x / 0.34), 6.0)));
+            shutC = mix(shutC, gc, goods * 0.8);
+          }
+          c = mix(c, shutC, shut);
+
+          // вывеска: полоса 0.8 м под карнизом и не у каждой секции
+          float hasBoard = step(0.40, hash21(vec2(bi, 5.0)));
+          float board = hasBoard * inBay
+                      * smoothstep(1.05, 1.00, ty) * smoothstep(0.25, 0.30, ty);
+          float hb = hash21(vec2(bi, 17.0));
+          vec3 sc = hb < 0.34 ? vec3(0.62, 0.09, 0.08)
+                  : hb < 0.58 ? vec3(0.78, 0.42, 0.05)
+                  : hb < 0.76 ? vec3(0.07, 0.24, 0.46)
+                  : hb < 0.90 ? vec3(0.09, 0.30, 0.18)
+                              : vec3(0.85, 0.83, 0.80);
+          // буквы: рваная строка по середине вывески, а не сплошная полоса
+          float lw = 0.16 + 0.10 * hash21(vec2(bi, 23.0));
+          float letters = step(0.38, hash21(vec2(floor(vWall.x / lw), floor(hb * 20.0))))
+                        * step(0.48, ty) * (1.0 - step(0.86, ty));
+          sc = mix(sc, vec3(0.96, 0.95, 0.92), letters * 0.88);
+          c = mix(c, sc, board);
+          rough = mix(0.88, 0.45, max(shut, board));
+        } else if (vKind < 5.5) {
+          // ---- профнастил кровли: гофра поперёк ската ----
+          float corrR = abs(fract(vWall.x / 0.26) - 0.5) * 2.0;
+          c *= 0.84 + 0.26 * corrR;
+          c *= 0.93 + 0.12 * hash21(floor(vWall.xy * vec2(0.3, 0.8)));   // подтёки и ржавь
+          c = mix(c, c * vec3(1.05, 0.94, 0.84), 0.35 * hash21(floor(vWall.xy * 0.22)));
+          rough = 0.55;
+        } else {
+          // ---- тент над проходом: полосы поперёк ----
+          float st = step(0.5, fract(vWall.x / 0.55));
+          c = mix(vec3(0.94, 0.93, 0.90), c, st);
+          c *= 0.93 + 0.10 * hash21(floor(vWall.xy * 3.0));
+          rough = 0.80;
         }
         diffuseColor.rgb = c;
         procRough = rough;

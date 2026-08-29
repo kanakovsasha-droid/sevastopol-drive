@@ -1,0 +1,103 @@
+<!doctype html><meta charset="utf-8"><title>sat</title>
+<style>
+ html,body{margin:0;background:#111;color:#eee;font:12px/1.2 ui-monospace,Menlo,monospace}
+ #wrap{position:relative;overflow:hidden}
+ #tiles img{position:absolute;image-rendering:auto}
+ #ov{position:absolute;left:0;top:0}
+ #hud{position:fixed;right:6px;top:6px;background:#000c;padding:6px 8px;white-space:pre}
+</style>
+<div id="wrap"><div id="tiles"></div><canvas id="ov"></canvas></div>
+<div id="hud"></div>
+<script type="module">
+const Q = Object.fromEntries(new URLSearchParams(location.search));
+const cx = +(Q.cx ?? 0), cz = +(Q.cz ?? 0);
+const W  = +(Q.w  ?? 400), H = +(Q.h ?? 300);   // метры
+const Z  = +(Q.z  ?? 19);
+const GRID = +(Q.grid ?? 25);
+const SRC = Q.src || 'esri';
+
+const ORIGIN = {lat:44.6166, lon:33.5254};
+const ML = 111132.92 - 559.82*Math.cos(2*ORIGIN.lat*Math.PI/180) + 1.175*Math.cos(4*ORIGIN.lat*Math.PI/180);
+const MO = 111412.84*Math.cos(ORIGIN.lat*Math.PI/180) - 93.5*Math.cos(3*ORIGIN.lat*Math.PI/180);
+const toLL = (x,z) => ({lat: ORIGIN.lat - z/ML, lon: ORIGIN.lon + x/MO});
+
+const N = 2**Z, TS = 256;
+function merc(lat,lon){                 // пиксели глобальной карты на зуме Z
+  const r = lat*Math.PI/180;
+  return { px:(lon+180)/360*N*TS,
+           py:(1 - Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*N*TS };
+}
+const ll = toLL(cx,cz); const C = merc(ll.lat, ll.lon);
+// масштаб: метров на пиксель в этой широте
+const MPP = 156543.03392 * Math.cos(ll.lat*Math.PI/180) / (N);
+const PPM = 1/MPP;                       // пикселей на метр
+const CW = Math.round(W*PPM), CH = Math.round(H*PPM);
+const x0 = C.px - CW/2, y0 = C.py - CH/2; // левый верх в глобальных пикселях
+
+const wrap=document.getElementById('wrap'); wrap.style.width=CW+'px'; wrap.style.height=CH+'px';
+const ov=document.getElementById('ov'); ov.width=CW; ov.height=CH;
+const tiles=document.getElementById('tiles');
+const url=(tx,ty)=> SRC==='yandex'
+  ? `https://core-sat.maps.yandex.net/tiles?l=sat&v=3.1055.0&x=${tx}&y=${ty}&z=${Z}`
+  : `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${Z}/${ty}/${tx}`;
+let pending=0;
+for(let ty=Math.floor(y0/TS); ty<=Math.floor((y0+CH)/TS); ty++)
+for(let tx=Math.floor(x0/TS); tx<=Math.floor((x0+CW)/TS); tx++){
+  const im=new Image(); im.crossOrigin='anonymous'; pending++;
+  im.onload=im.onerror=()=>{ if(--pending===0) document.title='sat ready'; };
+  im.src=url(tx,ty); im.style.left=(tx*TS-x0)+'px'; im.style.top=(ty*TS-y0)+'px';
+  im.width=TS; im.height=TS; tiles.appendChild(im);
+}
+
+// мир -> пиксель холста
+function P(x,z){ const l=toLL(x,z), m=merc(l.lat,l.lon); return [m.px-x0, m.py-y0]; }
+
+const g=ov.getContext('2d');
+const world = await (await fetch('../data/world.json')).json();
+let extra=[]; try{ extra = await (await fetch('../data/'+(Q.extra||'nonexistent')+'.json')).json(); }catch(e){}
+
+function poly(flat, style, fill){
+  g.beginPath();
+  for(let i=0;i<flat.length;i+=2){ const [px,py]=P(flat[i],flat[i+1]); i?g.lineTo(px,py):g.moveTo(px,py); }
+  g.closePath(); if(fill){g.fillStyle=fill; g.fill();} g.strokeStyle=style; g.lineWidth=1.5; g.stroke();
+}
+const near=(x,z)=> x>cx-W/2-60 && x<cx+W/2+60 && z>cz-H/2-60 && z<cz+H/2+60;
+
+if(Q.roads!=='0') for(const r of world.roads){
+  const p=r.pts; let vis=false; for(let i=0;i<p.length;i+=2) if(near(p[i],p[i+1])) {vis=true;break;}
+  if(!vis) continue;
+  g.beginPath();
+  for(let i=0;i<p.length;i+=2){ const [px,py]=P(p[i],p[i+1]); i?g.lineTo(px,py):g.moveTo(px,py); }
+  g.strokeStyle='rgba(0,200,255,.55)'; g.lineWidth=Math.max(1,r.w*PPM); g.stroke();
+  g.strokeStyle='rgba(0,80,255,.9)'; g.lineWidth=1; g.stroke();
+}
+if(Q.bld!=='0') for(const b of world.buildings){
+  const p=b.poly; if(!near(p[0],p[1])) continue;
+  poly(p,'rgba(255,80,80,.95)','rgba(255,0,0,.13)');
+}
+for(const e of extra){ if(e.poly) poly(e.poly,'rgba(120,255,120,1)','rgba(0,255,0,.15)'); }
+
+// сетка
+g.font='11px monospace'; g.textBaseline='top';
+const gx0=Math.ceil((cx-W/2)/GRID)*GRID, gz0=Math.ceil((cz-H/2)/GRID)*GRID;
+for(let x=gx0;x<=cx+W/2;x+=GRID){ const [px]=P(x,cz);
+  g.strokeStyle=(x%100===0)?'rgba(255,255,0,.45)':'rgba(255,255,255,.16)'; g.lineWidth=1;
+  g.beginPath(); g.moveTo(px,0); g.lineTo(px,CH); g.stroke();
+  if(x%50===0){ g.fillStyle='#ff0'; g.fillText('x '+x, px+2, 2); } }
+for(let z=gz0;z<=cz+H/2;z+=GRID){ const [,py]=P(cx,z);
+  g.strokeStyle=(z%100===0)?'rgba(255,255,0,.45)':'rgba(255,255,255,.16)'; g.lineWidth=1;
+  g.beginPath(); g.moveTo(0,py); g.lineTo(CW,py); g.stroke();
+  if(z%50===0){ g.fillStyle='#ff0'; g.fillText('z '+z, 2, py+2); } }
+
+document.getElementById('hud').textContent =
+  `centre ${cx},${cz}\n${W}x${H} m  z${Z}\n${MPP.toFixed(3)} m/px\nsrc ${SRC}`;
+wrap.onclick=e=>{ const r=wrap.getBoundingClientRect();
+  const px=e.clientX-r.left, py=e.clientY-r.top;
+  // обратно в мир
+  const lon=(x0+px)/(N*TS)*360-180;
+  const yy=(y0+py)/(N*TS); const lat=Math.atan(Math.sinh(Math.PI*(1-2*yy)))*180/Math.PI;
+  const wx=(lon-ORIGIN.lon)*MO, wz=-(lat-ORIGIN.lat)*ML;
+  console.log('WORLD', wx.toFixed(1), wz.toFixed(1));
+  document.getElementById('hud').textContent += `\nclick ${wx.toFixed(1)}, ${wz.toFixed(1)}`;
+};
+</script>

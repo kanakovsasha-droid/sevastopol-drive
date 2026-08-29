@@ -8,6 +8,8 @@ const osm = JSON.parse(readFileSync(DIR + 'osm-raw.json', 'utf8'));
 // один раз посмотрел дом — он навсегда описан здесь, а не заново каждый заход.
 let HOUSES = [];
 try { HOUSES = JSON.parse(readFileSync(DIR + 'houses.json', 'utf8')); } catch { /* файла может не быть */ }
+let ZONES = [];
+try { ZONES = JSON.parse(readFileSync(DIR + 'zones.json', 'utf8')); } catch { /* файла может не быть */ }
 
 // ---------- классы дорог: ширина в метрах + категория для материала ----------
 const ROADS = {
@@ -374,6 +376,44 @@ function reverse(p) {
   world.crossings = keptC;
 }
 
+// ---------- размеченные вручную зоны (рынок, гаражи) ----------
+// Оценщик высоты считает по площади пятна и «этажности района»: ряд рынка
+// в 400 м² он честно тянет на пять этажей. Никакой тег OSM это не поправит —
+// у ларьков вообще нет тегов. Поэтому обведённые по спутнику куски города
+// получают этажность и вид руками.
+{
+  const inside = (x, z, p) => {
+    let c = false;
+    for (let i = 0, j = p.length / 2 - 1; i < p.length / 2; j = i++) {
+      const xi = p[i * 2], zi = p[i * 2 + 1], xj = p[j * 2], zj = p[j * 2 + 1];
+      if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c;
+    }
+    return c;
+  };
+  for (const zn of ZONES) {
+    let hit = 0;
+    for (const b of world.buildings) {
+      const p = b.poly, n = p.length / 2;
+      let cx = 0, cz = 0;
+      for (let k = 0; k < n; k++) { cx += p[k * 2]; cz += p[k * 2 + 1]; }
+      cx /= n; cz /= n;
+      if (!inside(cx, cz, zn.poly)) continue;
+      hit++;
+      if (zn.kind) b.k = zn.kind;
+      if (zn.floors) {
+        // высота гуляет в пределах полуметра, иначе ряды сливаются в одну плиту
+        const r = hashAt(p[0], p[1]);
+        b.h = R1(zn.floors * 3.2 + 0.6 + r * 0.9);
+      }
+      b.zone = 1;
+    }
+    console.log(`зона «${zn.name}»: ${hit} контуров`);
+  }
+  world.zones = ZONES.map(z => ({ name: z.name, kind: z.kind, poly: z.poly }));
+  // площадка зоны — не газон: асфальт и бетон между рядами
+  for (const zn of ZONES) if (zn.kind === 'market') world.green.push({ kind: 'yard', poly: zn.poly });
+}
+
 // ---------- накладываем описания осмотренных домов ----------
 {
   let applied = 0;
@@ -389,6 +429,8 @@ function reverse(p) {
     if (bi < 0 || bd > 45) { console.log(`  ! не нашёл контур для ${h.addr} (ближайший в ${bd.toFixed(0)} м)`); continue; }
     const b = world.buildings[bi];
     if (h.floors) b.h = R1(h.floors * 3.2 + 1.1);
+    if (h.height) b.h = R1(h.height);
+    if (h.grandOrder) b.go = 1;
     if (h.addr) b.n = h.addr;
     if (h.roof) b.rs = h.roof;
     if (h.roofColor) b.rc = h.roofColor;
