@@ -302,6 +302,10 @@ export function buildingMaterial() {
           float seam = smoothstep(0.42, 0.49, max(fb.x, fb.y));
           c *= 0.94 + 0.10 * hash21(floor(blk));
           c *= 1.0 - 0.18 * seam;
+          // серые тяги: пояс по низу стены и под карнизом — как на панораме
+          float belt = (1.0 - smoothstep(0.10, 0.16, abs(vWall.y - 3.4)))
+                     + (1.0 - smoothstep(0.10, 0.16, abs(vWall.y - vWall.z + 1.9)));
+          c = mix(c, vec3(0.52, 0.53, 0.51), clamp(belt, 0.0, 1.0) * 0.75);
           // высокие полуциркульные окна через 4.4 м
           float bp2 = vWall.x / 4.40;
           float fx2 = fract(bp2);

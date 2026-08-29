@@ -687,9 +687,20 @@ export function buildRoads(world, terrain, chunk = 500) {
     return false;
   };
 
-  for (const r of world.roads) {
+  // Тротуары в растр покрытия не входят, а пешеходные дорожки OSM идут ровно
+  // по ним — и ложились сверху вторым слоем светлой плитки. Заводим второй
+  // растр: проезжие улицы рисуем первыми и попутно метим свои тротуары,
+  // пешеходные дорожки идут следом и уступают.
+  const walkOwn = new Int32Array(COV.W * COV.H).fill(-1);
+  const claimWalk = (x, z, own) => { const c = cellOf(x, z); if (c >= 0 && walkOwn[c] < 0) walkOwn[c] = own; };
+  const onWalkOther = (x, z, own) => {
+    const c = cellOf(x, z);
+    return c >= 0 && walkOwn[c] >= 0 && walkOwn[c] !== own;
+  };
+  const order = world.roads.map((r, i) => ({ r, i })).sort((a, b2) => (a.r.c > 3 ? 1 : 0) - (b2.r.c > 3 ? 1 : 0));
+
+  for (const { r, i: ri } of order) {
     if (r.pts.length < 4) continue;
-    const ri = world.roads.indexOf(r);
     // узкий проезд, целиком лежащий на широкой улице, не рисуем вовсе
     if (r.c <= 3 && r.w >= 4 && (covered.get(ri) ?? 0) > 0.75) continue;
     drawn.add(ri);
@@ -701,14 +712,33 @@ export function buildRoads(world, terrain, chunk = 500) {
     const lift = ROAD_Y + r.w * 0.0016;
     const mtR = miters(ext);
     strip(ch, ext, mtR, -hw, hw, lift, r.c, r.w, false, i => {
-      if (r.c > 3 || r.w < 4) return false;
-      for (const s of [0.15, 0.5, 0.85]) {
-        const bx = ext[i * 2] + (ext[i * 2 + 2] - ext[i * 2]) * s;
-        const bz = ext[i * 2 + 1] + (ext[i * 2 + 3] - ext[i * 2 + 1]) * s;
-        if (!underWider(bx, bz, ri, r.w)) return false;
+      const pts3 = [0.15, 0.5, 0.85].map(s2 => [
+        ext[i * 2] + (ext[i * 2 + 2] - ext[i * 2]) * s2,
+        ext[i * 2 + 1] + (ext[i * 2 + 3] - ext[i * 2 + 1]) * s2]);
+      if (r.c === 4) {
+        // Дорожка узкая и чисто декоративная: под ней и так лежит мощение
+        // тротуара или асфальт. Хватает середины пролёта — требовать все три
+        // точки значило оставлять половину нахлёста ради ничего.
+        const [mx, mz] = pts3[1];
+        return onOtherRoad(mx, mz, ri) || onWalkOther(mx, mz, ri);
       }
-      return true;      // кусок целиком внутри более широкой улицы
+      if (r.c > 3 || r.w < 4) return false;
+      // Раньше требовалась именно БОЛЕЕ ШИРОКАЯ улица, и две равные по ширине
+      // рисовались обе внахлёст. Растр уже решил, чья это земля, — этого хватает.
+      for (const [bx, bz] of pts3) if (!onOtherRoad(bx, bz, ri)) return false;
+      return true;      // кусок целиком на чужой проезжей части
     }, ri);
+    if (r.c === 4) {
+      // дорожка метит свою полосу: параллельная соседка не ляжет сверху
+      const w2 = Math.max(1.2, hw);
+      for (let i = 0; i < ext.length / 2 - 1; i++) {
+        const bx = (ext[i * 2] + ext[i * 2 + 2]) / 2, bz = (ext[i * 2 + 1] + ext[i * 2 + 3]) / 2;
+        const dx2 = ext[i * 2 + 2] - ext[i * 2], dz2 = ext[i * 2 + 3] - ext[i * 2 + 1];
+        const l2 = Math.hypot(dx2, dz2) || 1;
+        for (let o = -w2; o <= w2; o += 0.9)
+          claimWalk(bx + (-dz2 / l2) * o, bz + (dx2 / l2) * o, ri);
+      }
+    }
     // тротуары только у проезжих улиц и без вылета: иначе они лягут поперёк перекрёстка
     if (r.c <= 3 && r.w >= 5 && !r.br && !r.tn) {
       const dp = densify(r.pts);
@@ -722,6 +752,17 @@ export function buildRoads(world, terrain, chunk = 500) {
            i => stripHitsRoad(dp, i, mt, hw - 0.2, hw + 0.8, ri), ri);
       kerb(ch, dp, mt, -hw, ROAD_Y, KERB_H + 0.03,
            i => stripHitsRoad(dp, i, mt, -hw + 0.2, -hw - 0.8, ri), ri);
+      // метим полосу тротуара, чтобы пешеходные дорожки её не перекрывали
+      for (let i = 0; i < mt.n - 1; i++) {
+        for (const s2 of [0, 0.5, 1]) {
+          const bx = dp[i * 2] + (dp[i * 2 + 2] - dp[i * 2]) * s2;
+          const bz = dp[i * 2 + 1] + (dp[i * 2 + 3] - dp[i * 2 + 1]) * s2;
+          const nx = mt.NX[i], nz = mt.NZ[i], sc = mt.S[i];
+          for (const sg of [1, -1])
+            for (let o = hw + 0.3; o <= hw + SIDEWALK; o += 0.8)
+              claimWalk(bx + nx * sg * o * sc, bz + nz * sg * o * sc, ri);
+        }
+      }
     }
   }
   for (const r of world.rail) {
@@ -740,7 +781,7 @@ export function buildRoads(world, terrain, chunk = 500) {
     if (r < 1.5) continue;
     ch.P.push(j.x, H(j.x, j.z) + ROAD_Y - 0.025, j.z);
     ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-    ch.R.push(0, 0, 0.5); ch.K.push(1);
+    ch.R.push(0, 0, 0.5); ch.K.push(1); ch.O.push(-1);   // без этого aOwn съезжал на вершину
     for (let k = 0; k <= SEG; k++) {
       const a = k / SEG * Math.PI * 2;
       const x = j.x + Math.cos(a) * r, z = j.z + Math.sin(a) * r;

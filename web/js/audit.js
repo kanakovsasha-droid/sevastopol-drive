@@ -20,33 +20,74 @@ export function audit(G) {
   const drivable = world.roads.map((r, i) => ({ r, i }))
     .filter(o => o.r.c <= 3 && o.r.w >= 4 && (!drawn || drawn.has(o.i)));
 
-  // ---------- дороги друг на друге ----------
+  // ---------- полотна внахлёст (по НАРИСОВАННОМУ) ----------
+  // Старая метрика мерила осевые линии OSM: две улицы, чьи полосы пересекаются
+  // в данных, считались дефектом, даже если рисуется только одна. Меряем то,
+  // что видно: растеризуем сами треугольники полотна и ищем ячейки, где два
+  // РАЗНЫХ владельца лежат почти на одной высоте — там и рябит.
   {
-    let covered = 0, dbl = 0;
-    const seen = new Int32Array(COV.W * COV.H).fill(-1);
-    for (const { r, i } of drivable) {
-      const p = r.pts, hw = r.w / 2;
-      for (let k = 0; k < p.length / 2 - 1; k++) {
-        const ax = p[k * 2], az = p[k * 2 + 1];
-        const dx = p[k * 2 + 2] - ax, dz = p[k * 2 + 3] - az;
-        const L = Math.hypot(dx, dz); if (L < 0.2) continue;
-        const st = Math.ceil(L / 1.5), rc = Math.ceil(hw / COV.res);
-        for (let s2 = 0; s2 <= st; s2++) {
-          const cx = ax + dx * s2 / st, cz = az + dz * s2 / st;
-          for (let dj = -rc; dj <= rc; dj++)
-            for (let di = -rc; di <= rc; di++) {
-              const x = cx + di * COV.res, z = cz + dj * COV.res;
-              if ((x - cx) ** 2 + (z - cz) ** 2 > hw * hw) continue;
-              const c = cell(x, z); if (c < 0) continue;
-              if (seen[c] < 0) { seen[c] = i; covered++; }
-              else if (seen[c] !== i) { if (seen[c] >= 0) { seen[c] = -2; dbl++; } }
+    const R2 = 2.0;                       // метр на ячейку
+    const bb = world.meta.bounds;
+    const gx0 = bb.minX - 30, gz0 = bb.minZ - 30;
+    const GW = Math.ceil((bb.maxX - bb.minX + 60) / R2);
+    const GH = Math.ceil((bb.maxZ - bb.minZ + 60) / R2);
+    const own1 = new Int32Array(GW * GH).fill(-2);
+    const lev1 = new Float32Array(GW * GH);
+    const conf = new Uint8Array(GW * GH);
+    const cls1 = new Int8Array(GW * GH);
+    const byPair = {};
+    let cells = 0, bad = 0; const ex = [];
+    const NEAR = 0.12;                    // ближе 12 см — это уже спор за глубину
+
+    for (const m of grpRoads.children) {
+      const g = m.geometry;
+      const P = g.attributes.position.array, K = g.attributes.aCls.array;
+      const O = g.attributes.aOwn?.array, idx = g.index.array;
+      for (let t = 0; t + 2 < idx.length; t += 3) {
+        const i0 = idx[t], i1 = idx[t + 1], i2 = idx[t + 2];
+        if (K[i0] === 6) continue;        // бордюр — вертикальная грань, не полотно
+        if (K[i0] === 7) continue;        // зебра кладётся поверх нарочно
+        const own = O ? O[i0] : -1;
+        if (own < 0) continue;            // пятно перекрёстка и рельсы — тоже нарочно
+        const ax = P[i0 * 3], ay = P[i0 * 3 + 1], az = P[i0 * 3 + 2];
+        const bx = P[i1 * 3], by = P[i1 * 3 + 1], bz = P[i1 * 3 + 2];
+        const cx = P[i2 * 3], cy = P[i2 * 3 + 1], cz = P[i2 * 3 + 2];
+        const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+        if (Math.abs(den) < 1e-9) continue;
+        const mnx = Math.min(ax, bx, cx), mxx = Math.max(ax, bx, cx);
+        const mnz = Math.min(az, bz, cz), mxz = Math.max(az, bz, cz);
+        const ci0 = Math.floor((mnx - gx0) / R2), ci1 = Math.floor((mxx - gx0) / R2);
+        const cj0 = Math.floor((mnz - gz0) / R2), cj1 = Math.floor((mxz - gz0) / R2);
+        for (let cj = cj0; cj <= cj1; cj++) {
+          if (cj < 0 || cj >= GH) continue;
+          for (let ci = ci0; ci <= ci1; ci++) {
+            if (ci < 0 || ci >= GW) continue;
+            const px = gx0 + (ci + 0.5) * R2, pz = gz0 + (cj + 0.5) * R2;
+            const l1 = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / den;
+            const l2 = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / den;
+            const l3 = 1 - l1 - l2;
+            if (l1 < -0.02 || l2 < -0.02 || l3 < -0.02) continue;
+            const y = l1 * ay + l2 * by + l3 * cy;
+            const k = cj * GW + ci;
+            if (own1[k] === -2) { own1[k] = own; lev1[k] = y; cls1[k] = K[i0]; cells++; continue; }
+            if (own1[k] === own) { if (y > lev1[k]) lev1[k] = y; continue; }
+            if (Math.abs(y - lev1[k]) < NEAR && !conf[k]) {
+              conf[k] = 1; bad++;
+              const pair = Math.min(cls1[k], K[i0]) + '+' + Math.max(cls1[k], K[i0]);
+              byPair[pair] = (byPair[pair] || 0) + 1;
+              if (ex.length < 40) ex.push({ v: Math.abs(y - lev1[k]), x: px, z: pz });
             }
+          }
         }
       }
     }
-    out['дороги друг на друге'] = { всего: covered, дефект: dbl, процент: +(100 * dbl / covered).toFixed(2) };
+    out['полотна внахлёст'] = { ячеек: cells, дефект: bad,
+      процент: cells ? +(100 * bad / cells).toFixed(2) : 0,
+      поКлассам: Object.entries(byPair).sort((a2, b3) => b3[1] - a2[1]).slice(0, 8)
+        .map(([k2, v]) => k2 + ': ' + v).join(', '),
+      худшие: ex.sort((p2, q) => p2.v - q.v).slice(0, 5)
+        .map(o => `${(o.v * 100).toFixed(0)} см @ ${o.x | 0},${o.z | 0}`) };
   }
-
 
   // Честная метрика: сколько НАРИСОВАННОГО бордюра и тротуара лежит вглубь
   // чужой полосы. Вершины на самой кромке не считаем — они там законно.

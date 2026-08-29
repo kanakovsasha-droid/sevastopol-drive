@@ -501,7 +501,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       const parts = [];
       const STONE_W = [0.871, 0.824, 0.722];     // инкерманский камень
       const DIORITE = [0.145, 0.150, 0.140];
-      const LEAD = [0.239, 0.251, 0.247];        // тёмный купол
+      const LEAD = [0.639, 0.655, 0.639];        // светлый купол, как на панораме
       const GOLD2 = [0.94, 0.74, 0.16];
 
       const dx = d.dome ? d.dome[0] : d.x, dz = d.dome ? d.dome[1] : d.z;
@@ -537,7 +537,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       parts.push({ geo: pedCor, color: STONE_D });
 
       // барабан с лопатками и арочными окнами
-      const drumR = d.drumR ?? 5.6, drumH = 6.2;
+      const drumR = d.drumR ?? 5.6, drumH = d.drumH ?? 6.2;
       const yDrum = yBody + 0.45 + sqH + 0.4;
       const drum = new THREE.CylinderGeometry(drumR, drumR, drumH, 24);
       drum.translate(dx, yDrum + drumH / 2, dz);
@@ -590,6 +590,42 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
         if (i === 2) bar.rotateZ(0.32);                 // косая нижняя перекладина
         bar.translate(dx, barY[i], dz);
         parts.push({ geo: bar, color: GOLD2 });
+      }
+
+      // звонница над западным входом: три арочных проёма с колоколами
+      if (d.belfry) {
+        const [bx0, bz0, bx1, bz1] = d.belfry;
+        const bl = Math.hypot(bx1 - bx0, bz1 - bz0) || 1;
+        const bux = (bx1 - bx0) / bl, buz = (bz1 - bz0) / bl;
+        let bnX = -buz, bnZ = bux;
+        const pp = b.poly, pn = pp.length / 2;
+        let pcx = 0, pcz = 0;
+        for (let k = 0; k < pn; k++) { pcx += pp[k * 2]; pcz += pp[k * 2 + 1]; }
+        pcx /= pn; pcz /= pn;
+        const bmx = (bx0 + bx1) / 2, bmz = (bz0 + bz1) / 2;
+        if (bnX * (pcx - bmx) + bnZ * (pcz - bmz) > 0) { bnX = -bnX; bnZ = -bnZ; }
+        const cx2 = bmx - bnX * 1.4, cz2 = bmz - bnZ * 1.4;     // чуть вглубь корпуса
+        const ang = Math.atan2(bx1 - bx0, bz1 - bz0);
+        const BW = Math.max(5.2, bl + 0.6), BH = 4.4;
+        const box2 = new THREE.BoxGeometry(3.0, BH, BW);
+        box2.rotateY(ang); box2.translate(cx2, yBody + BH / 2, cz2);
+        parts.push({ geo: box2, color: STONE });
+        const cor2 = new THREE.BoxGeometry(3.6, 0.45, BW + 0.7);
+        cor2.rotateY(ang); cor2.translate(cx2, yBody + BH + 0.22, cz2);
+        parts.push({ geo: cor2, color: STONE_D });
+        for (let k = -1; k <= 1; k++) {
+          const ox = cx2 + bux * k * (BW / 3.3), oz = cz2 + buz * k * (BW / 3.3);
+          const op = new THREE.BoxGeometry(3.2, 2.0, 1.15);
+          op.rotateY(ang); op.translate(ox, yBody + 2.35, oz);
+          parts.push({ geo: op, color: [0.09, 0.10, 0.10] });
+          const ar = new THREE.CylinderGeometry(0.58, 0.58, 3.2, 14, 1, false, 0, Math.PI);
+          ar.rotateZ(Math.PI / 2); ar.rotateY(ang + Math.PI / 2);
+          ar.translate(ox, yBody + 3.35, oz);
+          parts.push({ geo: ar, color: [0.09, 0.10, 0.10] });
+          const bell = new THREE.CylinderGeometry(0.30, 0.42, 0.62, 10);
+          bell.translate(ox, yBody + 3.05, oz);
+          parts.push({ geo: bell, color: [0.42, 0.34, 0.18] });
+        }
       }
 
       // порталы: две диоритовые колонны и арка над входом
