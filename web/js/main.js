@@ -90,7 +90,7 @@ async function boot() {
     scene.add(props);
 
     await step('ставлю остановки, скамейки и ограждения…', 90);
-    const furn = buildFurniture(furniture, terrain, roads);
+    const furn = buildFurniture(furniture, terrain, roads, props.userData.onRoad);
     scene.add(furn);
 
     await step('черчу карту города…', 94);
@@ -238,6 +238,7 @@ function bindInput() {
   }, { passive: false });
   addEventListener('blur', () => keys.clear());
 
+  $('mapcv').addEventListener('click', mapClick);
   renderer.domElement.addEventListener('click', () => {
     if (!$('menu').classList.contains('on')) renderer.domElement.requestPointerLock();
   });
@@ -255,6 +256,22 @@ function bindInput() {
       cam.pitch = clamp(cam.pitch - e.movementY * 0.0024, -0.75, 1.05);
     }
   });
+}
+
+// клик по карте — переехать в эту точку
+function mapClick(e) {
+  if (!mapOpen || !cityMap) return;
+  const cv = $('mapcv'), r = cv.getBoundingClientRect();
+  const sx = (e.clientX - r.left) * cv.width / r.width;
+  const sy = (e.clientY - r.top) * cv.height / r.height;
+  const k = Math.min(cv.width / cityMap.W, cv.height / cityMap.H) * 0.94;
+  const ox = (cv.width - cityMap.W * k) / 2, oy = (cv.height - cityMap.H * k) / 2;
+  const PX = 0.42;
+  const x = (sx - ox) / k / PX + cityMap.minX;
+  const z = (sy - oy) / k / PX + cityMap.minZ;
+  if (mode === 'car') respawn(x, z);
+  else { const s = snapToRoad(x, z); walk.x = s.x; walk.z = s.z; }
+  toggleMap();
 }
 
 function toggleMap() {

@@ -1,0 +1,14 @@
+[
+  {
+    "addr": "улица Льва Толстого, 4А",
+    "x": -860, "z": 2184,
+    "floors": 2,
+    "roof": "hipped",
+    "roofColor": "#8a4a33",
+    "wallColor": "#d8cbb0",
+    "porch": true,
+    "chimney": 1,
+    "source": "OSM building=yes; панорамы нет — дом внутри квартала, съёмка идёт только по улице",
+    "checked": "2026-08-29"
+  }
+]

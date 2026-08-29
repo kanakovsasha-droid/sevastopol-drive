@@ -127,7 +127,7 @@ function nameAtlas(names) {
   return { tex, COLS, ROWS };
 }
 
-export function buildFurniture(furniture, terrain, roadIndex) {
+export function buildFurniture(furniture, terrain, roadIndex, onRoad) {
   const group = new THREE.Group();
   group.name = 'furniture';
   const rand = rng(31337);
@@ -146,13 +146,27 @@ export function buildFurniture(furniture, terrain, roadIndex) {
     return Math.atan2(hit.x - x, hit.z - z);
   };
 
-  const put = (kind, geo, list, orient) => {
+  // Светофор в OSM отмечен узлом на пересечении осевых, то есть ровно посреди
+  // перекрёстка. В жизни он стоит у бордюра — отодвигаем его с проезжей части.
+  const offRoad = (p) => {
+    if (!onRoad || !onRoad(p.x, p.z)) return p;
+    for (let r = 3; r <= 18; r += 1.5)
+      for (let a = 0; a < 12; a++) {
+        const t = a / 12 * Math.PI * 2;
+        const x = p.x + Math.cos(t) * r, z = p.z + Math.sin(t) * r;
+        if (!onRoad(x, z)) return { ...p, x, z };
+      }
+    return p;
+  };
+
+  const put = (kind, geo, list, orient, shift) => {
     if (!list?.length) return;
     const m = new THREE.InstancedMesh(geo, mat(), list.length);
     m.castShadow = true;
     const mx = new THREE.Matrix4(), q = new THREE.Quaternion(),
           up = new THREE.Vector3(0, 1, 0), pv = new THREE.Vector3(), sv = new THREE.Vector3(1, 1, 1);
-    list.forEach((p, i) => {
+    list.forEach((p0, i) => {
+      const p = shift ? offRoad(p0) : p0;
       pv.set(p.x, H(p.x, p.z), p.z);
       q.setFromAxisAngle(up, orient ? facing(p.x, p.z) : rand() * 6.283);
       m.setMatrixAt(i, mx.compose(pv, q, sv));
@@ -162,15 +176,15 @@ export function buildFurniture(furniture, terrain, roadIndex) {
     stats[kind] = list.length;
   };
 
-  put('остановки', shelterGeo(), byKind.bus_stop, true);
+  put('остановки', shelterGeo(), byKind.bus_stop, true, true);
   put('скамейки', benchGeo(), byKind.bench, true);
   put('урны', binGeo(), byKind.bin, false);
-  put('светофоры', trafficGeo(), byKind.traffic_light, true);
-  put('киоски', kioskGeo(), byKind.kiosk, true);
+  put('светофоры', trafficGeo(), byKind.traffic_light, true, true);
+  put('киоски', kioskGeo(), byKind.kiosk, true, true);
   put('павильоны', shelterGeo(), byKind.shelter, true);
   put('почта', binGeo(), byKind.postbox, false);
   put('флагштоки', poleGeo(8.5, 0.09, [0.78, 0.78, 0.76]), byKind.flagpole, false);
-  put('фонари OSM', poleGeo(7.5, 0.10, STEEL), byKind.lamp, false);
+  put('фонари OSM', poleGeo(7.5, 0.10, STEEL), byKind.lamp, false, true);
 
   // ---------------- таблички с именами остановок ----------------
   const named = (byKind.bus_stop || []).filter(p => p.n);

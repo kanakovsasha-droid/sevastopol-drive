@@ -4,10 +4,10 @@ const WHEELBASE = 2.65;
 const MAX_STEER = 0.62;
 // Тяга и сопротивление подобраны так, чтобы равновесие наступало около
 // 58 м/с — это ~210 км/ч. Разгон заметно резче прежнего.
-const ENGINE = 14.5;
+const ENGINE = 18.5;
 const REVERSE = 7.0;
-const BRAKE = 21;
-const DRAG_AIR = 0.0022;
+const BRAKE = 24;
+const DRAG_AIR = 0.0019;
 const DRAG_ROLL = 0.11;
 const GRIP = 6.2;
 const GRIP_HANDBRAKE = 1.1;
@@ -52,7 +52,7 @@ export class Car {
 
     // продольная динамика
     let acc = 0;
-    if (input.throttle > 0) acc += ENGINE * input.throttle * (1 - Math.min(0.72, Math.abs(this.vLong) / 68));
+    if (input.throttle > 0) acc += ENGINE * input.throttle * (1 - Math.min(0.72, Math.abs(this.vLong) / 82));
     if (input.throttle < 0) {
       acc += this.vLong > 0.5 ? -BRAKE : REVERSE * input.throttle;
     }

@@ -879,7 +879,7 @@ export function buildBuildings(world, terrain, chunk = 500) {
     const wall = WALLS[(rand() * WALLS.length) | 0];
     // до 5 этажей и небольшим пятном в Севастополе почти всегда скатная черепица;
     // крупные корпуса и высотки — плоская кровля
-    const pitched = b.h <= 18 && area <= 1100 && n >= 4 && rand() < 0.90;
+    const pitched = b.h <= 18 && area <= 900 && n >= 4 && rand() < 0.92;
     const flatRoof = !pitched;
     const roof = flatRoof
       ? ROOFS_FLAT[(rand() * ROOFS_FLAT.length) | 0]
@@ -914,8 +914,12 @@ export function buildBuildings(world, terrain, chunk = 500) {
     // Скатная кровля вместо плоской плиты — именно плоский верх и делал город
     // набором коробок. Строим по охватывающему прямоугольнику: у почти
     // прямоугольного пятна застройки вальма садится точно, свес выпускаем наружу.
+    // Вальма строится по охватывающему прямоугольнику. Если пятно скошенное
+    // или Г-образное, кровля разворачивается относительно стен и висит углом
+    // наружу — на угловых домах это бросается в глаза. Пускаем её только на
+    // почти прямоугольные пятна и только на небольшие дома.
     const box = pitched ? obb(poly) : null;
-    if (box && area / box.area > 0.70) {
+    if (box && area / box.area > 0.86 && area < 620) {
       const EAVE = 0.42;
       const { ux, uz } = box;
       const u0 = box.u0 - EAVE, u1 = box.u1 + EAVE;

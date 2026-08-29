@@ -4,6 +4,11 @@ import { BBOX, ORIGIN, project, SCALE, DEM_ZOOM } from './config.mjs';
 const DIR = new URL('../data/', import.meta.url).pathname;
 const osm = JSON.parse(readFileSync(DIR + 'osm-raw.json', 'utf8'));
 
+// Описания домов, осмотренных вручную. Работа накапливается между сессиями:
+// один раз посмотрел дом — он навсегда описан здесь, а не заново каждый заход.
+let HOUSES = [];
+try { HOUSES = JSON.parse(readFileSync(DIR + 'houses.json', 'utf8')); } catch { /* файла может не быть */ }
+
 // ---------- классы дорог: ширина в метрах + категория для материала ----------
 const ROADS = {
   motorway:      { w: 14,  cls: 0 }, motorway_link: { w: 8,   cls: 0 },
@@ -58,6 +63,19 @@ function districtAt(x, z) {
        + (v(ix, iz + 1) * (1 - sx) + v(ix + 1, iz + 1) * sx) * sz;
 }
 
+// Сколько этажей вообще может стоять на таком пятне. Ларёк в 40 м² не бывает
+// трёхэтажным, а на 150 м² не строят девятиэтажку — она бы не влезла по нормам.
+function maxFloorsForArea(a) {
+  if (a < 45) return 1;
+  if (a < 90) return 2;
+  if (a < 160) return 3;
+  if (a < 260) return 4;
+  if (a < 420) return 5;
+  if (a < 900) return 9;
+  if (a < 1600) return 12;
+  return 16;
+}
+
 function estimateHeight(tags, poly, areaM2) {
   const t = tags.building || tags['building:part'] || 'yes';
   if (FIXED_H[t]) return FIXED_H[t];
@@ -73,6 +91,10 @@ function estimateHeight(tags, poly, areaM2) {
   else if (areaM2 < 260) floors = 2 + ((k * 3) | 0);      // 2–4
   else if (areaM2 < 800) floors = [3, 4, 5, 5, 5, 9][(k * 6) | 0];  // сталинки и хрущёвки центра
   else floors = [3, 4, 5, 5, 9, 12][(k * 6) | 0];         // крупные корпуса
+  // Потолок по пятну застройки. Без него оценщик ставил 48 м на 748 м²
+  // и 19 м на 177 м²: на рынке у площади Восставших вырастали башни
+  // там, где стоят одноэтажные ларьки.
+  floors = Math.min(floors, maxFloorsForArea(areaM2));
   // разброс по высоте этажа: старый фонд выше нового
   const fh = FLOOR * (0.94 + hashAt(poly[2] || 0, poly[3] || 0) * 0.22);
   return Math.round((floors * fh + 1.1) * 10) / 10;
@@ -218,7 +240,10 @@ for (const w of ways.values()) {
   const p = ring(w);
   if (!p) continue;
   if (t.building || t['building:part']) {
-    const h = parseH(t) ?? estimateHeight(t, p, Math.abs(area(p)));
+    const aM = Math.abs(area(p));
+    let h = parseH(t) ?? estimateHeight(t, p, aM);
+    // даже теги OSM бывают ошибочны: 48 м на пятне 750 м² — опечатка, не дом
+    h = Math.min(h, maxFloorsForArea(aM) * FLOOR * 1.35 + 2);
     const nm = t['name:ru'] || t.name;
     world.buildings.push({
       h: R1(h), poly: p,
@@ -347,6 +372,34 @@ function reverse(p) {
   console.log(`  зебр ${crossings.length} → после чистки ${keptC.length}`);
   world.junctions = keptJ;
   world.crossings = keptC;
+}
+
+// ---------- накладываем описания осмотренных домов ----------
+{
+  let applied = 0;
+  for (const h of HOUSES) {
+    let bi = -1, bd = Infinity;
+    world.buildings.forEach((b, i) => {
+      const p = b.poly, n = p.length / 2;
+      let cx = 0, cz = 0;
+      for (let k = 0; k < n; k++) { cx += p[k * 2]; cz += p[k * 2 + 1]; }
+      const d = Math.hypot(cx / n - h.x, cz / n - h.z);
+      if (d < bd) { bd = d; bi = i; }
+    });
+    if (bi < 0 || bd > 45) { console.log(`  ! не нашёл контур для ${h.addr} (ближайший в ${bd.toFixed(0)} м)`); continue; }
+    const b = world.buildings[bi];
+    if (h.floors) b.h = R1(h.floors * 3.2 + 1.1);
+    if (h.addr) b.n = h.addr;
+    if (h.roof) b.rs = h.roof;
+    if (h.roofColor) b.rc = h.roofColor;
+    if (h.wallColor) b.wc = h.wallColor;
+    if (h.porch) b.porch = 1;
+    if (h.chimney) b.chim = h.chimney;
+    b.hand = 1;
+    applied++;
+  }
+  world.handChecked = applied;
+  console.log(`описаний домов применено ${applied} из ${HOUSES.length}`);
 }
 
 const nw = project(BBOX.north, BBOX.west), se = project(BBOX.south, BBOX.east);

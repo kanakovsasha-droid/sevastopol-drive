@@ -59,7 +59,7 @@
   #mapfull{position:fixed;inset:0;z-index:18;display:none;background:rgba(8,10,13,.86);
            backdrop-filter:blur(8px);align-items:center;justify-content:center}
   #mapfull.on{display:flex}
-  #mapcv{max-width:96vw;max-height:92vh}
+  #mapcv{max-width:96vw;max-height:92vh;cursor:crosshair;pointer-events:auto}
   #maphint{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
            font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
 
@@ -116,7 +116,7 @@
     мышь — обзор &nbsp; колесо — отдалить
   </div>
   <canvas id="mini" width="200" height="200"></canvas>
-  <div id="mapfull"><canvas id="mapcv"></canvas><div id="maphint">Tab — закрыть карту</div></div>
+  <div id="mapfull"><canvas id="mapcv"></canvas><div id="maphint">клик по карте — переехать туда &nbsp;·&nbsp; Tab — закрыть</div></div>
   <div id="dot"></div>
   <div id="prompt" class="panel"><kbd>E</kbd> — сесть в машину</div>
   <div id="credit">Карта города — данные <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>, лицензия ODbL · высоты — Terrarium (SRTM/Copernicus)</div>

@@ -258,6 +258,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
   const nC = place(cypressGeo, cyps, 5, false);
   const nL = place(lampGeo, lamps, 5, false);
   group.userData.counts = { деревья: nT, кипарисы: nC, фонари: nL, чанков: group.children.length };
+  group.userData.onRoad = onRoad;   // тем же растром пользуется уличная мебель
   return group;
 }
 
