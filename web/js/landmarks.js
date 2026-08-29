@@ -694,6 +694,103 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       continue;
     }
 
+    // ---- пристенный ордер: колонны В ПЛОСКОСТИ фасада, без выноса ----
+    // Так сделана гимназия №1: четыре трёхчетвертные колонны с капителями
+    // стоят на рустованном первом этаже, поверху антаблемент и глухой парапет.
+    // Фронтона нет. Выносной портик со стилобатом здесь был бы другим зданием.
+    if (d.style === 'order') {
+      const parts = [];
+      const [wx0, wz0, wx1, wz1] = d.wall;
+      const wdx = wx1 - wx0, wdz = wz1 - wz0;
+      const wl = Math.hypot(wdx, wdz) || 1;
+      const ux = wdx / wl, uz = wdz / wl;
+      let nX = -uz, nZ = ux;
+      const pp = b.poly, pn = pp.length / 2;
+      let pcx = 0, pcz = 0;
+      for (let k = 0; k < pn; k++) { pcx += pp[k * 2]; pcz += pp[k * 2 + 1]; }
+      pcx /= pn; pcz /= pn;
+      const mx = (wx0 + wx1) / 2, mz = (wz0 + wz1) / 2;
+      if (nX * (pcx - mx) + nZ * (pcz - mz) > 0) { nX = -nX; nZ = -nZ; }   // наружу
+      const at = (t, o) => [wx0 + wdx * t + nX * o, wz0 + wdz * t + nZ * o];
+      const ang = Math.atan2(wx1 - wx0, wz1 - wz0);
+
+      let gmn = Infinity, gmx = -Infinity;
+      for (let i = 0; i < pn; i++) {
+        const h = terrain.gridHeightAt(pp[i * 2], pp[i * 2 + 1]);
+        if (h < gmn) gmn = h; if (h > gmx) gmx = h;
+      }
+      const yTopB = gmx + b.h;
+      const base = d.baseH ?? 4.2;            // верх рустованного цоколя
+      const entH = 1.35;
+      const entBot = yTopB - 1.55;            // низ антаблемента
+      const R = d.colR ?? 0.62;
+      const OUT = d.proj ?? 0.46;             // вынос из плоскости стены
+
+      const colN = d.columns ?? 4;
+      for (let i = 0; i < colN; i++) {
+        const t = 0.09 + (0.82) * (i / (colN - 1));
+        const [x, z] = at(t, OUT);
+        const g0 = terrain.gridHeightAt(x, z);
+        const yb = g0 + base;
+        const shaftH = Math.max(3.0, entBot - yb - 0.62);
+        const plinth = new THREE.BoxGeometry(1.55, 0.34, 1.55);
+        plinth.rotateY(ang); plinth.translate(x, yb + 0.17, z);
+        const shaft = new THREE.CylinderGeometry(R * 0.90, R, shaftH, 16);
+        shaft.translate(x, yb + 0.34 + shaftH / 2, z);
+        // капитель: шейка, кольцо и абака
+        const neck = new THREE.CylinderGeometry(R * 0.98, R * 0.90, 0.20, 16);
+        neck.translate(x, yb + 0.34 + shaftH + 0.10, z);
+        const bell = new THREE.CylinderGeometry(R * 1.24, R * 0.98, 0.34, 16);
+        bell.translate(x, yb + 0.34 + shaftH + 0.37, z);
+        const abac = new THREE.BoxGeometry(1.62, 0.18, 1.62);
+        abac.rotateY(ang); abac.translate(x, yb + 0.34 + shaftH + 0.63, z);
+        parts.push({ geo: plinth, color: STONE_D }, { geo: shaft, color: STONE },
+                    { geo: neck, color: STONE }, { geo: bell, color: STONE },
+                    { geo: abac, color: STONE_D });
+      }
+
+      // антаблемент и карниз по ширине ордера, поверху — глухой парапет
+      const [ex0, ez0] = at(0.02, OUT), [ex1, ez1] = at(0.98, OUT);
+      const eLen = Math.hypot(ex1 - ex0, ez1 - ez0);
+      const emx = (ex0 + ex1) / 2, emz = (ez0 + ez1) / 2;
+      {
+        const ent = new THREE.BoxGeometry(OUT * 2 + 0.5, entH, eLen);
+        ent.rotateY(ang); ent.translate(emx, entBot + entH / 2, emz);
+        parts.push({ geo: ent, color: STONE });
+        const cor = new THREE.BoxGeometry(OUT * 2 + 0.9, 0.30, eLen + 0.5);
+        cor.rotateY(ang); cor.translate(emx, entBot + entH + 0.17, emz);
+        parts.push({ geo: cor, color: STONE_D });
+        const par = new THREE.BoxGeometry(OUT * 1.6, 0.62, eLen + 0.2);
+        par.rotateY(ang); par.translate(emx, yTopB + 0.31, emz);
+        parts.push({ geo: par, color: STONE });
+      }
+      // вход между средними колоннами: дверь, ступени и козырёк
+      {
+        const t = d.doorAt ?? 0.62;
+        const [dx2, dz2] = at(t, 0.10);
+        const gd = terrain.gridHeightAt(dx2, dz2);
+        const door = new THREE.BoxGeometry(0.34, 3.1, 2.1);
+        door.rotateY(ang); door.translate(dx2, gd + 1.75, dz2);
+        parts.push({ geo: door, color: [0.26, 0.15, 0.10] });
+      }
+      // герб между колоннами
+      {
+        const [hx, hz] = at(d.emblemAt ?? 0.37, 0.20);
+        const gh = terrain.gridHeightAt(hx, hz);
+        const med = new THREE.CylinderGeometry(0.62, 0.62, 0.16, 16);
+        med.rotateZ(Math.PI / 2); med.rotateY(ang + Math.PI / 2);
+        med.translate(hx, gh + 6.6, hz);
+        parts.push({ geo: med, color: STONE_D });
+      }
+
+      group.add(new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.80, metalness: 0.02,
+      })));
+      skip.add(bi);
+      stats.push({ name: d.name, ok: true, kontur: bi, colonn: colN, stil: 'пристенный ордер' });
+      continue;
+    }
+
     // ---- портик с фронтоном: послевоенная классика (больница им. Пирогова) ----
     if (d.style === 'portico') {
       const parts = [];

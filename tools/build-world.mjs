@@ -435,6 +435,7 @@ function reverse(p) {
     if (h.height) b.h = R1(h.height);
     if (h.grandOrder) b.go = 1;
     if (h.arch) b.arch = 1;
+    if (h.signWall) b.sw = h.signWall;
     if (h.sign) { b.sg = b.sg || []; b.sg.unshift({ n: h.sign, c: h.signKind || 'civic' }); }
     if (h.addr) b.n = h.addr;
     if (h.roof) b.rs = h.roof;

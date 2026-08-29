@@ -76,7 +76,21 @@ export function buildSigns(world, terrain, roadIndex) {
     if (!b.sg || !b.sg.length) continue;
     const p = b.poly, n = p.length / 2;
     let best = null;
-    for (let i = 0; i < n; i++) {
+    // Стена задана руками: у гимназии табличка должна висеть на том же фасаде,
+    // что и колонны, а «ближайшая к дороге» уводила её за угол.
+    if (b.sw) {
+      const [ax0, az0, ax1, az1] = b.sw;
+      const ddx = ax1 - ax0, ddz = az1 - az0;
+      const len0 = Math.hypot(ddx, ddz) || 1;
+      let nx0 = ddz / len0, nz0 = -ddx / len0;
+      let cx0 = 0, cz0 = 0;
+      for (let k = 0; k < n; k++) { cx0 += p[k * 2]; cz0 += p[k * 2 + 1]; }
+      cx0 /= n; cz0 /= n;
+      const mx0 = (ax0 + ax1) / 2, mz0 = (az0 + az1) / 2;
+      if (nx0 * (cx0 - mx0) + nz0 * (cz0 - mz0) > 0) { nx0 = -nx0; nz0 = -nz0; }
+      best = { score: -1e9, ax: ax0, az: az0, dx: ddx, dz: ddz, len: len0, nx: nx0, nz: nz0 };
+    }
+    for (let i = 0; !b.sw && i < n; i++) {
       const j = (i + 1) % n;
       const ax = p[i * 2], az = p[i * 2 + 1];
       const bx = p[j * 2], bz = p[j * 2 + 1];
