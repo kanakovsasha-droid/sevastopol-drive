@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js';
-import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js';
-import { buildStreetProps } from './props.js';
-import { buildFurniture } from './furniture.js';
-import { buildLandmarks } from './landmarks.js';
-import { buildSigns } from './signs.js';
-import { audit } from './audit.js';
-import { buildMap, drawMini, drawFull } from './minimap.js';
-import { Collider, RoadIndex } from './collision.js';
-import { Car, createCarMesh } from './vehicle.js';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=da12f2bc';
+import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=da12f2bc';
+import { buildStreetProps } from './props.js?v=da12f2bc';
+import { buildFurniture } from './furniture.js?v=da12f2bc';
+import { buildLandmarks } from './landmarks.js?v=da12f2bc';
+import { buildSigns } from './signs.js?v=da12f2bc';
+import { audit } from './audit.js?v=da12f2bc';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=da12f2bc';
+import { Collider, RoadIndex } from './collision.js?v=da12f2bc';
+import { Car, createCarMesh } from './vehicle.js?v=da12f2bc';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -67,8 +67,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=da12f2bc').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=da12f2bc').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
