@@ -695,6 +695,23 @@ export function buildRoads(world, terrain, chunk = 500) {
     const c = cellOf(x, z);
     return c >= 0 && cover[c] >= 0 && cover[c] !== own;
   };
+  // кусок полотна лежит внутри БОЛЕЕ ШИРОКОЙ улицы — рисовать его незачем,
+  // именно такие наложения и торчат заплатами поперёк проезжей части
+  const underWider = (x, z, own, w) => {
+    const c = cellOf(x, z);
+    return c >= 0 && cover[c] >= 0 && cover[c] !== own && coverW[c] > w + 0.5;
+  };
+  // тротуар проверяем в трёх точках поперёк, а не в одной: полоса шириной 2.6 м
+  // краем заезжала на чужой асфальт, а середина была чистой
+  const stripHitsRoad = (pts, i, mt, o0, o1, own) => {
+    const mx = (pts[i * 2] + pts[i * 2 + 2]) / 2, mz = (pts[i * 2 + 1] + pts[i * 2 + 3]) / 2;
+    const nx = (mt.NX[i] + mt.NX[i + 1]) / 2, nz = (mt.NZ[i] + mt.NZ[i + 1]) / 2;
+    for (const t of [0, 0.5, 1]) {
+      const o = o0 + (o1 - o0) * t;
+      if (onOtherRoad(mx + nx * o, mz + nz * o, own)) return true;
+    }
+    return false;
+  };
 
   for (const r of world.roads) {
     if (r.pts.length < 4) continue;
@@ -708,21 +725,25 @@ export function buildRoads(world, terrain, chunk = 500) {
     // широкая улица лежит чуть выше узкой: там, где полотна всё же перекрылись,
     // это снимает мерцание вместо случайной борьбы за глубину
     const lift = ROAD_Y + r.w * 0.0016;
-    strip(ch, ext, miters(ext), -hw, hw, lift, r.c, r.w);
+    const mtR = miters(ext);
+    strip(ch, ext, mtR, -hw, hw, lift, r.c, r.w, false, i => {
+      if (r.c > 3 || r.w < 4) return false;
+      const mx = (ext[i * 2] + ext[i * 2 + 2]) / 2, mz = (ext[i * 2 + 1] + ext[i * 2 + 3]) / 2;
+      return underWider(mx, mz, ri, r.w);
+    });
     // тротуары только у проезжих улиц и без вылета: иначе они лягут поперёк перекрёстка
     if (r.c <= 3 && r.w >= 5 && !r.br && !r.tn) {
       const dp = densify(r.pts);
       const mt = miters(dp);
       // бордюр и тротуар не строим там, где они попадают на чужую проезжую часть
-      const skipSide = (pts, i, off) => {
-        const mx = (pts[i * 2] + pts[i * 2 + 2]) / 2, mz = (pts[i * 2 + 1] + pts[i * 2 + 3]) / 2;
-        const nx = (mt.NX[i] + mt.NX[i + 1]) / 2, nz = (mt.NZ[i] + mt.NZ[i + 1]) / 2;
-        return onOtherRoad(mx + nx * off, mz + nz * off, ri);
-      };
-      strip(ch, dp, mt, hw, hw + SIDEWALK, KERB_H + 0.03, 5, SIDEWALK, true, i => skipSide(dp, i, hw + 1.3));
-      strip(ch, dp, mt, -hw - SIDEWALK, -hw, KERB_H + 0.03, 5, SIDEWALK, true, i => skipSide(dp, i, -hw - 1.3));
-      kerb(ch, dp, mt, hw, ROAD_Y, KERB_H + 0.03, i => skipSide(dp, i, hw + 0.3));
-      kerb(ch, dp, mt, -hw, ROAD_Y, KERB_H + 0.03, i => skipSide(dp, i, -hw - 0.3));
+      strip(ch, dp, mt, hw, hw + SIDEWALK, KERB_H + 0.03, 5, SIDEWALK, true,
+            i => stripHitsRoad(dp, i, mt, hw - 0.2, hw + SIDEWALK + 0.4, ri));
+      strip(ch, dp, mt, -hw - SIDEWALK, -hw, KERB_H + 0.03, 5, SIDEWALK, true,
+            i => stripHitsRoad(dp, i, mt, -hw + 0.2, -hw - SIDEWALK - 0.4, ri));
+      kerb(ch, dp, mt, hw, ROAD_Y, KERB_H + 0.03,
+           i => stripHitsRoad(dp, i, mt, hw - 0.2, hw + 0.8, ri));
+      kerb(ch, dp, mt, -hw, ROAD_Y, KERB_H + 0.03,
+           i => stripHitsRoad(dp, i, mt, -hw + 0.2, -hw - 0.8, ri));
     }
   }
   for (const r of world.rail) {

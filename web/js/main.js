@@ -5,6 +5,7 @@ import { buildStreetProps } from './props.js';
 import { buildFurniture } from './furniture.js';
 import { buildLandmarks } from './landmarks.js';
 import { audit } from './audit.js';
+import { buildMap, drawMini, drawFull } from './minimap.js';
 import { Collider, RoadIndex } from './collision.js';
 import { Car, createCarMesh } from './vehicle.js';
 
@@ -51,6 +52,7 @@ const HORIZON = new THREE.Color(0x9fb4bf);
 
 let renderer, scene, camera, sun, sky;
 let terrain, world, furniture, landmarkDefs = [], collider, roads, carMesh, car;
+let cityMap = null, miniCtx = null, mapCtx = null, mapOpen = false, miniOn = true;
 let mode = 'car';                              // 'car' | 'walk'
 const walk = { x: 0, z: 0, yaw: 0, pitch: 0, vy: 0 };
 const cam = { yaw: 0, pitch: 0, mode: 0, dist: 1, pos: new THREE.Vector3(), look: new THREE.Vector3() };
@@ -91,7 +93,12 @@ async function boot() {
     const furn = buildFurniture(furniture, terrain, roads);
     scene.add(furn);
 
-    await step('строю памятные здания…', 95);
+    await step('черчу карту города…', 94);
+    cityMap = buildMap(world, terrain);
+    miniCtx = $('mini').getContext('2d');
+    mapCtx = $('mapcv').getContext('2d');
+
+    await step('строю памятные здания…', 96);
     const lm = buildLandmarks(world, terrain, landmarkDefs, roads);
     scene.add(lm);
     console.log('памятные здания:', lm.userData.stats);
@@ -218,8 +225,11 @@ function bindInput() {
     if (k === 'KeyM') { const m = $('menu'); m.classList.toggle('on'); if (m.classList.contains('on')) document.exitPointerLock?.(); }
     if (k === 'KeyR' && mode === 'car') respawn(car.pos.x, car.pos.z);
     if (k === 'KeyV') { cam.yaw = 0; cam.pitch = 0; cam.dist = 1; }   // сбросить обзор
-    if (k === 'Escape') $('menu').classList.remove('on');
-    if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k)) e.preventDefault();
+    if (k === 'KeyN') { miniOn = !miniOn; document.body.classList.toggle('nomap', !miniOn); }
+    if (k === 'KeyH') document.body.classList.toggle('nohud');
+    if (k === 'Tab') { toggleMap(); e.preventDefault(); }
+    if (k === 'Escape') { $('menu').classList.remove('on'); if (mapOpen) toggleMap(); }
+    if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab'].includes(k)) e.preventDefault();
   });
   addEventListener('keyup', e => keys.delete(e.code));
   addEventListener('wheel', e => {
@@ -245,6 +255,30 @@ function bindInput() {
       cam.pitch = clamp(cam.pitch - e.movementY * 0.0024, -0.75, 1.05);
     }
   });
+}
+
+function toggleMap() {
+  mapOpen = !mapOpen;
+  $('mapfull').classList.toggle('on', mapOpen);
+  if (mapOpen) {
+    document.exitPointerLock?.();
+    const cv = $('mapcv');
+    const k = Math.min(innerWidth * 0.96 / cityMap.W, innerHeight * 0.92 / cityMap.H);
+    cv.width = Math.round(cityMap.W * k);
+    cv.height = Math.round(cityMap.H * k);
+    drawMap();
+  }
+}
+
+function drawMap() {
+  if (!mapOpen || !cityMap) return;
+  const cv = $('mapcv');
+  const px = mode === 'car' ? car.pos.x : walk.x;
+  const pz = mode === 'car' ? car.pos.z : walk.z;
+  const yaw = mode === 'car' ? car.yaw : walk.yaw;
+  const marks = landmarkDefs.map(d => ({ name: d.name, x: d.x, z: d.z }))
+    .concat(PLACES.slice(0, 6).map(([n, x, z]) => ({ name: n, x, z })));
+  drawFull(cv.getContext('2d'), cityMap, cv.width, cv.height, px, pz, yaw, marks);
 }
 
 function buildMenu() {
@@ -390,6 +424,12 @@ function updateHUD(dt) {
 
   const near = Math.hypot(walk.x - car.pos.x, walk.z - car.pos.z) < 4.5;
   $('prompt').classList.toggle('on', mode === 'walk' && near);
+
+  if (miniOn && miniCtx && cityMap) {
+    const yaw = mode === 'car' ? car.yaw : walk.yaw;
+    drawMini(miniCtx, cityMap, px, pz, yaw, 200, 320);
+  }
+  if (mapOpen) drawMap();
 }
 
 // ------------------------------------------------------------------ цикл

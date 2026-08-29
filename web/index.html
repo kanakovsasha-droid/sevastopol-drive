@@ -50,6 +50,21 @@
   kbd{font-family:var(--mono);font-size:10.5px;background:rgba(255,255,255,.09);border:1px solid var(--line);
       border-radius:4px;padding:1px 5px;color:var(--ink)}
 
+  /* миникарта */
+  #mini{position:absolute;right:16px;top:96px;width:200px;height:200px;
+        filter:drop-shadow(0 6px 18px rgba(0,0,0,.45))}
+  body.nomap #mini{display:none}
+
+  /* карта на весь экран */
+  #mapfull{position:fixed;inset:0;z-index:18;display:none;background:rgba(8,10,13,.86);
+           backdrop-filter:blur(8px);align-items:center;justify-content:center}
+  #mapfull.on{display:flex}
+  #mapcv{max-width:96vw;max-height:92vh}
+  #maphint{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
+           font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+
+  body.nohud #hud > *:not(#mapfull){display:none}
+
   /* прицел в пешем режиме */
   #dot{position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;
        background:rgba(255,255,255,.75);box-shadow:0 0 0 1px rgba(0,0,0,.45);display:none}
@@ -97,8 +112,11 @@
     <b><kbd>E</kbd></b> — выйти / сесть в машину<br>
     <b><kbd>C</kbd></b> — камера &nbsp; <b><kbd>M</kbd></b> — куда поехать<br>
     <b><kbd>R</kbd></b> — вернуть на дорогу &nbsp; <b><kbd>V</kbd></b> — сбросить обзор<br>
+    <b><kbd>Tab</kbd></b> — карта &nbsp; <b><kbd>N</kbd></b> — миникарта &nbsp; <b><kbd>H</kbd></b> — скрыть интерфейс<br>
     мышь — обзор &nbsp; колесо — отдалить
   </div>
+  <canvas id="mini" width="200" height="200"></canvas>
+  <div id="mapfull"><canvas id="mapcv"></canvas><div id="maphint">Tab — закрыть карту</div></div>
   <div id="dot"></div>
   <div id="prompt" class="panel"><kbd>E</kbd> — сесть в машину</div>
   <div id="credit">Карта города — данные <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>, лицензия ODbL · высоты — Terrarium (SRTM/Copernicus)</div>
