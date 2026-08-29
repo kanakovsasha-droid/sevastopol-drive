@@ -6,94 +6,70 @@ const RES = 2;   // сетка растеризации, м
 
 export function audit(G) {
   const { world, terrain, scene, roads: roadIndex } = G;
-  const b = world.meta.bounds;
-  const X0 = b.minX - 30, Z0 = b.minZ - 30;
-  const W = Math.ceil((b.maxX - b.minX + 60) / RES);
-  const H = Math.ceil((b.maxZ - b.minZ + 60) / RES);
-  const cell = (x, z) => {
-    const i = Math.floor((x - X0) / RES), j = Math.floor((z - Z0) / RES);
-    return (i < 0 || j < 0 || i >= W || j >= H) ? -1 : j * W + i;
-  };
   const out = {};
   const worstOf = arr => arr.sort((p, q) => q.v - p.v).slice(0, 5)
     .map(o => `${o.v.toFixed(2)} @ ${o.x | 0},${o.z | 0}${o.n ? ' — ' + o.n : ''}`);
 
-  // ---------- растр проезжих частей ----------
-  const cover = new Int32Array(W * H).fill(-1);
-  const dbl = new Uint8Array(W * H);
-  // ВАЖНО: считаем только те улицы, что реально попали в геометрию.
-  // Иначе аудит мерит исходные данные OSM, а не картинку, и цифры врут.
+  // ТОТ ЖЕ растр, что использовала сборка. Раньше аудит строил свой, с другим
+  // порядком захвата ячеек, и мерил не то, что чинилось.
   const grpRoads = scene.getObjectByName('roads');
+  const COV = grpRoads?.userData?.coverage || world.__coverage;
+  const cell = COV.cell;
+  const cover = COV.owner;
   const drawn = grpRoads?.userData?.drawn;
   const drivable = world.roads.map((r, i) => ({ r, i }))
     .filter(o => o.r.c <= 3 && o.r.w >= 4 && (!drawn || drawn.has(o.i)));
-  let covered = 0;
-  for (const { r, i } of drivable) {
-    const p = r.pts, hw = r.w / 2;
-    for (let k = 0; k < p.length / 2 - 1; k++) {
-      const ax = p[k * 2], az = p[k * 2 + 1];
-      const dx = p[k * 2 + 2] - ax, dz = p[k * 2 + 3] - az;
-      const L = Math.hypot(dx, dz); if (L < 0.2) continue;
-      const st = Math.ceil(L / 1.5);
-      for (let s = 0; s <= st; s++) {
-        const cx = ax + dx * s / st, cz = az + dz * s / st;
-        const rc = Math.ceil(hw / RES);
-        for (let dj = -rc; dj <= rc; dj++)
-          for (let di = -rc; di <= rc; di++) {
-            const x = cx + di * RES, z = cz + dj * RES;
-            if ((x - cx) ** 2 + (z - cz) ** 2 > hw * hw) continue;
-            const c = cell(x, z); if (c < 0) continue;
-            if (cover[c] < 0) { cover[c] = i; covered++; }
-            else if (cover[c] !== i) dbl[c] = 1;
-          }
-      }
-    }
-  }
-  let nDbl = 0; for (let i = 0; i < dbl.length; i++) if (dbl[i]) nDbl++;
-  out['дороги друг на друге'] = { всего: covered, дефект: nDbl, процент: +(100 * nDbl / covered).toFixed(2) };
 
-  // ---------- бордюры и тротуары на чужой проезжей части ----------
-  let kTot = 0, kBad = 0; const kW = [];
-  for (const { r, i } of drivable) {
-    if (r.w < 5) continue;
-    const p = r.pts, hw = r.w / 2;
-    for (let k = 0; k < p.length / 2 - 1; k++) {
-      const ax = p[k * 2], az = p[k * 2 + 1];
-      const dx = p[k * 2 + 2] - ax, dz = p[k * 2 + 3] - az;
-      const L = Math.hypot(dx, dz); if (L < 1) continue;
-      const nx = -dz / L, nz = dx / L, st = Math.ceil(L / 4);
-      for (let s = 0; s <= st; s++) {
-        const cx = ax + dx * s / st, cz = az + dz * s / st;
-        for (const sd of [1, -1]) for (const off of [hw + 0.3, hw + 2.6]) {
-          const x = cx + nx * sd * off, z = cz + nz * sd * off; kTot++;
-          const c = cell(x, z);
-          if (c >= 0 && cover[c] >= 0 && cover[c] !== i) { kBad++; if (kW.length < 40) kW.push({ v: 1, x, z, n: r.n }); }
+  // ---------- дороги друг на друге ----------
+  {
+    let covered = 0, dbl = 0;
+    const seen = new Int32Array(COV.W * COV.H).fill(-1);
+    for (const { r, i } of drivable) {
+      const p = r.pts, hw = r.w / 2;
+      for (let k = 0; k < p.length / 2 - 1; k++) {
+        const ax = p[k * 2], az = p[k * 2 + 1];
+        const dx = p[k * 2 + 2] - ax, dz = p[k * 2 + 3] - az;
+        const L = Math.hypot(dx, dz); if (L < 0.2) continue;
+        const st = Math.ceil(L / 1.5), rc = Math.ceil(hw / COV.res);
+        for (let s2 = 0; s2 <= st; s2++) {
+          const cx = ax + dx * s2 / st, cz = az + dz * s2 / st;
+          for (let dj = -rc; dj <= rc; dj++)
+            for (let di = -rc; di <= rc; di++) {
+              const x = cx + di * COV.res, z = cz + dj * COV.res;
+              if ((x - cx) ** 2 + (z - cz) ** 2 > hw * hw) continue;
+              const c = cell(x, z); if (c < 0) continue;
+              if (seen[c] < 0) { seen[c] = i; covered++; }
+              else if (seen[c] !== i) { if (seen[c] >= 0) { seen[c] = -2; dbl++; } }
+            }
         }
       }
     }
+    out['дороги друг на друге'] = { всего: covered, дефект: dbl, процент: +(100 * dbl / covered).toFixed(2) };
   }
-  out['бордюр на чужой дороге (данные)'] = { проб: kTot, дефект: kBad, процент: +(100 * kBad / kTot).toFixed(2) };
+
 
   // Честная метрика: сколько НАРИСОВАННОГО бордюра и тротуара лежит вглубь
   // чужой полосы. Вершины на самой кромке не считаем — они там законно.
   {
     let dTot = 0, dBad = 0; const dW = [];
-    const inset = (x, z) => {
-      const c = cell(x, z);
-      if (!(c >= 0 && cover[c] >= 0)) return false;
-      // требуем, чтобы точка была внутри полосы с запасом 1.5 м со всех сторон
-      for (const [dx, dz] of [[1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]]) {
-        const k = cell(x + dx, z + dz);
-        if (!(k >= 0 && cover[k] >= 0)) return false;
-      }
-      return true;
-    };
+    // «вглубь чужой полосы»: точка на асфальте другой улицы и вокруг неё
+    // со всех сторон тоже её асфальт. Вершины на кромке лежат там законно.
+    // Считаем только вершины, попавшие в треугольники: в буфер я кладу все,
+    // а пропускаю квады через индексы — невидимые вершины дефектом не являются.
     for (const m of grpRoads.children) {
-      const K = m.geometry.attributes.aCls.array, P = m.geometry.attributes.position.array;
+      const g = m.geometry;
+      const K = g.attributes.aCls.array, P = g.attributes.position.array;
+      const O = g.attributes.aOwn?.array, idx = g.index.array;
+      const used = new Uint8Array(K.length);
+      for (let i = 0; i < idx.length; i++) used[idx[i]] = 1;
       for (let i = 0; i < K.length; i++) {
+        if (!used[i]) continue;
         if (K[i] !== 5 && K[i] !== 6) continue;
         dTot++;
-        if (inset(P[i * 3], P[i * 3 + 2])) { dBad++; if (dW.length < 40) dW.push({ v: 1, x: P[i * 3], z: P[i * 3 + 2] }); }
+        const own = O ? O[i] : -1;      // своя улица не считается чужой
+        if (COV.deepInside(P[i * 3], P[i * 3 + 2], own)) {
+          dBad++; if (dW.length < 40) dW.push({ v: 1, x: P[i * 3], z: P[i * 3 + 2] });
+        }
       }
     }
     out['бордюр вглубь чужой полосы'] = { вершин: dTot, дефект: dBad,

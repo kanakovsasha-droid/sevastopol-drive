@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { SEA_FLOOR } from './terrain.js';
 import { buildingMaterial, roadMaterial, terrainMaterial } from './materials.js';
+import { buildCoverage } from './coverage.js';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -551,7 +552,7 @@ export function buildRoads(world, terrain, chunk = 500) {
   const bucket = (x, z) => {
     const k = Math.floor(x / chunk) + ',' + Math.floor(z / chunk);
     let c = chunks.get(k);
-    if (!c) chunks.set(k, c = { P: [], C: [], R: [], K: [], I: [], base: 0 });
+    if (!c) chunks.set(k, c = { P: [], C: [], R: [], K: [], O: [], I: [], base: 0 });
     return c;
   };
   // Последний рубеж. Какая бы причина ни развела профиль дороги и рельеф,
@@ -591,7 +592,7 @@ export function buildRoads(world, terrain, chunk = 500) {
   const midSkip = (pts, i, extra = 0) =>
     inJunction((pts[i * 2] + pts[i * 2 + 2]) / 2, (pts[i * 2 + 1] + pts[i * 2 + 3]) / 2, extra);
 
-  const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn) => {
+  const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1) => {
     const col = ROAD_COLORS[cls];
     const start = ch.base;
     for (let i = 0; i < mt.n; i++) {
@@ -603,7 +604,7 @@ export function buildRoads(world, terrain, chunk = 500) {
         ch.P.push(x, H(x, z) + lift, z);
         ch.C.push(enc(col[0] * t), enc(col[1] * t), enc(col[2] * t));
         ch.R.push(s === 0 ? -1 : 1, mt.D[i], uW);
-        ch.K.push(cls);
+        ch.K.push(cls); ch.O.push(own);
       }
     }
     // Обход даёт нормаль вверх ТОЛЬКО при таком порядке: offA левее offB,
@@ -618,7 +619,7 @@ export function buildRoads(world, terrain, chunk = 500) {
   };
 
   // Вертикальная грань бордюра вдоль одного смещения.
-  const kerb = (ch, pts, mt, off, yLow, yHigh, skipFn) => {
+  const kerb = (ch, pts, mt, off, yLow, yHigh, skipFn, own = -1) => {
     const skipJ = true;
     const col = ROAD_COLORS[6];
     const start = ch.base;
@@ -630,7 +631,7 @@ export function buildRoads(world, terrain, chunk = 500) {
         ch.P.push(x, y, z);
         ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
         ch.R.push(0, mt.D[i], 0.3);
-        ch.K.push(6);
+        ch.K.push(6); ch.O.push(own);
       }
     }
     for (let i = 0; i < mt.n - 1; i++) {
@@ -647,72 +648,23 @@ export function buildRoads(world, terrain, chunk = 500) {
   const drawn = new Set();
   let zebras = 0;
 
-  // ---- карта покрытия проезжих частей ----
-  // Сканер показал: 4.7% асфальта накрыто сразу двумя улицами, а 6.8% бордюров
-  // лежат на чужой проезжей части. Строим растр 2 м, начиная с самых широких
-  // улиц: по нему пропускаем и лишние полотна, и бордюры, попавшие на дорогу.
-  const CRES = 2;
-  const cb = world.meta.bounds;
-  const CX0 = cb.minX - 30, CZ0 = cb.minZ - 30;
-  const CW = Math.ceil((cb.maxX - cb.minX + 60) / CRES);
-  const CH = Math.ceil((cb.maxZ - cb.minZ + 60) / CRES);
-  const cover = new Int32Array(CW * CH).fill(-1);
-  const coverW = new Float32Array(CW * CH);
-  const cellOf = (x, z) => {
-    const i = Math.floor((x - CX0) / CRES), j = Math.floor((z - CZ0) / CRES);
-    return (i < 0 || j < 0 || i >= CW || j >= CH) ? -1 : j * CW + i;
-  };
-  const drive = world.roads.map((r, i) => ({ r, i })).filter(o => o.r.c <= 3 && o.r.w >= 4);
-  drive.sort((a, b) => b.r.w - a.r.w);          // широкие занимают землю первыми
-  const covered = new Map();                     // индекс дороги → доля уже занятой длины
-  for (const { r, i } of drive) {
-    const p = r.pts, hw = r.w / 2;
-    let taken = 0, total = 0;
-    const cells = [];
-    for (let k = 0; k < p.length / 2 - 1; k++) {
-      const ax = p[k * 2], az = p[k * 2 + 1];
-      const dx = p[k * 2 + 2] - ax, dz = p[k * 2 + 3] - az;
-      const L = Math.hypot(dx, dz);
-      if (L < 0.2) continue;
-      const steps = Math.ceil(L / 1.5);
-      for (let s = 0; s <= steps; s++) {
-        const cx = ax + dx * s / steps, cz = az + dz * s / steps;
-        total++;
-        const c0 = cellOf(cx, cz);
-        if (c0 >= 0 && cover[c0] >= 0 && cover[c0] !== i && coverW[c0] > r.w + 0.5) taken++;
-        for (let dj = -Math.ceil(hw / CRES); dj <= Math.ceil(hw / CRES); dj++)
-          for (let di = -Math.ceil(hw / CRES); di <= Math.ceil(hw / CRES); di++) {
-            const x = cx + di * CRES, z = cz + dj * CRES;
-            if ((x - cx) ** 2 + (z - cz) ** 2 > hw * hw) continue;
-            cells.push(cellOf(x, z));
-          }
-      }
-    }
-    covered.set(i, total ? taken / total : 0);
-    for (const c of cells) if (c >= 0 && (cover[c] < 0 || coverW[c] < r.w)) { cover[c] = i; coverW[c] = r.w; }
-  }
-  const onOtherRoad = (x, z, own) => {
-    const c = cellOf(x, z);
-    return c >= 0 && cover[c] >= 0 && cover[c] !== own;
-  };
-  // кусок полотна лежит внутри БОЛЕЕ ШИРОКОЙ улицы — рисовать его незачем,
-  // именно такие наложения и торчат заплатами поперёк проезжей части
-  const underWider = (x, z, own, w) => {
-    const c = cellOf(x, z);
-    return c >= 0 && cover[c] >= 0 && cover[c] !== own && coverW[c] > w + 0.5;
-  };
-  // тротуар проверяем в трёх точках поперёк, а не в одной: полоса шириной 2.6 м
-  // краем заезжала на чужой асфальт, а середина была чистой
+  // Единый растр покрытия: им же пользуются расстановка деревьев и аудит.
+  const COV = world.__coverage || (world.__coverage = buildCoverage(world));
+  const cellOf = COV.cell;
+  const cover = COV.owner, coverW = COV.width;
+  const covered = COV.share;
+  const onOtherRoad = (x, z, own) => COV.onOther(x, z, own);
+  const underWider = (x, z, own, w) => COV.underWider(x, z, own, w);
   // Проверяем ВЕСЬ квад: три точки вдоль и три поперёк. Проверка только по
   // середине пропускала изломы — там полосу раздувает скруглением, и её
   // конец выносит на чужую проезжую часть бледным клином.
   const stripHitsRoad = (pts, i, mt, o0, o1, own) => {
-    for (const s of [0, 0.5, 1]) {
-      const bx = pts[i * 2] + (pts[i * 2 + 2] - pts[i * 2]) * s;
-      const bz = pts[i * 2 + 1] + (pts[i * 2 + 3] - pts[i * 2 + 1]) * s;
-      const nx = mt.NX[i] + (mt.NX[i + 1] - mt.NX[i]) * s;
-      const nz = mt.NZ[i] + (mt.NZ[i + 1] - mt.NZ[i]) * s;
-      const sc = mt.S[i] + (mt.S[i + 1] - mt.S[i]) * s;
+    for (const s2 of [0, 0.5, 1]) {
+      const bx = pts[i * 2] + (pts[i * 2 + 2] - pts[i * 2]) * s2;
+      const bz = pts[i * 2 + 1] + (pts[i * 2 + 3] - pts[i * 2 + 1]) * s2;
+      const nx = mt.NX[i] + (mt.NX[i + 1] - mt.NX[i]) * s2;
+      const nz = mt.NZ[i] + (mt.NZ[i + 1] - mt.NZ[i]) * s2;
+      const sc = mt.S[i] + (mt.S[i + 1] - mt.S[i]) * s2;
       for (const t of [0, 0.5, 1]) {
         const o = (o0 + (o1 - o0) * t) * sc;
         if (onOtherRoad(bx + nx * o, bz + nz * o, own)) return true;
@@ -742,20 +694,20 @@ export function buildRoads(world, terrain, chunk = 500) {
         if (!underWider(bx, bz, ri, r.w)) return false;
       }
       return true;      // кусок целиком внутри более широкой улицы
-    });
+    }, ri);
     // тротуары только у проезжих улиц и без вылета: иначе они лягут поперёк перекрёстка
     if (r.c <= 3 && r.w >= 5 && !r.br && !r.tn) {
       const dp = densify(r.pts);
       const mt = miters(dp);
       // бордюр и тротуар не строим там, где они попадают на чужую проезжую часть
       strip(ch, dp, mt, hw, hw + SIDEWALK, KERB_H + 0.03, 5, SIDEWALK, true,
-            i => stripHitsRoad(dp, i, mt, hw - 0.2, hw + SIDEWALK + 0.4, ri));
+            i => stripHitsRoad(dp, i, mt, hw - 0.2, hw + SIDEWALK + 0.4, ri), ri);
       strip(ch, dp, mt, -hw - SIDEWALK, -hw, KERB_H + 0.03, 5, SIDEWALK, true,
-            i => stripHitsRoad(dp, i, mt, -hw + 0.2, -hw - SIDEWALK - 0.4, ri));
+            i => stripHitsRoad(dp, i, mt, -hw + 0.2, -hw - SIDEWALK - 0.4, ri), ri);
       kerb(ch, dp, mt, hw, ROAD_Y, KERB_H + 0.03,
-           i => stripHitsRoad(dp, i, mt, hw - 0.2, hw + 0.8, ri));
+           i => stripHitsRoad(dp, i, mt, hw - 0.2, hw + 0.8, ri), ri);
       kerb(ch, dp, mt, -hw, ROAD_Y, KERB_H + 0.03,
-           i => stripHitsRoad(dp, i, mt, -hw + 0.2, -hw - 0.8, ri));
+           i => stripHitsRoad(dp, i, mt, -hw + 0.2, -hw - 0.8, ri), ri);
     }
   }
   for (const r of world.rail) {
@@ -780,7 +732,7 @@ export function buildRoads(world, terrain, chunk = 500) {
       const x = j.x + Math.cos(a) * r, z = j.z + Math.sin(a) * r;
       ch.P.push(x, H(x, z) + ROAD_Y - 0.025, z);
       ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-      ch.R.push(0, 0, 0.5); ch.K.push(1);
+      ch.R.push(0, 0, 0.5); ch.K.push(1); ch.O.push(-1);
     }
     for (let k = 0; k < SEG; k++) ch.I.push(start, start + 1 + k + 1, start + 1 + k);
     ch.base += SEG + 2;
@@ -803,7 +755,7 @@ export function buildRoads(world, terrain, chunk = 500) {
         const z = c.z + uz * hd * sd + nz * hw * sw;
         ch.P.push(x, H(x, z) + ROAD_Y + 0.02, z);
         ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-        ch.R.push(sw, hd * sd, c.w); ch.K.push(7);
+        ch.R.push(sw, hd * sd, c.w); ch.K.push(7); ch.O.push(-1);
       }
     ch.I.push(start, start + 1, start + 2, start + 1, start + 3, start + 2);
     ch.base += 4;
@@ -813,6 +765,7 @@ export function buildRoads(world, terrain, chunk = 500) {
   const group = new THREE.Group();
   group.name = 'roads';
   group.userData.drawn = drawn;      // какие улицы реально попали в геометрию
+  group.userData.coverage = COV;     // тот же растр отдаём аудиту
   group.userData.zebras = zebras;    // и сколько зебр легло на асфальт
   const mat = roadMaterial();
   for (const ch of chunks.values()) {
@@ -822,6 +775,7 @@ export function buildRoads(world, terrain, chunk = 500) {
     geo.setAttribute('color', new THREE.Uint8BufferAttribute(ch.C, 3, true));
     geo.setAttribute('aRoad', new THREE.Float32BufferAttribute(ch.R, 3));
     geo.setAttribute('aCls', new THREE.Float32BufferAttribute(ch.K, 1));
+    geo.setAttribute('aOwn', new THREE.Float32BufferAttribute(ch.O, 1));
     geo.setIndex(ch.I);
     geo.computeVertexNormals();
     const m = new THREE.Mesh(geo, mat);

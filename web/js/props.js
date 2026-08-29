@@ -106,38 +106,9 @@ const CAR_PAINT = [
 export function buildStreetProps(world, terrain, roadIndex) {
   const buildings = new PolyGrid(world.buildings, 90);
 
-  // Растр проезжих частей. Отбор «дальше N метров от чужой осевой» ошибался:
-  // аудит показал 2340 деревьев и фонарей прямо на асфальте (7% всех).
-  // Здесь проверка точная — попала точка в полотно или нет.
-  const RES = 2, bb = world.meta.bounds;
-  const X0 = bb.minX - 30, Z0 = bb.minZ - 30;
-  const CW = Math.ceil((bb.maxX - bb.minX + 60) / RES);
-  const CH = Math.ceil((bb.maxZ - bb.minZ + 60) / RES);
-  const cover = new Int32Array(CW * CH).fill(-1);
-  const cellOf = (x, z) => {
-    const i = Math.floor((x - X0) / RES), j = Math.floor((z - Z0) / RES);
-    return (i < 0 || j < 0 || i >= CW || j >= CH) ? -1 : j * CW + i;
-  };
-  world.roads.forEach((r, ri) => {
-    if (r.c > 3 || r.w < 4) return;
-    const p = r.pts, hw = r.w / 2 + 0.6;      // с запасом на кромку
-    for (let k = 0; k < p.length / 2 - 1; k++) {
-      const ax = p[k * 2], az = p[k * 2 + 1];
-      const dx = p[k * 2 + 2] - ax, dz = p[k * 2 + 3] - az;
-      const L = Math.hypot(dx, dz); if (L < 0.2) continue;
-      const st = Math.ceil(L / 1.5), rc = Math.ceil(hw / RES);
-      for (let s = 0; s <= st; s++) {
-        const cx = ax + dx * s / st, cz = az + dz * s / st;
-        for (let dj = -rc; dj <= rc; dj++)
-          for (let di = -rc; di <= rc; di++) {
-            const x = cx + di * RES, z = cz + dj * RES;
-            if ((x - cx) ** 2 + (z - cz) ** 2 > hw * hw) continue;
-            const c = cellOf(x, z); if (c >= 0 && cover[c] < 0) cover[c] = ri;
-          }
-      }
-    }
-  });
-  const onRoad = (x, z) => { const c = cellOf(x, z); return c >= 0 && cover[c] >= 0; };
+  // Тот же самый растр, что у дорог и аудита — строится один раз на мир.
+  const COV = world.__coverage;
+  const onRoad = (x, z) => COV.onRoad(x, z);
   const rand = rng(4242);
   const H = (x, z) => terrain.gridHeightAt(x, z);
 
