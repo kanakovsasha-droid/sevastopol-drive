@@ -4,6 +4,7 @@ import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen
 import { buildStreetProps } from './props.js';
 import { buildFurniture } from './furniture.js';
 import { buildLandmarks } from './landmarks.js';
+import { audit } from './audit.js';
 import { Collider, RoadIndex } from './collision.js';
 import { Car, createCarMesh } from './vehicle.js';
 
@@ -113,6 +114,7 @@ async function boot() {
     // ручка для замеров из консоли
     window.G = { THREE, scene, camera, renderer, car, world, terrain, collider, roads,
                  get info() { return renderer.info; }, walk, cam, get mode() { return mode; } };
+    window.G.audit = () => audit(window.G);
     $('load').classList.add('done');
     setTimeout(() => $('load').remove(), 600);
     requestAnimationFrame(loop);

@@ -105,6 +105,39 @@ const CAR_PAINT = [
 
 export function buildStreetProps(world, terrain, roadIndex) {
   const buildings = new PolyGrid(world.buildings, 90);
+
+  // Растр проезжих частей. Отбор «дальше N метров от чужой осевой» ошибался:
+  // аудит показал 2340 деревьев и фонарей прямо на асфальте (7% всех).
+  // Здесь проверка точная — попала точка в полотно или нет.
+  const RES = 2, bb = world.meta.bounds;
+  const X0 = bb.minX - 30, Z0 = bb.minZ - 30;
+  const CW = Math.ceil((bb.maxX - bb.minX + 60) / RES);
+  const CH = Math.ceil((bb.maxZ - bb.minZ + 60) / RES);
+  const cover = new Int32Array(CW * CH).fill(-1);
+  const cellOf = (x, z) => {
+    const i = Math.floor((x - X0) / RES), j = Math.floor((z - Z0) / RES);
+    return (i < 0 || j < 0 || i >= CW || j >= CH) ? -1 : j * CW + i;
+  };
+  world.roads.forEach((r, ri) => {
+    if (r.c > 3 || r.w < 4) return;
+    const p = r.pts, hw = r.w / 2 + 0.6;      // с запасом на кромку
+    for (let k = 0; k < p.length / 2 - 1; k++) {
+      const ax = p[k * 2], az = p[k * 2 + 1];
+      const dx = p[k * 2 + 2] - ax, dz = p[k * 2 + 3] - az;
+      const L = Math.hypot(dx, dz); if (L < 0.2) continue;
+      const st = Math.ceil(L / 1.5), rc = Math.ceil(hw / RES);
+      for (let s = 0; s <= st; s++) {
+        const cx = ax + dx * s / st, cz = az + dz * s / st;
+        for (let dj = -rc; dj <= rc; dj++)
+          for (let di = -rc; di <= rc; di++) {
+            const x = cx + di * RES, z = cz + dj * RES;
+            if ((x - cx) ** 2 + (z - cz) ** 2 > hw * hw) continue;
+            const c = cellOf(x, z); if (c >= 0 && cover[c] < 0) cover[c] = ri;
+          }
+      }
+    }
+  });
+  const onRoad = (x, z) => { const c = cellOf(x, z); return c >= 0 && cover[c] >= 0; };
   const rand = rng(4242);
   const H = (x, z) => terrain.gridHeightAt(x, z);
 
@@ -112,10 +145,8 @@ export function buildStreetProps(world, terrain, roadIndex) {
   const free = (x, z) => H(x, z) > 1.2 && !buildings.find(x, z);
   // Дерево или фонарь не должны встать на пересекающую улицу: осевые в OSM
   // пересекаются, и точка «в тротуаре» своей улицы легко оказывается на чужой проезжей части.
-  const onOtherRoad = (x, z, own) => {
-    const hit = roadIndex?.nearest(x, z, 26);
-    return !!hit && hit.road !== own && hit.dist < hit.road.w / 2 + 0.8;
-  };
+  // на проезжей части не место ни дереву, ни фонарю — чья бы улица ни была
+  const onOtherRoad = (x, z) => onRoad(x, z);
 
   for (const r of world.roads) {
     if (r.c > 3 || r.w < 5 || r.br || r.tn) continue;
@@ -136,7 +167,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
           // дерево в тротуаре
           if (Math.abs(d % 11.5 - (side > 0 ? 0 : 5.7)) < 0.5) {
             const x = cx + nx * side * (hw + 1.8), z = cz + nz * side * (hw + 1.8);
-            if (free(x, z) && !onOtherRoad(x, z, r) && rand() < 0.70) {
+            if (free(x, z) && !onOtherRoad(x, z) && rand() < 0.70) {
               // Кипарис — примета приморской части: на бульварах у бухты их ряды,
               // а в верхнем городе почти нет. Привязываем долю к высоте над морем.
               const h = H(x, z);
@@ -148,7 +179,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
           // фонарь
           if (Math.abs(d % 31.0 - (side > 0 ? 8 : 23)) < 0.5) {
             const x = cx + nx * side * (hw + 0.85), z = cz + nz * side * (hw + 0.85);
-            if (free(x, z) && !onOtherRoad(x, z, r))
+            if (free(x, z) && !onOtherRoad(x, z))
               lamps.push(x, H(x, z), z, 1, Math.atan2(-nx * side, -nz * side));
           }
 
@@ -178,7 +209,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
     let placed = 0, tries = 0;
     while (placed < want && tries++ < want * 12) {
       const x = x0 + rand() * (x1 - x0), z = z0 + rand() * (z1 - z0);
-      if (!pointIn(q, x, z) || H(x, z) < 1.4) continue;
+      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z)) continue;
       const list = ((g.kind === 'park' || g.kind === 'grass') && rand() < 0.42) ? cyps : trees;
       list.push(x, H(x, z) - 0.25, z, 0.68 + rand() * 0.62, rand() * 6.283);
       placed++;

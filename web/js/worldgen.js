@@ -644,6 +644,8 @@ export function buildRoads(world, terrain, chunk = 500) {
   };
 
   const SIDEWALK = 2.6, KERB_H = 0.17, ROAD_Y = 0.14;
+  const drawn = new Set();
+  let zebras = 0;
 
   // ---- карта покрытия проезжих частей ----
   // Сканер показал: 4.7% асфальта накрыто сразу двумя улицами, а 6.8% бордюров
@@ -699,6 +701,7 @@ export function buildRoads(world, terrain, chunk = 500) {
     const ri = world.roads.indexOf(r);
     // узкий проезд, целиком лежащий на широкой улице, не рисуем вовсе
     if (r.c <= 3 && r.w >= 4 && (covered.get(ri) ?? 0) > 0.75) continue;
+    drawn.add(ri);
     const ch = bucket(r.pts[0], r.pts[1]);
     const hw = r.w / 2;
     const ext = densify(extendEnds(r.pts, Math.min(hw, 5)));
@@ -752,6 +755,10 @@ export function buildRoads(world, terrain, chunk = 500) {
 
   // Зебра на подходах. Полосы идут вдоль движения, в России чередуются белая и жёлтая.
   for (const c of world.crossings || []) {
+    // зебра ставится в отступе от центра перекрёстка и на кривой улице
+    // иногда съезжает с полотна — рисуем только там, где под ней асфальт
+    const cc = cellOf(c.x, c.z);
+    if (!(cc >= 0 && cover[cc] >= 0)) continue;
     const ch = bucket(c.x, c.z);
     const ux = Math.sin(c.a), uz = Math.cos(c.a);      // вдоль улицы
     const nx = -uz, nz = ux;                            // поперёк
@@ -767,10 +774,13 @@ export function buildRoads(world, terrain, chunk = 500) {
       }
     ch.I.push(start, start + 1, start + 2, start + 1, start + 3, start + 2);
     ch.base += 4;
+    zebras++;
   }
 
   const group = new THREE.Group();
   group.name = 'roads';
+  group.userData.drawn = drawn;      // какие улицы реально попали в геометрию
+  group.userData.zebras = zebras;    // и сколько зебр легло на асфальт
   const mat = roadMaterial();
   for (const ch of chunks.values()) {
     if (!ch.I.length) continue;
