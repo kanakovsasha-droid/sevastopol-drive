@@ -86,6 +86,77 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
   const stats = [];
 
   for (const d of defs) {
+    // Рынок: длинные ряды павильонов со светлой волнистой кровлей.
+    // В OSM их нет вовсе, вписаны по спутниковому снимку.
+    if (d.style === 'market') {
+      const parts = [];
+      const rows = d.rows ?? 7, RL = d.rowLen ?? 78, RW = d.rowWidth ?? 11;
+      const gap = d.gap ?? 6.5, HT = d.height ?? 4.2;
+      const a = d.angle ?? 0;
+      const ux = Math.cos(a), uz = Math.sin(a);        // вдоль ряда
+      const nx = -uz, nz = ux;                          // поперёк
+      const span = (rows - 1) * (RW + gap);
+      let sd = 7717;
+      const rnd = () => (sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296;
+
+      for (let r = 0; r < rows; r++) {
+        const off = -span / 2 + r * (RW + gap);
+        const cx = d.x + nx * off, cz = d.z + nz * off;
+        const g0 = terrain.gridHeightAt(cx, cz);
+        const len = RL * (0.86 + rnd() * 0.28);
+
+        // стойки-стенки по краям
+        for (const s2 of [-1, 1]) {
+          const wl = new THREE.BoxGeometry(0.35, HT * 0.62, len);
+          wl.rotateY(Math.atan2(ux, uz));
+          wl.translate(cx + nx * s2 * RW / 2, g0 + HT * 0.31, cz + nz * s2 * RW / 2);
+          parts.push({ geo: wl, color: [0.72, 0.70, 0.66] });
+        }
+        // двускатная волнистая кровля: два ската навстречу
+        for (const s2 of [-1, 1]) {
+          const slope = new THREE.BoxGeometry(RW / 2 + 0.5, 0.16, len + 1.2);
+          slope.rotateZ(s2 * 0.20);
+          slope.rotateY(Math.atan2(ux, uz));
+          slope.translate(cx + nx * s2 * RW / 4, g0 + HT + 0.30, cz + nz * s2 * RW / 4);
+          parts.push({ geo: slope, color: [0.86, 0.88, 0.90] });
+        }
+        // конёк
+        const ridge = new THREE.BoxGeometry(0.55, 0.22, len + 1.4);
+        ridge.rotateY(Math.atan2(ux, uz));
+        ridge.translate(cx, g0 + HT + 1.32, cz);
+        parts.push({ geo: ridge, color: [0.74, 0.77, 0.80] });
+
+        // прилавки внутри ряда
+        const nStall = Math.floor(len / 3.4);
+        for (let k = 0; k < nStall; k++) {
+          const t = (k + 0.5) / nStall - 0.5;
+          const sx2 = cx + ux * t * len, sz2 = cz + uz * t * len;
+          for (const s2 of [-1, 1]) {
+            const px = sx2 + nx * s2 * RW * 0.28, pz = sz2 + nz * s2 * RW * 0.28;
+            const gp = terrain.gridHeightAt(px, pz);
+            const top = new THREE.BoxGeometry(RW * 0.22, 0.12, 2.5);
+            top.rotateY(Math.atan2(ux, uz));
+            top.translate(px, gp + 0.92, pz);
+            const leg = new THREE.BoxGeometry(RW * 0.18, 0.86, 2.2);
+            leg.rotateY(Math.atan2(ux, uz));
+            leg.translate(px, gp + 0.45, pz);
+            const CR = [[0.72, 0.28, 0.22], [0.80, 0.64, 0.22], [0.30, 0.46, 0.28], [0.60, 0.60, 0.62]];
+            const c = CR[(rnd() * CR.length) | 0];
+            parts.push({ geo: leg, color: [0.52, 0.50, 0.47] }, { geo: top, color: c });
+          }
+        }
+      }
+
+      // асфальт проходов чуть темнее — площадка рынка
+      const mm = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.85, metalness: 0.05,
+      }));
+      mm.castShadow = true; mm.receiveShadow = true;
+      group.add(mm);
+      stats.push({ name: d.name, ok: true, ryadov: rows, dlina: RL, vysota: HT });
+      continue;
+    }
+
     // Приподнятая клумба: низкий каменный борт по контуру газона, земля внутри,
     // кусты и несколько деревьев. Голый газон с одним деревом смотрелся пусто.
     if (d.style === 'island') {
