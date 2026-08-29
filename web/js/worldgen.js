@@ -273,9 +273,9 @@ function roadCorridor(world, terrain, x0, z0, x1, z1, res = 5) {
       }
     };
     // Ограничение уклона. Замер показал участки в 25% — это стена, а не улица.
-    // 15% оставляем: в Севастополе такие спуски есть по-настоящему, а вот
-    // четверть уклона берётся только из скачка в данных высот.
-    const MAXG = 0.15;
+    // 18.5% оставляем: спуск по Очаковцеву и подобные в Севастополе реальны,
+    // а четверть уклона берётся только из скачка в данных высот.
+    const MAXG = 0.185;
     const limitGrade = () => {
       const lim = STEP * MAXG;
       for (let pass = 0; pass < 4; pass++) {
@@ -289,7 +289,7 @@ function roadCorridor(world, terrain, x0, z0, x1, z1, res = 5) {
         }
       }
     };
-    smooth(7); soft(); limitGrade(); smooth(3); soft(); limitGrade(); smooth(2);
+    smooth(5); soft(); limitGrade(); smooth(2); soft(); limitGrade(); smooth(1);
 
     const inner = r.w / 2 + FLAT, rad = inner + FEATHER;
     for (let i = 0; i < n; i++) {
@@ -318,7 +318,7 @@ function roadCorridor(world, terrain, x0, z0, x1, z1, res = 5) {
   // Размываем ЦЕЛЕВУЮ ВЫСОТУ с весом: внутри одной улицы значения одинаковые
   // и плоскость сохраняется, а на стыке двух высот получается плавный переход.
   const sm = new Float32Array(W * H);
-  for (let pass = 0; pass < 4; pass++) {
+  for (let pass = 0; pass < 2; pass++) {
     for (let j = 0; j < H; j++)
       for (let i = 0; i < W; i++) {
         const idx = j * W + i;
@@ -342,7 +342,7 @@ function roadCorridor(world, terrain, x0, z0, x1, z1, res = 5) {
   // скачет на её значение: замер давал 69% уклона там, где его быть не может.
   // Разводим соседние ячейки навстречу друг другу, пока перепад не уложится
   // в 15% — реальные севастопольские спуски столько и имеют.
-  const LIM = res * 0.15;
+  const LIM = res * 0.185;
   for (let pass = 0; pass < 60; pass++) {
     let fixed = 0;
     for (let j = 0; j < H; j++)
