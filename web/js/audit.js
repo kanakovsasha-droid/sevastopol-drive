@@ -72,7 +72,34 @@ export function audit(G) {
       }
     }
   }
-  out['бордюр на чужой дороге'] = { проб: kTot, дефект: kBad, процент: +(100 * kBad / kTot).toFixed(2), примеры: kW.slice(0, 5).map(o => `${o.x | 0},${o.z | 0} — ${o.n || '-'}`) };
+  out['бордюр на чужой дороге (данные)'] = { проб: kTot, дефект: kBad, процент: +(100 * kBad / kTot).toFixed(2) };
+
+  // Честная метрика: сколько НАРИСОВАННОГО бордюра и тротуара лежит вглубь
+  // чужой полосы. Вершины на самой кромке не считаем — они там законно.
+  {
+    let dTot = 0, dBad = 0; const dW = [];
+    const inset = (x, z) => {
+      const c = cell(x, z);
+      if (!(c >= 0 && cover[c] >= 0)) return false;
+      // требуем, чтобы точка была внутри полосы с запасом 1.5 м со всех сторон
+      for (const [dx, dz] of [[1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]]) {
+        const k = cell(x + dx, z + dz);
+        if (!(k >= 0 && cover[k] >= 0)) return false;
+      }
+      return true;
+    };
+    for (const m of grpRoads.children) {
+      const K = m.geometry.attributes.aCls.array, P = m.geometry.attributes.position.array;
+      for (let i = 0; i < K.length; i++) {
+        if (K[i] !== 5 && K[i] !== 6) continue;
+        dTot++;
+        if (inset(P[i * 3], P[i * 3 + 2])) { dBad++; if (dW.length < 40) dW.push({ v: 1, x: P[i * 3], z: P[i * 3 + 2] }); }
+      }
+    }
+    out['бордюр вглубь чужой полосы'] = { вершин: dTot, дефект: dBad,
+      процент: dTot ? +(100 * dBad / dTot).toFixed(2) : 0,
+      примеры: dW.slice(0, 5).map(o => `${o.x | 0},${o.z | 0}`) };
+  }
 
   // ---------- полотно в воздухе и под грунтом (по серединам пролётов) ----------
   const ROAD_Y = 0.14, SAFE = 0.35;

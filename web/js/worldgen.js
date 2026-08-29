@@ -703,12 +703,20 @@ export function buildRoads(world, terrain, chunk = 500) {
   };
   // тротуар проверяем в трёх точках поперёк, а не в одной: полоса шириной 2.6 м
   // краем заезжала на чужой асфальт, а середина была чистой
+  // Проверяем ВЕСЬ квад: три точки вдоль и три поперёк. Проверка только по
+  // середине пропускала изломы — там полосу раздувает скруглением, и её
+  // конец выносит на чужую проезжую часть бледным клином.
   const stripHitsRoad = (pts, i, mt, o0, o1, own) => {
-    const mx = (pts[i * 2] + pts[i * 2 + 2]) / 2, mz = (pts[i * 2 + 1] + pts[i * 2 + 3]) / 2;
-    const nx = (mt.NX[i] + mt.NX[i + 1]) / 2, nz = (mt.NZ[i] + mt.NZ[i + 1]) / 2;
-    for (const t of [0, 0.5, 1]) {
-      const o = o0 + (o1 - o0) * t;
-      if (onOtherRoad(mx + nx * o, mz + nz * o, own)) return true;
+    for (const s of [0, 0.5, 1]) {
+      const bx = pts[i * 2] + (pts[i * 2 + 2] - pts[i * 2]) * s;
+      const bz = pts[i * 2 + 1] + (pts[i * 2 + 3] - pts[i * 2 + 1]) * s;
+      const nx = mt.NX[i] + (mt.NX[i + 1] - mt.NX[i]) * s;
+      const nz = mt.NZ[i] + (mt.NZ[i + 1] - mt.NZ[i]) * s;
+      const sc = mt.S[i] + (mt.S[i + 1] - mt.S[i]) * s;
+      for (const t of [0, 0.5, 1]) {
+        const o = (o0 + (o1 - o0) * t) * sc;
+        if (onOtherRoad(bx + nx * o, bz + nz * o, own)) return true;
+      }
     }
     return false;
   };
@@ -728,8 +736,12 @@ export function buildRoads(world, terrain, chunk = 500) {
     const mtR = miters(ext);
     strip(ch, ext, mtR, -hw, hw, lift, r.c, r.w, false, i => {
       if (r.c > 3 || r.w < 4) return false;
-      const mx = (ext[i * 2] + ext[i * 2 + 2]) / 2, mz = (ext[i * 2 + 1] + ext[i * 2 + 3]) / 2;
-      return underWider(mx, mz, ri, r.w);
+      for (const s of [0.15, 0.5, 0.85]) {
+        const bx = ext[i * 2] + (ext[i * 2 + 2] - ext[i * 2]) * s;
+        const bz = ext[i * 2 + 1] + (ext[i * 2 + 3] - ext[i * 2 + 1]) * s;
+        if (!underWider(bx, bz, ri, r.w)) return false;
+      }
+      return true;      // кусок целиком внутри более широкой улицы
     });
     // тротуары только у проезжих улиц и без вылета: иначе они лягут поперёк перекрёстка
     if (r.c <= 3 && r.w >= 5 && !r.br && !r.tn) {
