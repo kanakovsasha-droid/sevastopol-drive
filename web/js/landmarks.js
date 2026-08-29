@@ -642,10 +642,70 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
         if (nX * (cx - mx) + nZ * (cz - mz) > 0) { nX = -nX; nZ = -nZ; }
         const at = (t, o) => [x0 + (x1 - x0) * t + nX * o, z0 + (z1 - z0) * t + nZ * o];
 
+        // Подиум и лестница: на панораме вход подняли на полтора метра,
+        // к нему широкий марш с парапетами, решётками и фонарями по углам.
+        const LH = w === (d.portals || [])[0] ? (d.stairH ?? 1.55) : (d.sideStairH ?? 0.85);
+        const [lx, lz] = at(0.5, 0.9);
+        const gL = terrain.gridHeightAt(lx, lz);
+        const yL = gL + LH;                      // отметка площадки
+        {
+          const angL = Math.atan2(x1 - x0, z1 - z0);
+          const pad = new THREE.BoxGeometry(3.4, LH, l + 1.4);
+          pad.rotateY(angL); pad.translate(lx, gL + LH / 2, lz);
+          parts.push({ geo: pad, color: STONE_D });
+          const RISE = 0.175, TREAD = 0.34;
+          const nStep = Math.max(3, Math.round(LH / RISE));
+          const SW = l + 2.2;                    // марш шире портала
+          for (let k = 0; k < nStep; k++) {
+            const out = 1.7 + k * TREAD;
+            const [sx, sz] = at(0.5, out);
+            const gS = terrain.gridHeightAt(sx, sz);
+            const hS = Math.max(0.12, yL - k * RISE - gS);
+            const st = new THREE.BoxGeometry(TREAD + 0.06, hS, SW);
+            st.rotateY(angL); st.translate(sx, yL - k * RISE - hS / 2, sz);
+            parts.push({ geo: st, color: k % 2 ? STONE : STONE_D });
+          }
+          // парапеты по бокам марша и столбы понизу
+          const runOut = 1.7 + nStep * TREAD;
+          for (const sgn of [-1, 1]) {
+            const tSide = 0.5 + sgn * (SW / 2) / l;
+            for (let k = 0; k < nStep; k += 2) {
+              const [cx3, cz3] = at(tSide, 1.8 + k * TREAD);
+              const gC = terrain.gridHeightAt(cx3, cz3);
+              const yTopC = yL - k * RISE + 0.85;
+              const ch2 = new THREE.BoxGeometry(TREAD * 2.1, yTopC - gC, 0.42);
+              ch2.rotateY(angL); ch2.translate(cx3, (yTopC + gC) / 2, cz3);
+              parts.push({ geo: ch2, color: STONE });
+              // ажурная решётка поверх парапета
+              const rail = new THREE.BoxGeometry(TREAD * 2.0, 0.06, 0.10);
+              rail.rotateY(angL); rail.translate(cx3, yTopC + 0.42, cz3);
+              const bar = new THREE.BoxGeometry(0.05, 0.80, 0.05);
+              bar.translate(cx3, yTopC + 0.02, cz3);
+              parts.push({ geo: rail, color: [0.22, 0.22, 0.21] }, { geo: bar, color: [0.22, 0.22, 0.21] });
+            }
+            // столб внизу марша с пирамидкой
+            const [bx2, bz2] = at(tSide, runOut + 0.2);
+            const gB = terrain.gridHeightAt(bx2, bz2);
+            const pil2 = new THREE.BoxGeometry(0.68, 1.55, 0.68);
+            pil2.rotateY(angL); pil2.translate(bx2, gB + 0.78, bz2);
+            const cap2 = new THREE.ConeGeometry(0.48, 0.42, 4);
+            cap2.rotateY(Math.PI / 4 + angL); cap2.translate(bx2, gB + 1.76, bz2);
+            parts.push({ geo: pil2, color: STONE }, { geo: cap2, color: STONE_D });
+            // фонарь на витом столбе
+            const [fx2, fz2] = at(tSide + sgn * 0.28, runOut + 0.9);
+            const gF = terrain.gridHeightAt(fx2, fz2);
+            const post = new THREE.CylinderGeometry(0.09, 0.14, 3.1, 8);
+            post.translate(fx2, gF + 1.55, fz2);
+            const lamp = new THREE.SphereGeometry(0.26, 10, 8);
+            lamp.translate(fx2, gF + 3.32, fz2);
+            parts.push({ geo: post, color: [0.20, 0.20, 0.19] }, { geo: lamp, color: [0.92, 0.90, 0.80] });
+          }
+        }
+
         const colH = 5.4;
         for (const t of [0.16, 0.84]) {
           const [px, pz] = at(t, 1.75);
-          const g0 = terrain.gridHeightAt(px, pz);
+          const g0 = yL;
           const base = new THREE.BoxGeometry(1.0, 0.35, 1.0); base.translate(px, g0 + 0.175, pz);
           const sh = new THREE.CylinderGeometry(0.36, 0.42, colH, 14);
           sh.translate(px, g0 + 0.35 + colH / 2, pz);
@@ -655,14 +715,14 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
                       { geo: cap, color: STONE_D });
         }
         const [ex, ez] = at(0.5, 1.75);
-        const ge = terrain.gridHeightAt(ex, ez);
+        const ge = yL;
         const ang = Math.atan2(x1 - x0, z1 - z0);
         const ent = new THREE.BoxGeometry(2.4, 0.85, l + 0.8);
         ent.rotateY(ang); ent.translate(ex, ge + 0.35 + colH + 0.42 + 0.42, ez);
         parts.push({ geo: ent, color: STONE });
         // проём с полуциркульным завершением
         const [dxp, dzp] = at(0.5, 0.18);
-        const gd = terrain.gridHeightAt(dxp, dzp);
+        const gd = yL;
         const door = new THREE.BoxGeometry(0.4, 3.5, 2.3);
         door.rotateY(ang); door.translate(dxp, gd + 1.75, dzp);
         parts.push({ geo: door, color: [0.16, 0.11, 0.08] });
@@ -727,7 +787,12 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       const HbB = yTopB - yBaseB;
       const fh0 = (b.go || b.arch) ? 5.20 : 3.30;
       const nfB = Math.max(1, Math.floor(HbB / fh0 + 0.35));
-      const yOrder = yBaseB + HbB / nfB;      // верх рустованного первого этажа
+      // Линия этажей считается от gmin по всему пятну; у длинного корпуса на
+      // склоне она может оказаться ниже земли у самой стены — тогда колонны
+      // уходят вниз. Держим их в разумных пределах над своим тротуаром.
+      const [wgx, wgz] = at(0.5, 0.6);
+      const gWall = terrain.gridHeightAt(wgx, wgz);
+      const yOrder = Math.min(Math.max(yBaseB + HbB / nfB, gWall + 3.6), gWall + 5.4);
       const entH = 1.35;
       const entBot = yTopB - 1.90;            // низ антаблемента, под карнизом
       const R = d.colR ?? 0.62;
@@ -770,14 +835,62 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
         par.rotateY(ang); par.translate(emx, yTopB + 0.31, emz);
         parts.push({ geo: par, color: STONE });
       }
-      // вход между средними колоннами: дверь, ступени и козырёк
+      // вход по центру ордера: крыльцо со ступенями и коричневая дверь
       {
-        const t = d.doorAt ?? 0.62;
-        const [dx2, dz2] = at(t, 0.10);
-        const gd = terrain.gridHeightAt(dx2, dz2);
-        const door = new THREE.BoxGeometry(0.34, 3.1, 2.1);
-        door.rotateY(ang); door.translate(dx2, Math.min(gd + 1.75, yOrder - 0.9), dz2);
-        parts.push({ geo: door, color: [0.26, 0.15, 0.10] });
+        const t = d.doorAt ?? 0.5;
+        const LH = d.porchH ?? 0.95;                 // высота крыльца
+        const [px2, pz2] = at(t, 0.9);
+        const gP = terrain.gridHeightAt(px2, pz2);
+        const yP = gP + LH;
+        const DW = d.doorW ?? 3.2;                   // ширина крыльца
+        const pad = new THREE.BoxGeometry(1.9, LH, DW);
+        pad.rotateY(ang); pad.translate(px2, gP + LH / 2, pz2);
+        parts.push({ geo: pad, color: STONE_D });
+        const RISE = 0.16, TREAD = 0.32;
+        const nStep = Math.max(3, Math.round(LH / RISE));
+        for (let k = 0; k < nStep; k++) {
+          const [sx, sz] = at(t, 1.85 + k * TREAD);
+          const gS = terrain.gridHeightAt(sx, sz);
+          const hS = Math.max(0.10, yP - k * RISE - gS);
+          const st = new THREE.BoxGeometry(TREAD + 0.05, hS, DW - 0.2);
+          st.rotateY(ang); st.translate(sx, yP - k * RISE - hS / 2, sz);
+          parts.push({ geo: st, color: k % 2 ? STONE : STONE_D });
+        }
+        // перила по бокам марша
+        for (const sgn of [-1, 1]) {
+          const tS = t + sgn * (DW / 2 - 0.12) / wl;
+          for (let k = 0; k < nStep; k += 2) {
+            const [rx2, rz2] = at(tS, 1.9 + k * TREAD);
+            const gR = terrain.gridHeightAt(rx2, rz2);
+            const yTopR = yP - k * RISE + 0.92;
+            const bar = new THREE.BoxGeometry(0.07, yTopR - gR, 0.07);
+            bar.rotateY(ang); bar.translate(rx2, (yTopR + gR) / 2, rz2);
+            const rail = new THREE.BoxGeometry(TREAD * 2.1, 0.06, 0.06);
+            rail.rotateY(ang); rail.translate(rx2, yTopR, rz2);
+            parts.push({ geo: bar, color: [0.24, 0.24, 0.23] }, { geo: rail, color: [0.24, 0.24, 0.23] });
+          }
+        }
+        // коричневая двустворчатая дверь и наличник
+        const [dx2, dz2] = at(t, 0.06);
+        const fr = new THREE.BoxGeometry(0.26, 4.05, 3.45);
+        fr.rotateY(ang); fr.translate(dx2, yP + 2.0, dz2);
+        parts.push({ geo: fr, color: STONE });
+        const frIn = new THREE.BoxGeometry(0.30, 3.45, 2.55);
+        frIn.rotateY(ang); frIn.translate(dx2, yP + 1.72, dz2);
+        parts.push({ geo: frIn, color: STONE_D });
+        for (const sgn of [-1, 1]) {
+          const tD = t + sgn * 0.55 / wl;
+          const [ddx, ddz] = at(tD, 0.16);
+          const leaf = new THREE.BoxGeometry(0.18, 3.15, 1.10);
+          leaf.rotateY(ang); leaf.translate(ddx, yP + 1.58, ddz);
+          parts.push({ geo: leaf, color: [0.435, 0.243, 0.145] });   // коричневая створка
+          const pan = new THREE.BoxGeometry(0.06, 1.25, 0.72);       // филёнка
+          pan.rotateY(ang); pan.translate(ddx + 0, yP + 1.05, ddz);
+          parts.push({ geo: pan, color: [0.353, 0.196, 0.118] });
+        }
+        const lint = new THREE.BoxGeometry(0.42, 0.28, 3.0);
+        lint.rotateY(ang); lint.translate(dx2, yP + 3.5, dz2);
+        parts.push({ geo: lint, color: STONE_D });
       }
       // герб между колоннами
       {

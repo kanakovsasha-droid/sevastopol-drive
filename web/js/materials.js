@@ -508,3 +508,55 @@ export function terrainMaterial() {
       }`,
   });
 }
+
+// ---------------------------------------------------------------- море
+// Было: плоская плита одного цвета, спорившая за глубину с берегом.
+// Стало: две бегущие волновые сетки правят нормаль, по ней ложится блик
+// солнца, цвет уходит от бирюзы у берега к тёмному на глубине, а у самой
+// кромки идёт пена. Время передаётся через uniform из главного цикла.
+export function waterMaterial() {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x1d5468, roughness: 0.16, metalness: 0.30,
+  });
+  const uni = { uTime: { value: 0 } };
+  mat.userData.uniforms = uni;
+  mat.customProgramCacheKey = () => 'sev-water';
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uTime = uni.uTime;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
+      .replace('#include <begin_vertex>',
+               '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(position, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec3 vWPos;\n' + HASH + NOISE)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          vec2 p = vWPos.xz;
+          float t = uTime;
+          // три бегущие волны разного масштаба и направления
+          vec2 g = vec2(0.0);
+          g += vec2(cos(p.x * 0.085 + t * 0.62), cos(p.y * 0.075 - t * 0.51)) * 0.085;
+          g += vec2(cos(p.x * 0.245 - t * 0.95), cos(p.y * 0.268 + t * 1.12)) * 0.040;
+          g += vec2(fbm(p * 0.035 + t * 0.05) - 0.5, fbm(p * 0.035 - t * 0.04 + 7.3) - 0.5) * 0.12;
+          normal = normalize(normal + vec3(g.x, 0.0, g.y));
+        }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          vec2 p = vWPos.xz;
+          float t = uTime;
+          float ripple = fbm(p * 0.09 + vec2(t * 0.10, -t * 0.07));
+          // у берега мельче и зеленее, вдали — глубокая синь
+          float far = clamp(length(p - cameraPosition.xz) / 380.0, 0.0, 1.0);
+          vec3 shallow = vec3(0.106, 0.310, 0.337);
+          vec3 deep    = vec3(0.031, 0.098, 0.161);
+          vec3 c = mix(shallow, deep, clamp(far * 0.92 + ripple * 0.18, 0.0, 1.0));
+          // барашки на гребнях
+          float crest = smoothstep(0.72, 0.93, ripple);
+          c = mix(c, vec3(0.82, 0.88, 0.90), crest * 0.35);
+          diffuseColor.rgb = c;
+        }`)
+      .replace('#include <roughnessmap_fragment>',
+               '#include <roughnessmap_fragment>\nroughnessFactor = 0.06 + 0.12 * fbm(vWPos.xz * 0.05 + uTime * 0.03);');
+  };
+  return mat;
+}

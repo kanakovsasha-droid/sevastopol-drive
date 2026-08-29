@@ -175,7 +175,7 @@ function assemble(memberWays) {
   return out;
 }
 
-const world = { roads: [], buildings: [], water: [], green: [], rail: [] };
+const world = { roads: [], buildings: [], water: [], green: [], rail: [], coast: [] };
 const usedInRel = new Set();
 
 for (const rel of rels) {
@@ -234,6 +234,14 @@ for (const w of ways.values()) {
       ...(t.tunnel ? { tn: 1 } : {}),
       ...(t.oneway === 'yes' ? { ow: 1 } : {}),
     });
+    continue;
+  }
+  if (t.natural === 'coastline') {
+    // Линия берега из OSM. По соглашению OSM суша слева по ходу линии, море
+    // справа — этого хватает, чтобы вырезать бухты: SRTM с шагом 30 м их
+    // засыпает, и Артбухта с Хрустальным пляжем оказывались сушей.
+    const p = ring(w);
+    if (p && p.length >= 4) (world.coast = world.coast || []).push({ pts: p });
     continue;
   }
   if (t.railway) { const p = ring(w); if (p) world.rail.push({ pts: p }); continue; }
@@ -572,6 +580,7 @@ console.log(`зданий     ${world.buildings.length}  средняя высо
 console.log(`зелень     ${world.green.length}`);
 console.log(`вода       ${world.water.length}`);
 console.log(`рельсы     ${world.rail.length}`);
+console.log(`линий берега ${(world.coast || []).length}, узлов ${(world.coast || []).reduce((a, c) => a + c.pts.length / 2, 0)}`);
 console.log(`перекрёстки ${world.junctions.length}, зебр ${world.crossings.length}`);
 console.log(`зданий с именами ${world.buildings.filter(b => b.n).length}`);
 console.log(`мир        ${(size / 1e6).toFixed(1)} МБ, размер ${((se.x - nw.x) / 1000).toFixed(1)}x${((se.z - nw.z) / 1000).toFixed(1)} км`);

@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=da12f2bc';
-import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=da12f2bc';
-import { buildStreetProps } from './props.js?v=da12f2bc';
-import { buildFurniture } from './furniture.js?v=da12f2bc';
-import { buildLandmarks } from './landmarks.js?v=da12f2bc';
-import { buildSigns } from './signs.js?v=da12f2bc';
-import { audit } from './audit.js?v=da12f2bc';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=da12f2bc';
-import { Collider, RoadIndex } from './collision.js?v=da12f2bc';
-import { Car, createCarMesh } from './vehicle.js?v=da12f2bc';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=efba9ba5';
+import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=efba9ba5';
+import { buildStreetProps } from './props.js?v=efba9ba5';
+import { buildFurniture } from './furniture.js?v=efba9ba5';
+import { buildLandmarks } from './landmarks.js?v=efba9ba5';
+import { buildSigns } from './signs.js?v=efba9ba5';
+import { audit } from './audit.js?v=efba9ba5';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=efba9ba5';
+import { Collider, RoadIndex } from './collision.js?v=efba9ba5';
+import { Car, createCarMesh } from './vehicle.js?v=efba9ba5';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -52,6 +52,7 @@ const SUN = new THREE.Vector3(-0.48, 0.70, 0.53).normalize();
 const HORIZON = new THREE.Color(0x9fb4bf);
 
 let renderer, scene, camera, sun, sky;
+let water = null;
 let terrain, world, furniture, landmarkDefs = [], collider, roads, carMesh, car;
 let cityMap = null, miniCtx = null, mapCtx = null, mapOpen = false, miniOn = true;
 let mode = 'car';                              // 'car' | 'walk'
@@ -67,8 +68,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=da12f2bc').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=da12f2bc').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=efba9ba5').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=efba9ba5').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -198,7 +199,8 @@ function initScene() {
   sun.shadow.normalBias = 0.6;
   scene.add(sun, sun.target);
 
-  scene.add(buildWater());
+  water = buildWater();
+  scene.add(water);
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
@@ -354,8 +356,10 @@ function updateWalk(dt) {
   if (l > 0) {
     fx /= l; fz /= l;
     const s = Math.sin(walk.yaw), c = Math.cos(walk.yaw);
-    let dx = (fz * s + fx * c) * sp * dt;
-    let dz = (fz * c - fx * s) * sp * dt;
+    // «Вправо» при взгляде (sin, cos) и оси Y вверх — это (-cos, sin).
+    // Со старым (cos, -sin) клавиша D уводила влево.
+    let dx = (fz * s - fx * c) * sp * dt;
+    let dz = (fz * c + fx * s) * sp * dt;
     const nx = walk.x + dx, nz = walk.z + dz;
     if (terrain.gridHeightAt(nx, nz) > -0.6) { walk.x = nx; walk.z = nz; }  // в бухту не заходим
   }
@@ -374,7 +378,9 @@ function updateCamera(dt) {
     // так едет машина, так же считается направление на миникарте. Без разворота
     // на пол-оборота W уводил назад, и стрелка на карте смотрела в затылок.
     camera.rotateY(walk.yaw + Math.PI);
-    camera.rotateX(walk.pitch);
+    // Разворот на пол-оборота развернул и локальную ось X, поэтому наклон
+    // пошёл в обратную сторону: мышь вверх опускала взгляд. Меняем знак.
+    camera.rotateX(-walk.pitch);
     return;
   }
   const yaw = car.yaw + cam.yaw;
@@ -388,19 +394,26 @@ function updateCamera(dt) {
 
   const speedPull = clamp(Math.abs(car.vLong) / 55, 0, 1);
   const back = conf.back * (1 + speedPull * 0.22) * cam.dist;
+  // Мышь по вертикали ПОДНИМАЛА камеру, а не вращала обзор: она просто
+  // прибавлялась к высоте. Теперь камера ходит по сфере вокруг машины —
+  // вверх уводит её выше и назад, вниз прижимает к дороге, как в GTA.
+  const pit = clamp(cam.pitch, -0.42, 1.05);
+  const cp = Math.cos(pit), sp2 = Math.sin(pit);
   let want = new THREE.Vector3(
-    car.pos.x - fx * back,
-    car.pos.y + conf.up + cam.pitch * 5,
-    car.pos.z - fz * back,
+    car.pos.x - fx * back * cp,
+    car.pos.y + conf.up + back * sp2 * (conf.back > 0 ? 1 : 0),
+    car.pos.z - fz * back * cp,
   );
   const ground = terrain.gridHeightAt(want.x, want.z) + 1.4;
   if (want.y < ground) want.y = ground;
 
   const k = cam.mode === 2 ? 1 : 1 - Math.exp(-dt * 7.5);
   cam.pos.lerp(want, k);
+  // Цель взгляда держим на машине: наклон уже увёл саму камеру по сфере,
+  // а раньше он вдобавок задирал и точку взгляда — обзор уезжал вдвойне.
   const look = new THREE.Vector3(
     car.pos.x + fx * conf.ahead,
-    car.pos.y + 1.2 + cam.pitch * 3,
+    car.pos.y + 1.2,
     car.pos.z + fz * conf.ahead,
   );
   cam.look.lerp(look, 1 - Math.exp(-dt * 9));
@@ -463,6 +476,8 @@ let prev = performance.now();
 function loop(now) {
   const dt = Math.min((now - prev) / 1000, 0.1);
   prev = now;
+  const wu = water?.material?.userData?.uniforms;
+  if (wu) wu.uTime.value = now / 1000;
 
   if (mode === 'car') {
     const menuOpen = $('menu').classList.contains('on');

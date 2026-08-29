@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=da12f2bc';
-import { buildingMaterial, roadMaterial, terrainMaterial } from './materials.js?v=da12f2bc';
-import { buildCoverage } from './coverage.js?v=da12f2bc';
+import { SEA_FLOOR } from './terrain.js?v=efba9ba5';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=efba9ba5';
+import { buildCoverage } from './coverage.js?v=efba9ba5';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -407,6 +407,100 @@ export function sampleCorridor(c, x, z) {
   return { h: sh / wsum, w: sw, cap };
 }
 
+// ------------------------------------------------------------------ море
+// SRTM снят с шагом 30 м и засыпает бухты: Артиллерийская и Хрустальный пляж
+// оказывались сушей. Берег в OSM есть (natural=coastline), но направление
+// линий тут непоследовательное, и правило «суша слева» врёт. Поэтому не
+// доверяем обходу вовсе: растеризуем берег как барьер и заливаем воду от
+// открытого моря. Заодно копим расстояние от берега — по нему делаем отмель.
+function seaMask(world, terrain, x0, z0, x1, z1, res = 8) {
+  const lines = world.coast || [];
+  const W = Math.ceil((x1 - x0) / res), H = Math.ceil((z1 - z0) / res);
+  const wall = new Uint8Array(W * H);
+  const idx = (i, j) => j * W + i;
+  const mark = (x, z) => {
+    const i = Math.round((x - x0) / res), j = Math.round((z - z0) / res);
+    for (let dj = -1; dj <= 1; dj++)
+      for (let di = -1; di <= 1; di++) {
+        const a = i + di, b = j + dj;
+        if (a >= 0 && b >= 0 && a < W && b < H) wall[idx(a, b)] = 1;
+      }
+  };
+  let segs = 0;
+  for (const ln of lines) {
+    const p = ln.pts;
+    for (let k = 0; k + 3 < p.length; k += 2) {
+      const ax = p[k], az = p[k + 1], bx = p[k + 2], bz = p[k + 3];
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L < 0.01) continue;
+      segs++;
+      const n = Math.max(1, Math.ceil(L / (res * 0.4)));
+      for (let t = 0; t <= n; t++) mark(ax + (bx - ax) * t / n, az + (bz - az) * t / n);
+    }
+  }
+
+  // затравка — клетки по краю карты, где рельеф заведомо под водой
+  const dist = new Int16Array(W * H).fill(-1);
+  const q = new Int32Array(W * H);
+  let qh = 0, qt = 0;
+  // Одного барьера мало: линия берега обрывается на краю выгрузки OSM, и вода
+  // утекала в город с юга — затопило 99% карты. Второе условие: заливка не
+  // поднимается выше LIMIT. Засыпанные SRTM бухты лежат в паре метров,
+  // а центр стоит на холмах в 20–60 м, так что порог их надёжно разделяет.
+  const LIMIT = 5.5;
+  const dem = new Float32Array(W * H);
+  for (let j = 0; j < H; j++)
+    for (let i = 0; i < W; i++) dem[idx(i, j)] = terrain.heightAt(x0 + i * res, z0 + j * res);
+  const seed = (i, j) => {
+    const c = idx(i, j);
+    if (wall[c] || dist[c] >= 0 || dem[c] > -1.5) return;
+    dist[c] = 0; q[qt++] = c;
+  };
+  for (let i = 0; i < W; i++) { seed(i, 0); seed(i, H - 1); }
+  for (let j = 0; j < H; j++) { seed(0, j); seed(W - 1, j); }
+
+  while (qh < qt) {
+    const c = q[qh++];
+    const i = c % W, j = (c / W) | 0, d = dist[c];
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const a = i + di, b = j + dj;
+      if (a < 0 || b < 0 || a >= W || b >= H) continue;
+      const n = idx(a, b);
+      if (wall[n] || dist[n] >= 0 || dem[n] > LIMIT) continue;
+      dist[n] = d + 1; q[qt++] = n;
+    }
+  }
+  let cells = 0;
+  for (let c = 0; c < dist.length; c++) if (dist[c] >= 0) cells++;
+
+  // Барьер шириной в клетку сам по себе водой не считается — но у самой кромки
+  // вода должна доходить до берега, иначе вдоль всего побережья идёт сухая
+  // полоска в восемь метров. Помечаем стеночные клетки, у которых сосед — вода.
+  const shore = new Uint8Array(W * H);
+  for (let j = 0; j < H; j++)
+    for (let i = 0; i < W; i++) {
+      const c = idx(i, j);
+      if (!wall[c]) continue;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const a = i + di, b = j + dj;
+        if (a < 0 || b < 0 || a >= W || b >= H) continue;
+        if (dist[idx(a, b)] >= 0) { shore[c] = 1; break; }
+      }
+    }
+
+  // глубина: у берега почти ноль, дальше отмель уходит вниз
+  const depthAt = (x, z) => {
+    const i = Math.round((x - x0) / res), j = Math.round((z - z0) / res);
+    if (i < 0 || j < 0 || i >= W || j >= H) return null;
+    const c = idx(i, j);
+    if (shore[c]) return 0.35;
+    const d = dist[c];
+    if (d < 0) return null;                       // суша
+    return 0.35 + Math.min(7.5, d * res * 0.055);
+  };
+  return { depthAt, cells, segs, res, W, H };
+}
+
 // ---------------------------------------------------------------- рельеф
 const mesh_stats = {};
 export function buildTerrain(terrain, world, opts = {}) {
@@ -441,6 +535,22 @@ export function buildTerrain(terrain, world, opts = {}) {
     for (let ix = 0; ix < nx; ix++)
       heights[iz * nx + ix] = terrain.heightAt(x0 + ix * dx, z0 + iz * dz);
   const cut = removeBuildings(heights, nx, x0, z0, dx, dz, world.buildings);
+
+  // Море вырезаем ДО коридора дорог: иначе набережная считает профиль по
+  // засыпанной бухте. Суше у самой воды даём небольшой запас над уровнем —
+  // иначе полотно воды спорит за глубину с плоским берегом и мерцает.
+  const sea = seaMask(world, terrain, x0, z0, x1, z1);
+  let carved = 0;
+  for (let iz = 0; iz < nx; iz++)
+    for (let ix = 0; ix < nx; ix++) {
+      const i = iz * nx + ix;
+      const d = sea.depthAt(x0 + ix * dx, z0 + iz * dz);
+      if (d == null) { if (heights[i] < 0.32) heights[i] = 0.32; continue; }
+      const want = -d;
+      if (heights[i] > want) { heights[i] = want; carved++; }
+    }
+  mesh_stats.sea = { клеток: sea.cells, сегментовБерега: sea.segs, вершинВрезано: carved };
+
   terrain.setGrid(x0, z0, dx, dz, nx, heights);   // чтобы коридор считался уже по земле
 
   for (let iz = 0; iz < nx; iz++) {
@@ -504,7 +614,7 @@ export function buildTerrain(terrain, world, opts = {}) {
   const mesh = new THREE.Mesh(geo, terrainMaterial());
   mesh.name = 'terrain';
   mesh.receiveShadow = true;
-  mesh.userData.stats = { srezanoUzlovPodDomami: mesh_stats.cut };
+  mesh.userData.stats = { srezanoUzlovPodDomami: mesh_stats.cut, more: mesh_stats.sea };
   return mesh;
 }
 
@@ -1341,9 +1451,7 @@ export function buildBuildings(world, terrain, chunk = 500) {
 export function buildWater() {
   const geo = new THREE.PlaneGeometry(60000, 60000, 1, 1);
   geo.rotateX(-Math.PI / 2);
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-    color: 0x18414f, roughness: 0.09, metalness: 0.45,
-  }));
+  const mesh = new THREE.Mesh(geo, waterMaterial());
   mesh.position.y = 0;
   mesh.name = 'water';
   mesh.renderOrder = -1;
