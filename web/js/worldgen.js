@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=efba9ba5';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=efba9ba5';
-import { buildCoverage } from './coverage.js?v=efba9ba5';
+import { SEA_FLOOR } from './terrain.js?v=b1fc2347';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=b1fc2347';
+import { buildCoverage } from './coverage.js?v=b1fc2347';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -1235,6 +1235,18 @@ export function buildBuildings(world, terrain, chunk = 500) {
           quad(A, eaveY, B, eaveY, C, ridgeY, D, ridgeY, 5, roof,
                [[a0, cE], [a1, cE], [a1, cMid], [a0, cMid]]);
         }
+        // софит под свесом ряда
+        {
+          const A = P(a0, c0), B = P(a1, c0), C = P(a1, c1), D = P(a0, c1);
+          const soff = (p1, p2, p3) => {
+            const e1 = [p2[0] - p1[0], 0, p2[1] - p1[1]];
+            const e2 = [p3[0] - p1[0], 0, p3[1] - p1[1]];
+            const ny = e1[2] * e2[0] - e1[0] * e2[2];
+            const V = ny > 0 ? [p1, p3, p2] : [p1, p2, p3];
+            for (const q of V) pushV(q[0], yTop - 0.02, q[1], 0, -1, 0, roof, q[0], q[1], Hb, 5);
+          };
+          soff(A, B, C); soff(A, C, D);
+        }
         // фронтоны: треугольник между стеной и коньком
         for (const aE of [a0, a1]) {
           const L = P(aE, c0), R = P(aE, c1), T = P(aE, cMid);
@@ -1322,6 +1334,18 @@ export function buildBuildings(world, terrain, chunk = 500) {
       tri(c3, eaveY, c4, eaveY, r1, ridgeY); tri(c3, eaveY, r1, ridgeY, r2, ridgeY);
       tri(c4, eaveY, c1, eaveY, r1, ridgeY);
       tri(c2, eaveY, c3, eaveY, r2, ridgeY);
+      // Софит: свес кровли был односторонним, и снизу — с горки, из окна,
+      // из-под карниза — кровля просвечивала насквозь. Закрываем низ плитой.
+      {
+        const soff = (A, B, C) => {
+          const e1 = [B[0] - A[0], 0, B[1] - A[1]];
+          const e2 = [C[0] - A[0], 0, C[1] - A[1]];
+          const ny = e1[2] * e2[0] - e1[0] * e2[2];
+          const V = ny > 0 ? [A, C, B] : [A, B, C];
+          for (const q of V) pushV(q[0], eaveY - 0.02, q[1], 0, -1, 0, roof, q[0], q[1], Hb, 1);
+        };
+        soff(c1, c2, c3); soff(c1, c3, c4);
+      }
       continue;
     }
 

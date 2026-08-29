@@ -121,10 +121,12 @@ export function buildSigns(world, terrain, roadIndex) {
       const t = (i + 0.5) / k;
       const cx = best.ax + best.dx * t, cz = best.az + best.dz * t;
       const g = terrain.gridHeightAt(cx, cz);
-      let w = Math.min(5.4, best.len * 0.88 / k);
+      // Вывеска, прибитая к стене руками, — это имя здания, а не ларёк:
+      // делаем её крупнее, иначе с улицы её просто не прочесть.
+      let w = Math.min(b.sw ? 8.4 : 5.4, best.len * 0.88 / k);
       let h = w / 8;
       // вывеска сидит над витриной, но не выше карниза
-      let y = g + 3.55;
+      let y = g + (b.sw ? 4.6 : 3.55);
       if (top - g < 4.6) { y = g + (top - g) * 0.70; w = Math.min(w, 4.2); h = w / 8; }
       if (y + h / 2 > top - 0.35) y = top - 0.35 - h / 2;
       if (y - h / 2 < g + 1.9) continue;           // на цоколь вывеску не вешаем

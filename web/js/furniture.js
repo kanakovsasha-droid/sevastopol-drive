@@ -127,7 +127,7 @@ function nameAtlas(names) {
   return { tex, COLS, ROWS };
 }
 
-export function buildFurniture(furniture, terrain, roadIndex, onRoad) {
+export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones = []) {
   const group = new THREE.Group();
   group.name = 'furniture';
   const rand = rng(31337);
@@ -230,6 +230,9 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad) {
   };
   const BP = [], BN = [], BC = [], BI = [];
   let bn = 0;
+  // Подпорные стены OSM идут и там, где мы поставили лестницу собора: забор
+  // перерезал марш поперёк. Вокруг таких мест их не строим.
+  const inClear = (x, z) => clearZones.some(c => (x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r);
   for (const b of furniture.barriers) {
     const sp = SPEC[b.k];
     if (!sp) continue;
@@ -243,6 +246,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad) {
       for (let s = 0; s < steps; s++) {
         const t0 = s / steps, t1 = (s + 1) / steps;
         const x0 = ax + dx * t0, z0 = az + dz * t0, x1 = ax + dx * t1, z1 = az + dz * t1;
+        if (inClear((x0 + x1) / 2, (z0 + z1) / 2)) continue;
         const nx = -dz / L * sp.t / 2, nz = dx / L * sp.t / 2;
         const g0 = terrain.gridHeightAt(x0, z0), g1 = terrain.gridHeightAt(x1, z1);
         const q = [

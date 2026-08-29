@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=efba9ba5';
-import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=efba9ba5';
-import { buildStreetProps } from './props.js?v=efba9ba5';
-import { buildFurniture } from './furniture.js?v=efba9ba5';
-import { buildLandmarks } from './landmarks.js?v=efba9ba5';
-import { buildSigns } from './signs.js?v=efba9ba5';
-import { audit } from './audit.js?v=efba9ba5';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=efba9ba5';
-import { Collider, RoadIndex } from './collision.js?v=efba9ba5';
-import { Car, createCarMesh } from './vehicle.js?v=efba9ba5';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=b1fc2347';
+import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=b1fc2347';
+import { buildStreetProps } from './props.js?v=b1fc2347';
+import { buildFurniture } from './furniture.js?v=b1fc2347';
+import { buildLandmarks } from './landmarks.js?v=b1fc2347';
+import { buildSigns } from './signs.js?v=b1fc2347';
+import { audit } from './audit.js?v=b1fc2347';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=b1fc2347';
+import { Collider, RoadIndex } from './collision.js?v=b1fc2347';
+import { Car, createCarMesh } from './vehicle.js?v=b1fc2347';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -68,8 +68,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=efba9ba5').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=efba9ba5').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=b1fc2347').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=b1fc2347').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -92,7 +92,8 @@ async function boot() {
     scene.add(props);
 
     await step('ставлю остановки, скамейки и ограждения…', 90);
-    const furn = buildFurniture(furniture, terrain, roads, props.userData.onRoad);
+    const clearZones = landmarkDefs.filter(d => d.clear).map(d => ({ x: d.x, z: d.z, r: d.clear }));
+    const furn = buildFurniture(furniture, terrain, roads, props.userData.onRoad, clearZones);
     scene.add(furn);
 
     await step('черчу карту города…', 94);
@@ -397,12 +398,12 @@ function updateCamera(dt) {
   // Мышь по вертикали ПОДНИМАЛА камеру, а не вращала обзор: она просто
   // прибавлялась к высоте. Теперь камера ходит по сфере вокруг машины —
   // вверх уводит её выше и назад, вниз прижимает к дороге, как в GTA.
-  const pit = clamp(cam.pitch, -0.42, 1.05);
-  const cp = Math.cos(pit), sp2 = Math.sin(pit);
+  // Камера держится на ОДНОЙ высоте за машиной. Мышь по вертикали не двигает
+  // её вверх-вниз (от этого обзор ездил лифтом), а только наклоняет взгляд.
   let want = new THREE.Vector3(
-    car.pos.x - fx * back * cp,
-    car.pos.y + conf.up + back * sp2 * (conf.back > 0 ? 1 : 0),
-    car.pos.z - fz * back * cp,
+    car.pos.x - fx * back,
+    car.pos.y + conf.up,
+    car.pos.z - fz * back,
   );
   const ground = terrain.gridHeightAt(want.x, want.z) + 1.4;
   if (want.y < ground) want.y = ground;
@@ -411,9 +412,10 @@ function updateCamera(dt) {
   cam.pos.lerp(want, k);
   // Цель взгляда держим на машине: наклон уже увёл саму камеру по сфере,
   // а раньше он вдобавок задирал и точку взгляда — обзор уезжал вдвойне.
+  const pit = clamp(cam.pitch, -0.55, 0.85);
   const look = new THREE.Vector3(
     car.pos.x + fx * conf.ahead,
-    car.pos.y + 1.2,
+    car.pos.y + 1.2 + pit * conf.ahead * 1.6,   // наклон уводит только прицел
     car.pos.z + fz * conf.ahead,
   );
   cam.look.lerp(look, 1 - Math.exp(-dt * 9));

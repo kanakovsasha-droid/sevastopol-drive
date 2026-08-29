@@ -146,7 +146,8 @@
     ],
     "drumH": 4.8,
     "stairH": 1.55,
-    "sideStairH": 0.85
+    "sideStairH": 0.85,
+    "clear": 48
   },
   {
     "name": "Гимназия №1 им. А. С. Пушкина",
@@ -171,6 +172,7 @@
     "doorAt": 0.5,
     "porchH": 0.95,
     "doorW": 3.2,
-    "emblemAt": 0.3
+    "emblemAt": 0.3,
+    "clear": 26
   }
 ]

@@ -500,7 +500,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
     if (d.style === 'cathedral') {
       const parts = [];
       const STONE_W = [0.871, 0.824, 0.722];     // инкерманский камень
-      const DIORITE = [0.145, 0.150, 0.140];
+      const DIORITE = [0.255, 0.263, 0.247];   // полированный диорит, а не чёрная дыра
       const LEAD = [0.639, 0.655, 0.639];        // светлый купол, как на панораме
       const GOLD2 = [0.94, 0.74, 0.16];
 
@@ -665,34 +665,29 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
             st.rotateY(angL); st.translate(sx, yL - k * RISE - hS / 2, sz);
             parts.push({ geo: st, color: k % 2 ? STONE : STONE_D });
           }
-          // парапеты по бокам марша и столбы понизу
+          // парапеты по бокам марша: сплошной скат, без решёток —
+          // прежние стойки торчали из ступеней подпорками и мешали смотреть
           const runOut = 1.7 + nStep * TREAD;
           for (const sgn of [-1, 1]) {
             const tSide = 0.5 + sgn * (SW / 2) / l;
-            for (let k = 0; k < nStep; k += 2) {
+            for (let k = 0; k < nStep; k++) {
               const [cx3, cz3] = at(tSide, 1.8 + k * TREAD);
               const gC = terrain.gridHeightAt(cx3, cz3);
-              const yTopC = yL - k * RISE + 0.85;
-              const ch2 = new THREE.BoxGeometry(TREAD * 2.1, yTopC - gC, 0.42);
+              const yTopC = yL - k * RISE + 0.62;
+              const ch2 = new THREE.BoxGeometry(TREAD + 0.05, Math.max(0.3, yTopC - gC), 0.46);
               ch2.rotateY(angL); ch2.translate(cx3, (yTopC + gC) / 2, cz3);
               parts.push({ geo: ch2, color: STONE });
-              // ажурная решётка поверх парапета
-              const rail = new THREE.BoxGeometry(TREAD * 2.0, 0.06, 0.10);
-              rail.rotateY(angL); rail.translate(cx3, yTopC + 0.42, cz3);
-              const bar = new THREE.BoxGeometry(0.05, 0.80, 0.05);
-              bar.translate(cx3, yTopC + 0.02, cz3);
-              parts.push({ geo: rail, color: [0.22, 0.22, 0.21] }, { geo: bar, color: [0.22, 0.22, 0.21] });
             }
             // столб внизу марша с пирамидкой
             const [bx2, bz2] = at(tSide, runOut + 0.2);
             const gB = terrain.gridHeightAt(bx2, bz2);
-            const pil2 = new THREE.BoxGeometry(0.68, 1.55, 0.68);
-            pil2.rotateY(angL); pil2.translate(bx2, gB + 0.78, bz2);
-            const cap2 = new THREE.ConeGeometry(0.48, 0.42, 4);
-            cap2.rotateY(Math.PI / 4 + angL); cap2.translate(bx2, gB + 1.76, bz2);
+            const pil2 = new THREE.BoxGeometry(0.68, 1.35, 0.68);
+            pil2.rotateY(angL); pil2.translate(bx2, gB + 0.68, bz2);
+            const cap2 = new THREE.ConeGeometry(0.46, 0.38, 4);
+            cap2.rotateY(Math.PI / 4 + angL); cap2.translate(bx2, gB + 1.55, bz2);
             parts.push({ geo: pil2, color: STONE }, { geo: cap2, color: STONE_D });
-            // фонарь на витом столбе
-            const [fx2, fz2] = at(tSide + sgn * 0.28, runOut + 0.9);
+            // фонарь сбоку от марша, не на ступенях
+            const [fx2, fz2] = at(tSide + sgn * 0.34, runOut + 1.3);
             const gF = terrain.gridHeightAt(fx2, fz2);
             const post = new THREE.CylinderGeometry(0.09, 0.14, 3.1, 8);
             post.translate(fx2, gF + 1.55, fz2);
@@ -792,7 +787,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       // уходят вниз. Держим их в разумных пределах над своим тротуаром.
       const [wgx, wgz] = at(0.5, 0.6);
       const gWall = terrain.gridHeightAt(wgx, wgz);
-      const yOrder = Math.min(Math.max(yBaseB + HbB / nfB, gWall + 3.6), gWall + 5.4);
+      const yOrder = Math.min(Math.max(yBaseB + HbB / nfB, gWall + 2.9), gWall + 4.1);
       const entH = 1.35;
       const entBot = yTopB - 1.90;            // низ антаблемента, под карнизом
       const R = d.colR ?? 0.62;
