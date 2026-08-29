@@ -720,9 +720,16 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
         if (h < gmn) gmn = h; if (h > gmx) gmx = h;
       }
       const yTopB = gmx + b.h;
-      const base = d.baseH ?? 4.2;            // верх рустованного цоколя
+      // Ордер садится на линию первого этажа, которую РИСУЕТ ШЕЙДЕР, а не на
+      // «землю плюс 4.2 м». Шейдер делит стену от gmin-1.2 до gmax+h на этажи,
+      // и на склоне низ колонн уезжал выше межэтажной тяги — они висели.
+      const yBaseB = gmn - 1.2;
+      const HbB = yTopB - yBaseB;
+      const fh0 = (b.go || b.arch) ? 5.20 : 3.30;
+      const nfB = Math.max(1, Math.floor(HbB / fh0 + 0.35));
+      const yOrder = yBaseB + HbB / nfB;      // верх рустованного первого этажа
       const entH = 1.35;
-      const entBot = yTopB - 1.55;            // низ антаблемента
+      const entBot = yTopB - 1.90;            // низ антаблемента, под карнизом
       const R = d.colR ?? 0.62;
       const OUT = d.proj ?? 0.46;             // вынос из плоскости стены
 
@@ -730,8 +737,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       for (let i = 0; i < colN; i++) {
         const t = 0.09 + (0.82) * (i / (colN - 1));
         const [x, z] = at(t, OUT);
-        const g0 = terrain.gridHeightAt(x, z);
-        const yb = g0 + base;
+        const yb = yOrder;
         const shaftH = Math.max(3.0, entBot - yb - 0.62);
         const plinth = new THREE.BoxGeometry(1.55, 0.34, 1.55);
         plinth.rotateY(ang); plinth.translate(x, yb + 0.17, z);
@@ -770,7 +776,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
         const [dx2, dz2] = at(t, 0.10);
         const gd = terrain.gridHeightAt(dx2, dz2);
         const door = new THREE.BoxGeometry(0.34, 3.1, 2.1);
-        door.rotateY(ang); door.translate(dx2, gd + 1.75, dz2);
+        door.rotateY(ang); door.translate(dx2, Math.min(gd + 1.75, yOrder - 0.9), dz2);
         parts.push({ geo: door, color: [0.26, 0.15, 0.10] });
       }
       // герб между колоннами
@@ -779,7 +785,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
         const gh = terrain.gridHeightAt(hx, hz);
         const med = new THREE.CylinderGeometry(0.62, 0.62, 0.16, 16);
         med.rotateZ(Math.PI / 2); med.rotateY(ang + Math.PI / 2);
-        med.translate(hx, gh + 6.6, hz);
+        med.translate(hx, yOrder + 2.4, hz);
         parts.push({ geo: med, color: STONE_D });
       }
 
