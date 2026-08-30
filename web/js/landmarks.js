@@ -493,6 +493,25 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       return [wx + (qx - wx) / dist * out, wz + (qz - wz) / dist * out];
     };
 
+    // Явно заданный отрезок стены доступен ЛЮБОМУ стилю. У П-образного корпуса
+    // центр контура попадает во внутренний двор, а «ближайшая к дороге сторона
+    // габаритной рамки» — не стена: колоннада уезжала мимо ризалита.
+    if (d.wall) {
+      const [qx0, qz0, qx1, qz1] = d.wall;
+      const qdx = qx1 - qx0, qdz = qz1 - qz0;
+      const ql = Math.hypot(qdx, qdz) || 1;
+      let qnX = -qdz / ql, qnZ = qdx / ql;
+      const qp = b.poly, qn = qp.length / 2;
+      let qcx = 0, qcz = 0;
+      for (let k = 0; k < qn; k++) { qcx += qp[k * 2]; qcz += qp[k * 2 + 1]; }
+      qcx /= qn; qcz /= qn;
+      const qmx = (qx0 + qx1) / 2, qmz = (qz0 + qz1) / 2;
+      if (qnX * (qcx - qmx) + qnZ * (qcz - qmz) > 0) { qnX = -qnX; qnZ = -qnZ; }
+      S = { a0: 0, a1: ql, len: ql, roadName: d.facade || null,
+            Q: (t, o) => [qx0 + qdx * t + qnX * o, qz0 + qdz * t + qnZ * o] };
+      atWall = (t, out) => S.Q(t, out);
+    }
+
     // ---- храм: барабан, купол, крест и порталы с диоритовыми колоннами ----
     // Владимирский собор — неовизантийский крестово-купольный, 32.5 м с крестом.
     // Корпус даёт контур OSM (он крестообразный), сверху ставим четверик,

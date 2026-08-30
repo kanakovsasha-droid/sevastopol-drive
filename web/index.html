@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
+<meta name="build" content="d019d8e7">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Севастополь</title>
 <style>
@@ -132,9 +133,26 @@
   <div id="err"></div>
 </div>
 
+<script>
+// Самопроверка свежести. GitHub Pages отдаёт index.html с cache-control 600 с,
+// и браузер держит СТАРУЮ страницу, а в ней старые адреса модулей — правки
+// уже на сервере, а на экране прежняя сборка. Спрашиваем версию мимо кеша
+// и, если она другая, перезагружаемся по НОВОМУ адресу: его в кеше нет.
+(async () => {
+  try {
+    const mine = document.querySelector('meta[name="build"]')?.content || '';
+    if (!mine) return;
+    const r = await fetch('../data/build.json?t=' + Date.now(), { cache: 'no-store' });
+    const { v } = await r.json();
+    if (v && v !== mine && !location.search.includes('v=' + v)) {
+      location.replace(location.pathname + '?v=' + v);
+    }
+  } catch { /* нет сети — работаем как есть */ }
+})();
+</script>
 <script type="importmap">
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
-<script type="module" src="./js/main.js?v=1e0f8d17"></script>
+<script type="module" src="./js/main.js?v=d019d8e7"></script>
 </body>
 </html>

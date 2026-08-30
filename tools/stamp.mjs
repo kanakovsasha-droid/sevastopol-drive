@@ -37,4 +37,14 @@ const ip = join(ROOT, 'web', 'index.html');
 const ib = readFileSync(ip, 'utf8');
 const ia = stampIn(ib);
 if (ia !== ib) { writeFileSync(ip, ia); n++; }
+// Штамп в самой странице и отдельный файл версии. Без этого дыра: адреса
+// модулей меняются, но index.html браузер держит из кеша по СТАРОМУ адресу
+// и грузит по нему старые модули — пользователь видит прежнюю сборку.
+writeFileSync(join(ROOT, 'data', 'build.json'), JSON.stringify({ v: V }));
+{
+  let h = readFileSync(ip, 'utf8');
+  h = h.replace(/<meta name="build"[^>]*>\n?/, '');
+  h = h.replace('<meta charset="utf-8">', `<meta charset="utf-8">\n<meta name="build" content="${V}">`);
+  writeFileSync(ip, h);
+}
 console.log(`версия ${V}, проштамповано файлов ${n}`);

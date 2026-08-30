@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=1e0f8d17';
-import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=1e0f8d17';
-import { buildStreetProps } from './props.js?v=1e0f8d17';
-import { buildFurniture } from './furniture.js?v=1e0f8d17';
-import { buildLandmarks } from './landmarks.js?v=1e0f8d17';
-import { buildSigns } from './signs.js?v=1e0f8d17';
-import { audit } from './audit.js?v=1e0f8d17';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=1e0f8d17';
-import { Collider, RoadIndex } from './collision.js?v=1e0f8d17';
-import { Car, createCarMesh } from './vehicle.js?v=1e0f8d17';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=d019d8e7';
+import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=d019d8e7';
+import { buildStreetProps } from './props.js?v=d019d8e7';
+import { buildFurniture } from './furniture.js?v=d019d8e7';
+import { buildLandmarks } from './landmarks.js?v=d019d8e7';
+import { buildSigns } from './signs.js?v=d019d8e7';
+import { audit } from './audit.js?v=d019d8e7';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=d019d8e7';
+import { Collider, RoadIndex } from './collision.js?v=d019d8e7';
+import { Car, createCarMesh } from './vehicle.js?v=d019d8e7';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -68,8 +68,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=1e0f8d17').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=1e0f8d17').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=d019d8e7').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=d019d8e7').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
