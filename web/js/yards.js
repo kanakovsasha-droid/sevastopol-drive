@@ -309,3 +309,269 @@ export function buildYards(world, terrain) {
   group.userData.stats = stats;
   return group;
 }
+
+// ---------------------------------------------------------------- сооружения
+// Мост-путепровод, платформы с навесами, составы, трибуна, часовня и фонтаны.
+// Все размеры сняты агентами по панорамам и спутнику (data/places.json).
+const CONCRETE = [0.686, 0.671, 0.635];
+const CONCRETE_D = [0.541, 0.529, 0.498];
+const RAIL_STEEL = [0.48, 0.48, 0.50];
+const WATER_C = [0.216, 0.416, 0.478];
+
+const hexTo = h => {
+  const v = parseInt(String(h || '#999999').slice(1), 16);
+  return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
+};
+
+export function buildStructures(world, terrain) {
+  const group = new THREE.Group();
+  group.name = 'structures';
+  const H = (x, z) => terrain.gridHeightAt(x, z);
+  const parts = [];
+  const stats = {};
+  const bump = k => { stats[k] = (stats[k] || 0) + 1; };
+
+  const P = world.places || {};
+
+  // ---- мост-путепровод: плита на опорах, тумбы и решётчатые перила
+  for (const s of P.structures || []) {
+    if (s.k !== 'bridge') continue;
+    const [x0, z0] = s.from, [x1, z1] = s.to;
+    const L = Math.hypot(x1 - x0, z1 - z0) || 1;
+    const ux = (x1 - x0) / L, uz = (z1 - z0) / L;
+    const ang = Math.atan2(ux, uz);
+    const w = s.w, deck = s.deck;
+    const col = hexTo(s.color);
+    const gy = Math.min(H(x0, z0), H(x1, z1));
+    const yDeck = gy + deck;
+    const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+    // плита пролётного строения с балками снизу
+    const slab = new THREE.BoxGeometry(w, 0.55, L);
+    slab.rotateY(ang); slab.translate(mx, yDeck, mz);
+    parts.push({ geo: slab, color: col });
+    for (let i = 0; i < 5; i++) {
+      const off = (i / 4 - 0.5) * (w - 2.2);
+      const beam = new THREE.BoxGeometry(0.55, 1.15, L);
+      beam.rotateY(ang);
+      beam.translate(mx - uz * off, yDeck - 0.85, mz + ux * off);
+      parts.push({ geo: beam, color: CONCRETE_D });
+    }
+    // устои по краям и промежуточные опоры по числу пролётов
+    const spans = Math.max(1, s.spans | 0);
+    for (let i = 0; i <= spans; i++) {
+      const t = i / spans;
+      const px = x0 + (x1 - x0) * t, pz = z0 + (z1 - z0) * t;
+      const g0 = H(px, pz);
+      const hgt = Math.max(1.0, yDeck - 1.4 - g0);
+      const isEnd = i === 0 || i === spans;
+      const pw = isEnd ? w + 1.2 : w * 0.9;
+      const pd = isEnd ? 3.0 : Math.max(1.2, s.pier);
+      const pier = new THREE.BoxGeometry(pw, hgt, pd);
+      pier.rotateY(ang);
+      pier.translate(px, g0 + hgt / 2, pz);
+      parts.push({ geo: pier, color: isEnd ? CONCRETE_D : CONCRETE });
+      if (!isEnd) {                       // ригель поверх промежуточной опоры
+        const cap = new THREE.BoxGeometry(w * 0.95, 0.8, pd + 1.4);
+        cap.rotateY(ang);
+        cap.translate(px, g0 + hgt + 0.4, pz);
+        parts.push({ geo: cap, color: CONCRETE_D });
+      }
+    }
+    // бортик и решётчатое ограждение по обеим кромкам
+    for (const sg of [-1, 1]) {
+      const off = sg * (w / 2 - 0.25);
+      const kerb = new THREE.BoxGeometry(0.5, 0.42, L);
+      kerb.rotateY(ang);
+      kerb.translate(mx - uz * off, yDeck + 0.48, mz + ux * off);
+      parts.push({ geo: kerb, color: CONCRETE_D });
+      const nPost = Math.max(2, Math.round(L / 2.4));
+      for (let i = 0; i <= nPost; i++) {
+        const t = i / nPost;
+        const px = x0 + (x1 - x0) * t - uz * off, pz = z0 + (z1 - z0) * t + ux * off;
+        const post = new THREE.BoxGeometry(0.09, s.railH, 0.09);
+        post.rotateY(ang); post.translate(px, yDeck + 0.69 + s.railH / 2, pz);
+        parts.push({ geo: post, color: RAIL_STEEL });
+      }
+      for (const yy of [0.2, s.railH - 0.06]) {       // верхний и нижний пояс
+        const rail = new THREE.BoxGeometry(0.07, 0.09, L);
+        rail.rotateY(ang);
+        rail.translate(mx - uz * off, yDeck + 0.69 + yy, mz + ux * off);
+        parts.push({ geo: rail, color: RAIL_STEEL });
+      }
+      // редкая решётка между поясами
+      const nBar = Math.max(2, Math.round(L / 0.9));
+      for (let i = 0; i <= nBar; i++) {
+        const t = i / nBar;
+        const px = x0 + (x1 - x0) * t - uz * off, pz = z0 + (z1 - z0) * t + ux * off;
+        const bar = new THREE.BoxGeometry(0.04, s.railH - 0.3, 0.04);
+        bar.rotateY(ang); bar.translate(px, yDeck + 0.84 + (s.railH - 0.3) / 2, pz);
+        parts.push({ geo: bar, color: RAIL_STEEL });
+      }
+    }
+    // разделительный барьер посередине
+    const barr = new THREE.BoxGeometry(0.35, 0.75, L);
+    barr.rotateY(ang); barr.translate(mx, yDeck + 0.65, mz);
+    parts.push({ geo: barr, color: RAIL_STEEL });
+    bump('мостов');
+  }
+
+  // ---- платформы с навесами
+  for (const s of P.structures || []) {
+    if (s.k !== 'platform') continue;
+    const [x0, z0] = s.from, [x1, z1] = s.to;
+    const L = Math.hypot(x1 - x0, z1 - z0) || 1;
+    const ux = (x1 - x0) / L, uz = (z1 - z0) / L;
+    const ang = Math.atan2(ux, uz);
+    const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+    const gy = (H(x0, z0) + H(x1, z1)) / 2;
+    const deck = new THREE.BoxGeometry(s.w, s.h, L);
+    deck.rotateY(ang); deck.translate(mx, gy + s.h / 2, mz);
+    parts.push({ geo: deck, color: CONCRETE });
+    // жёлтая линия безопасности по кромкам
+    for (const sg of [-1, 1]) {
+      const off = sg * (s.w / 2 - 0.55);
+      const line = new THREE.BoxGeometry(0.35, 0.03, L);
+      line.rotateY(ang);
+      line.translate(mx - uz * off, gy + s.h + 0.02, mz + ux * off);
+      parts.push({ geo: line, color: [0.78, 0.62, 0.13] });
+    }
+    if (s.canopy) {
+      const ch = s.canopyH;
+      const nCol = Math.max(2, Math.round(L / 9));
+      for (let i = 0; i <= nCol; i++) {
+        const t = i / nCol;
+        const px = x0 + (x1 - x0) * t, pz = z0 + (z1 - z0) * t;
+        const c = new THREE.CylinderGeometry(0.14, 0.16, ch, 10);
+        c.translate(px, gy + s.h + ch / 2, pz);
+        parts.push({ geo: c, color: [0.15, 0.31, 0.52] });
+      }
+      const roofW = s.w + 1.6;
+      const roof = new THREE.BoxGeometry(roofW, 0.22, L);
+      roof.rotateY(ang); roof.translate(mx, gy + s.h + ch + 0.11, mz);
+      parts.push({ geo: roof, color: [0.22, 0.27, 0.33] });
+      for (const sg of [-1, 1]) {          // подзоры по кромке навеса
+        const off = sg * roofW / 2;
+        const fas = new THREE.BoxGeometry(0.16, 0.42, L);
+        fas.rotateY(ang);
+        fas.translate(mx - uz * off, gy + s.h + ch - 0.10, mz + ux * off);
+        parts.push({ geo: fas, color: [0.15, 0.31, 0.52] });
+      }
+    }
+    bump('платформ');
+  }
+
+  // ---- составы: вагоны коробками по оси пути
+  for (const t of P.trains || []) {
+    const [x0, z0] = t.from, [x1, z1] = t.to;
+    const L = Math.hypot(x1 - x0, z1 - z0) || 1;
+    const ux = (x1 - x0) / L, uz = (z1 - z0) / L;
+    const ang = Math.atan2(ux, uz);
+    const body = hexTo(t.body), roofC = hexTo(t.roof);
+    const n = Math.max(1, t.cars | 0);
+    const step = Math.min(t.len + 1.2, L / n);
+    const gy = (H(x0, z0) + H(x1, z1)) / 2;
+    for (let i = 0; i < n; i++) {
+      const c = (i + 0.5) * step;
+      if (c > L) break;
+      const px = x0 + ux * c, pz = z0 + uz * c;
+      const car = new THREE.BoxGeometry(t.w, t.h - 1.0, Math.min(t.len, step - 0.8));
+      car.rotateY(ang); car.translate(px, gy + 1.05 + (t.h - 1.0) / 2, pz);
+      parts.push({ geo: car, color: body });
+      const rf = new THREE.BoxGeometry(t.w - 0.35, 0.35, Math.min(t.len, step - 0.8) - 0.5);
+      rf.rotateY(ang); rf.translate(px, gy + 1.05 + (t.h - 1.0) + 0.16, pz);
+      parts.push({ geo: rf, color: roofC });
+      // тележки и белая полоса по низу борта
+      for (const sg of [-1, 1]) {
+        const bog = new THREE.BoxGeometry(t.w - 0.6, 0.5, 2.6);
+        bog.rotateY(ang);
+        bog.translate(px + ux * sg * (step * 0.28), gy + 0.62, pz + uz * sg * (step * 0.28));
+        parts.push({ geo: bog, color: [0.13, 0.13, 0.14] });
+      }
+      const stripe = new THREE.BoxGeometry(t.w + 0.04, 0.22, Math.min(t.len, step - 0.8) - 0.2);
+      stripe.rotateY(ang); stripe.translate(px, gy + 1.35, pz);
+      parts.push({ geo: stripe, color: [0.86, 0.86, 0.84] });
+    }
+    bump('составов');
+  }
+
+  // ---- трибуна стадиона: наклонные ряды
+  for (const s of P.structures || []) {
+    if (s.k !== 'stands' || !s.poly) continue;
+    const q = s.poly, n = q.length / 2;
+    let cx = 0, cz = 0;
+    for (let i = 0; i < n; i++) { cx += q[i * 2]; cz += q[i * 2 + 1]; }
+    cx /= n; cz /= n;
+    // длинная сторона прямоугольника трибуны
+    let bx = 0, bz = 0, bl = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const dx = q[j * 2] - q[i * 2], dz = q[j * 2 + 1] - q[i * 2 + 1];
+      const l = Math.hypot(dx, dz);
+      if (l > bl) { bl = l; bx = dx / l; bz = dz / l; }
+    }
+    const ang = Math.atan2(bx, bz);
+    const g0 = H(cx, cz);
+    const rows = 8, depth = 13.1;
+    for (let i = 0; i < rows; i++) {
+      const d = depth * (i / rows) - depth / 2;
+      const step = new THREE.BoxGeometry(bl, 0.45, depth / rows + 0.05);
+      step.rotateY(ang);
+      step.translate(cx - bz * d, g0 + 0.3 + i * 0.42, cz + bx * d);
+      parts.push({ geo: step, color: i % 2 ? CONCRETE : CONCRETE_D });
+      const seat = new THREE.BoxGeometry(bl - 0.6, 0.10, 0.42);
+      seat.rotateY(ang);
+      seat.translate(cx - bz * (d + 0.25), g0 + 0.55 + i * 0.42, cz + bx * (d + 0.25));
+      parts.push({ geo: seat, color: [0.15, 0.33, 0.55] });
+    }
+    bump('трибун');
+  }
+
+  // ---- часовня на кладбище
+  for (const s of P.structures || []) {
+    if (s.k !== 'chapel') continue;
+    const g0 = H(s.x, s.z);
+    const body = new THREE.BoxGeometry(s.w, s.h, s.d);
+    body.translate(s.x, g0 + s.h / 2, s.z);
+    parts.push({ geo: body, color: [0.851, 0.827, 0.769] });
+    const dome = new THREE.SphereGeometry(s.w * 0.42, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    dome.scale(1, 0.72, 1); dome.translate(s.x, g0 + s.h, s.z);
+    parts.push({ geo: dome, color: [0.42, 0.44, 0.46] });
+    const cr = new THREE.BoxGeometry(0.08, 1.1, 0.08);
+    cr.translate(s.x, g0 + s.h + s.w * 0.30 + 0.55, s.z);
+    parts.push({ geo: cr, color: [0.85, 0.70, 0.20] });
+    const cb = new THREE.BoxGeometry(0.5, 0.08, 0.08);
+    cb.translate(s.x, g0 + s.h + s.w * 0.30 + 0.75, s.z);
+    parts.push({ geo: cb, color: [0.85, 0.70, 0.20] });
+    bump('часовен');
+  }
+
+  // ---- фонтаны и лестницы парков
+  for (const f of P.features || []) {
+    if (f.k === 'fountain') {
+      const R = Math.max(3, (f.r || f.d || 12) / (f.r ? 1 : 2));
+      const g0 = H(f.x, f.z);
+      const rim = new THREE.CylinderGeometry(R, R, 0.55, 24);
+      rim.translate(f.x, g0 + 0.28, f.z);
+      parts.push({ geo: rim, color: CONCRETE });
+      const water = new THREE.CylinderGeometry(R - 0.45, R - 0.45, 0.5, 24);
+      water.translate(f.x, g0 + 0.34, f.z);
+      parts.push({ geo: water, color: WATER_C });
+      const cup = new THREE.CylinderGeometry(R * 0.22, R * 0.30, 0.9, 12);
+      cup.translate(f.x, g0 + 0.9, f.z);
+      parts.push({ geo: cup, color: CONCRETE_D });
+      const jet = new THREE.CylinderGeometry(0.06, 0.12, 2.4, 8);
+      jet.translate(f.x, g0 + 2.3, f.z);
+      parts.push({ geo: jet, color: [0.78, 0.86, 0.90] });
+      bump('фонтанов');
+    }
+  }
+
+  if (!parts.length) { group.userData.stats = stats; return group; }
+  const mesh = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.80, metalness: 0.08,
+  }));
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  group.add(mesh);
+  group.userData.stats = stats;
+  return group;
+}

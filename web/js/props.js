@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=ace257ea';
+import { PolyGrid } from './worldgen.js?v=99780972';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,
@@ -442,8 +442,12 @@ export function buildStreetProps(world, terrain, roadIndex) {
     'багряник': 'olive', 'фисташка': 'olive', 'фисташка туполистая': 'olive',
     'клён': 'platan', 'липа': 'platan', 'дуб': 'platan', 'ясень': 'platan',
   };
-  let measured = 0;
+  let measured = 0, onAsphalt = 0;
   for (const t of (world.places && world.places.trees) || []) {
+    // Обмер снят по спутнику, а полотно у меня своей ширины: часть посадок
+    // попадает на асфальт. Такие не сажаем — дерево посреди дороги хуже,
+    // чем отсутствующее дерево.
+    if (onRoad(t.x, t.z)) { onAsphalt++; continue; }
     const key = (t.sp || '').toLowerCase();
     const sp = SPEC_MAP[key] || (key.includes('кипар') ? 'cypress' : key.includes('сосн') ? 'pine' : 'platan');
     const list = bins[sp] || bins.platan;
@@ -592,7 +596,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
   let nL = 0;
   for (const k in LAMP_GEO) nL += place(LAMP_GEO[k], lampBins[k], false);
 
-  group.userData.counts = { деревья: nT, 'из них обмеренных': measured, кусты: nB, изгороди: nH, фонари: nL, чанков: group.children.length };
+  group.userData.counts = { деревья: nT, 'из них обмеренных': measured, 'снято с асфальта': onAsphalt, кусты: nB, изгороди: nH, фонари: nL, чанков: group.children.length };
   group.userData.species = byKind;
   group.userData.onRoad = onRoad;   // тем же растром пользуется уличная мебель
   return group;
