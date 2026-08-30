@@ -1,10 +1,29 @@
 import * as THREE from 'three';
+import { PolyGrid } from './worldgen.js?v=143db211';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
 
 const s2l = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 const rng = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+
+// ---------------------------------------------------------------- контуры домов
+// buildFurniture получает только точки, рельеф, индекс дорог и растр асфальта —
+// контуров зданий среди них нет. А без них павильон встаёт прямо в стену: в
+// сырых данных OSM внутри домов лежат 9 остановок из 117, все 11 почтовых
+// ящиков и 74 «киоска» (банкоматы отмечены узлом на стене банка). Поэтому
+// контуры подтягиваем сами — один раз на модуль и заранее: импорт случается
+// за десятки секунд до вызова buildFurniture, к нему ответ давно пришёл.
+// Адрес пишем шаблонной строкой, чтобы tools/stamp.mjs не приклеил ?v=: тогда
+// он совпадает с адресом из terrain.js, и на Pages (там ответ кешируемый)
+// браузер отдаст мир из кеша вместо второй закачки. На локальном сервере
+// заголовок no-store, так что там это честное второе чтение с 127.0.0.1.
+let BUILDINGS = null;
+fetch(`../data/world.json`)
+  .then(r => r.json())
+  // держим ТОЛЬКО контуры: вторая копия всего мира в памяти нам не нужна
+  .then(w => { BUILDINGS = new PolyGrid(w.buildings.map(b => ({ poly: b.poly, holes: b.holes })), 90); })
+  .catch(() => { BUILDINGS = null; });   // не пришло — просто не проверяем дома
 
 function merge(parts) {
   let nv = 0, ni = 0;
@@ -139,61 +158,174 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
 
   const mat = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.1 });
 
-  // ставим объект лицом к ближайшей дороге — иначе остановки смотрят в стену
-  const facing = (x, z) => {
-    const hit = roadIndex.nearest(x, z, 40);
-    if (!hit) return rand() * 6.283;
-    return Math.atan2(hit.x - x, hit.z - z);
+  // ---------------- где можно стоять ----------------
+  const asphalt = (x, z) => !!(onRoad && onRoad(x, z));
+  const inHouse = (x, z) => !!(BUILDINGS && BUILDINGS.find(x, z));
+  // Остановка привязывается только к ПРОЕЗЖЕЙ улице: тропинка в сквере и
+  // лестница — не маршрут автобуса, а nearest() без фильтра цепляет именно их.
+  const DRIVE = r => r.c <= 3 && r.w >= 4;
+
+  // Габариты корпусов в локальных осях объекта: +z смотрит «лицом».
+  // Проверять одну точку мало — павильон 4 м в длину: центр на тротуаре,
+  // а угол уже на полосе.
+  const FP = {
+    shelter: [[0, 0], [-2.0, -1.2], [2.0, -1.2], [-2.0, 0.2], [2.0, 0.2], [0, -0.5]],
+    kiosk:   [[0, 0], [-1.25, -1.05], [1.25, -1.05], [-1.25, 1.05], [1.25, 1.05]],
+    bench:   [[0, 0], [-0.9, -0.3], [0.9, -0.3], [-0.9, 0.25], [0.9, 0.25]],
+    pole:    [[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]],
+  };
+  // поворот на a вокруг Y: локальный +z уходит в (sin a, cos a) — как у props.js
+  const probe = (x, z, a, fp, f) => {
+    const ca = Math.cos(a), sa = Math.sin(a);
+    for (const [lx, lz] of fp)
+      if (f(x + lx * ca + lz * sa, z - lx * sa + lz * ca)) return true;
+    return false;
+  };
+  const clear = (x, z, a, fp) =>
+    !probe(x, z, a, fp, (px, pz) => asphalt(px, pz) || inHouse(px, pz));
+
+  const faceRoad = (x, z, R = 40, filter = null) => {
+    const hit = roadIndex.nearest(x, z, R, filter);
+    return hit ? Math.atan2(hit.x - x, hit.z - z) : null;
   };
 
-  // Светофор в OSM отмечен узлом на пересечении осевых, то есть ровно посреди
-  // перекрёстка. В жизни он стоит у бордюра — отодвигаем его с проезжей части.
-  const offRoad = (p) => {
-    if (!onRoad || !onRoad(p.x, p.z)) return p;
-    for (let r = 3; r <= 18; r += 1.5)
-      for (let a = 0; a < 12; a++) {
-        const t = a / 12 * Math.PI * 2;
-        const x = p.x + Math.cos(t) * r, z = p.z + Math.sin(t) * r;
-        if (!onRoad(x, z)) return { ...p, x, z };
+  // Пробы сдвига вдоль улицы: сначала на месте, потом всё дальше в обе стороны.
+  const ALONG = [0];
+  for (let t = 4; t <= 32; t += 4) ALONG.push(t, -t);
+
+  // Остановка в OSM — это узел платформы у дороги, и стоит он как попало:
+  // 30 из 117 попадают на проезжую часть, 9 — внутрь дома. Привязываем каждую
+  // к ближайшей ПРОЕЗЖЕЙ улице и ставим на её тротуар: отступ от осевой =
+  // полширины полотна плюс бордюр, лицом к дороге. Если корпус не влезает —
+  // отодвигаем дальше от бордюра, потом едем вдоль улицы и лишь в крайнем
+  // случае переходим на другую обочину: остановка обязана остаться у дороги.
+  const snapToKerb = (p, fp, base, along = false) => {
+    const hit = roadIndex.nearest(p.x, p.z, 45, DRIVE) || roadIndex.nearest(p.x, p.z, 120, DRIVE);
+    if (!hit) return null;
+    const road = hit.road;
+    // сторону берём ту, где точка лежала в данных: это единственное, что OSM
+    // сообщает о платформе — на какой обочине она была
+    const side0 = Math.sign((p.x - hit.x) * -hit.dirZ + (p.z - hit.z) * hit.dirX) || 1;
+    // Порядок проб не случаен: своя обочина важнее всего — на ней автобус и
+    // останавливается. Поэтому сперва вычерпываем её целиком (отступ от
+    // бордюра, затем сдвиг вдоль улицы) и только потом идём на противоположную.
+    for (const s of [side0, -side0])
+      for (const t of ALONG) {
+        // на сдвиге вдоль улицы заново садимся на ЕЁ ЖЕ осевую: на повороте
+        // направление сегмента меняется, и отступ по старой нормали уводит в дом
+        const h = t === 0 ? hit
+          : (roadIndex.nearest(hit.x + hit.dirX * t, hit.z + hit.dirZ * t, 25, r => r === road) || hit);
+        const nx = -h.dirZ, nz = h.dirX;
+        for (let extra = 0; extra <= 3.2; extra += 0.8) {
+          const d = road.w / 2 + base + extra;
+          const x = h.x + nx * s * d, z = h.z + nz * s * d;
+          // поперёк — лицом на осевую; вдоль — навстречу потоку своей стороны
+          const a = along ? Math.atan2(-s * h.dirX, -s * h.dirZ)
+                          : Math.atan2(-s * nx, -s * nz);
+          if (clear(x, z, a, fp)) return { x, z, a };
+        }
       }
-    return p;
+    return null;
   };
 
-  const put = (kind, geo, list, orient, shift) => {
-    if (!list?.length) return;
+  // Скамейку, урну и банкомат к дороге не тащим: они законно стоят в парке и во
+  // дворе. Прежний offRoad искал выход только если точка лежала на асфальте, и
+  // искал его вслепую — координата уезжала в стену дома. Теперь условие полное
+  // (весь корпус вне асфальта И вне дома), а спираль проверяет то же, что ставит.
+  const offRoad = (p, fp, angleAt) => {
+    const a0 = angleAt(p.x, p.z, null);
+    if (clear(p.x, p.z, a0, fp)) return { x: p.x, z: p.z, a: a0 };
+    for (let r = 1; r <= 14; r++)
+      for (let k = 0; k < 16; k++) {
+        const t = k / 16 * Math.PI * 2;
+        const x = p.x + Math.cos(t) * r, z = p.z + Math.sin(t) * r;
+        // угол считаем для КАЖДОГО кандидата и проверяем вместе с ним: повернуть
+        // корпус после проверки — значит проверить не то, что поставили
+        const a = angleAt(x, z, Math.atan2(x - p.x, z - p.z));
+        if (clear(x, z, a, fp)) return { x, z, a };
+      }
+    // выхода нет — оставляем на месте: утонуть в стене лучше, чем улететь за квартал
+    return { x: p.x, z: p.z, a: a0 };
+  };
+
+  let movedTotal = 0, movedMax = 0;
+  // place(p) → {x, z, a}. Возвращаем расставленный список: таблички остановок
+  // должны сесть на ИТОГОВЫЕ места, раньше они висели по исходным точкам OSM
+  // и разъезжались с павильонами.
+  const put = (kind, geo, list, place) => {
+    if (!list?.length) return [];
     const m = new THREE.InstancedMesh(geo, mat(), list.length);
     m.castShadow = true;
     const mx = new THREE.Matrix4(), q = new THREE.Quaternion(),
           up = new THREE.Vector3(0, 1, 0), pv = new THREE.Vector3(), sv = new THREE.Vector3(1, 1, 1);
+    const out = [];
     list.forEach((p0, i) => {
-      const p = shift ? offRoad(p0) : p0;
-      pv.set(p.x, H(p.x, p.z), p.z);
-      q.setFromAxisAngle(up, orient ? facing(p.x, p.z) : rand() * 6.283);
+      const r = place(p0) || { x: p0.x, z: p0.z, a: rand() * 6.283 };
+      const dm = Math.hypot(r.x - p0.x, r.z - p0.z);
+      if (dm > 0.05) { movedTotal++; if (dm > movedMax) movedMax = dm; }
+      pv.set(r.x, H(r.x, r.z), r.z);
+      q.setFromAxisAngle(up, r.a);
       m.setMatrixAt(i, mx.compose(pv, q, sv));
+      out.push({ ...p0, x: r.x, z: r.z, a: r.a });
     });
     m.instanceMatrix.needsUpdate = true;
     group.add(m);
     stats[kind] = list.length;
+    return out;
   };
 
-  put('остановки', shelterGeo(), byKind.bus_stop, true, true);
-  put('скамейки', benchGeo(), byKind.bench, true);
-  put('урны', binGeo(), byKind.bin, false);
-  put('светофоры', trafficGeo(), byKind.traffic_light, true, true);
-  put('киоски', kioskGeo(), byKind.kiosk, true, true);
-  put('павильоны', shelterGeo(), byKind.shelter, true);
-  put('почта', binGeo(), byKind.postbox, false);
-  put('флагштоки', poleGeo(8.5, 0.09, [0.78, 0.78, 0.76]), byKind.flagpole, false);
-  put('фонари OSM', poleGeo(7.5, 0.10, STEEL), byKind.lamp, false, true);
+  const anyAngle = () => rand() * 6.283;
+
+  const stops = put('остановки', shelterGeo(), byKind.bus_stop,
+    p => snapToKerb(p, FP.shelter, 1.2)
+      || offRoad(p, FP.shelter, (x, z) => faceRoad(x, z, 60) ?? anyAngle()));
+  // скамейка садится лицом к ближайшей дороге ИЛИ дорожке — в сквере это аллея
+  put('скамейки', benchGeo(), byKind.bench,
+    p => offRoad(p, FP.bench, (x, z) => faceRoad(x, z, 30) ?? anyAngle()));
+  put('урны', binGeo(), byKind.bin, p => offRoad(p, FP.pole, anyAngle));
+  // Светофор в OSM отмечен узлом на пересечении осевых, ровно посреди
+  // перекрёстка — там на асфальте стоят все 14. Выносим на бордюр и
+  // разворачиваем ВДОЛЬ улицы, навстречу потоку: линзами поперёк дороги,
+  // как было раньше, светофор смотреть не может.
+  put('светофоры', trafficGeo(), byKind.traffic_light,
+    p => snapToKerb(p, FP.pole, 0.9, true) || offRoad(p, FP.pole, anyAngle));
+  // «Киоск» — это банкомат, автомат или таксофон, а OSM вешает их узлом на
+  // стену: 74 из 94 лежат внутри контура дома, где коробка просто тонет.
+  // Выталкиваем наружу и разворачиваем ОТ стены, лицом на улицу.
+  put('киоски', kioskGeo(), byKind.kiosk,
+    p => offRoad(p, FP.kiosk, (x, z, out) => out ?? faceRoad(x, z, 45) ?? anyAngle()));
+  put('павильоны', shelterGeo(), byKind.shelter,
+    p => offRoad(p, FP.shelter, (x, z) => faceRoad(x, z, 40) ?? anyAngle()));
+  put('почта', binGeo(), byKind.postbox, p => offRoad(p, FP.pole, anyAngle));
+  put('флагштоки', poleGeo(8.5, 0.09, [0.78, 0.78, 0.76]), byKind.flagpole,
+    p => offRoad(p, FP.pole, anyAngle));
+  put('фонари OSM', poleGeo(7.5, 0.10, STEEL), byKind.lamp, p => offRoad(p, FP.pole, anyAngle));
+
+  // ---------------- замер: остановки на асфальте до и после ----------------
+  // Растр тот же самый, что у дорог, деревьев и аудита (world.__coverage →
+  // onRoad), иначе «было» и «стало» меряются разными линейками.
+  {
+    const raw = byKind.bus_stop || [];
+    const ang = p => p.a ?? (faceRoad(p.x, p.z, 40) ?? 0);
+    const pt = (list, f) => list.filter(p => f(p.x, p.z)).length;
+    const body = (list, f) => list.filter(p => probe(p.x, p.z, ang(p), FP.shelter, f)).length;
+    stats['остановки на асфальте'] = `${pt(raw, asphalt)} → ${pt(stops, asphalt)}`;
+    stats['остановки в доме'] = `${pt(raw, inHouse)} → ${pt(stops, inHouse)}`;
+    stats['павильон задевает асфальт или дом'] =
+      `${body(raw, (x, z) => asphalt(x, z) || inHouse(x, z))} → `
+      + `${body(stops, (x, z) => asphalt(x, z) || inHouse(x, z))}`;
+    stats['переставлено объектов'] = `${movedTotal} (макс сдвиг ${movedMax.toFixed(1)} м)`;
+    if (!BUILDINGS) stats['контуры домов'] = 'не загрузились — проверка по домам пропущена';
+  }
 
   // ---------------- таблички с именами остановок ----------------
-  const named = (byKind.bus_stop || []).filter(p => p.n);
+  const named = stops.filter(p => p.n);
   if (named.length) {
     const { tex, COLS, ROWS } = nameAtlas(named.map(p => p.n));
     const P = [], N = [], U = [], I = [];
     const W = 2.6, Hh = 0.42, Y = 2.85;
     named.forEach((p, i) => {
-      const a = facing(p.x, p.z);
+      const a = p.a;                                   // тот же угол, что у павильона
       const ux = Math.cos(a), uz = -Math.sin(a);       // вдоль таблички
       const y = H(p.x, p.z) + Y;
       const base = P.length / 3;

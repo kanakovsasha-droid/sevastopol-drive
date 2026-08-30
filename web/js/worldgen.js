@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=d019d8e7';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=d019d8e7';
-import { buildCoverage } from './coverage.js?v=d019d8e7';
+import { SEA_FLOOR } from './terrain.js?v=143db211';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=143db211';
+import { buildCoverage } from './coverage.js?v=143db211';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -974,6 +974,55 @@ function obb(poly) {
   return best;
 }
 
+// Контур, сдвинутый по биссектрисам на d внутрь (d>0) или наружу (d<0).
+// Каждая точка уезжает так, чтобы РАССТОЯНИЕ до обоих смежных рёбер стало
+// ровно |d| — иначе на углу между соседними скатами остаётся открытый клин.
+function offsetPoly(p, d) {
+  const n = p.length / 2;
+  if (n < 3) return null;
+  const out = new Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const h = (i - 1 + n) % n, j = (i + 1) % n;
+    const e1x = p[i * 2] - p[h * 2], e1z = p[i * 2 + 1] - p[h * 2 + 1];
+    const e2x = p[j * 2] - p[i * 2], e2z = p[j * 2 + 1] - p[i * 2 + 1];
+    const l1 = Math.hypot(e1x, e1z) || 1, l2 = Math.hypot(e2x, e2z) || 1;
+    // контур OSM обходится против часовой, внутренняя нормаль ребра — (-dz, dx)
+    const n1x = -e1z / l1, n1z = e1x / l1, n2x = -e2z / l2, n2z = e2x / l2;
+    let mx = n1x + n2x, mz = n1z + n2z;
+    const ml = Math.hypot(mx, mz);
+    if (ml < 0.2) return null;          // разворот на 180°: биссектрисы нет
+    mx /= ml; mz /= ml;
+    // на игле биссектриса уходит в бесконечность — режем вынос
+    const k = Math.min(2.4, 1 / Math.max(0.42, mx * n1x + mz * n1z));
+    out[i * 2] = p[i * 2] + mx * d * k;
+    out[i * 2 + 1] = p[i * 2 + 1] + mz * d * k;
+  }
+  return out;
+}
+// Знаковая площадь: у вывернутого сжатием контура она падает и уходит в минус.
+function signedArea(p) {
+  let a = 0;
+  for (let i = 0, n = p.length / 2; i < n; i++) {
+    const j = (i + 1) % n;
+    a += p[i * 2] * p[j * 2 + 1] - p[j * 2] * p[i * 2 + 1];
+  }
+  return a / 2;
+}
+// Полуглубина корпуса: насколько контур сжимается, пока не схлопнется.
+// Именно от неё зависит ширина ската: у узкого крыла скаты должны сойтись
+// в конёк, у широкого — оставить палубу, одна цифра на все дома тут врёт.
+function corpsHalfDepth(p, a0) {
+  let best = 0, prev = a0;
+  for (let d = 0.5; d <= 9; d += 0.5) {
+    const q = offsetPoly(p, d);
+    if (!q) break;
+    const a = signedArea(q);
+    if (a <= a0 * 0.015 || a >= prev) break;   // схлопнулся или вывернулся
+    prev = a; best = d;
+  }
+  return best;
+}
+
 // ------------------------------------------------------- гаражный кооператив
 // В OSM кооператив обведён РЯДАМИ: один контур — целая линия боксов, иногда
 // с изломом. Выдавленный как есть, он даёт глухую плиту в 80 м длиной.
@@ -1122,11 +1171,53 @@ export function buildBuildings(world, terrain, chunk = 500) {
     return c;
   };
   const rand = rng(20260828);
+  // Доля скатных кровель — единственный способ увидеть регресс «дом снова стал
+  // коробкой» числом, а не глазами: лежит в userData меша.
+  const stats = { total: 0, pitched: 0, hip: 0, skirt: 0, flat: 0 };
   let cur = null;
   const pushV = (x, y, z, nx, ny, nz, c, wu, wv, wh, kind) => {
     cur.P.push(x, y, z); cur.N.push(nx, ny, nz);
     cur.C.push(enc(c[0]), enc(c[1]), enc(c[2]));
     cur.W.push(wu, wv, wh); cur.K.push(kind);
+  };
+
+  // Коробка с крышкой: труба и конёк. Крышку кладём всегда — открытый сверху
+  // параллелепипед на кровле просвечивает насквозь ровно так же, как дыра.
+  // (ax,az) — направление длинной полуоси ha, поперёк неё полуось hb.
+  const boxSolid = (cx, cz, ha, hb, y0, y1, col, kind, ax, az, Hb) => {
+    const bx = -az, bz = ax;
+    const c = [
+      [cx - ax * ha - bx * hb, cz - az * ha - bz * hb],
+      [cx + ax * ha - bx * hb, cz + az * ha - bz * hb],
+      [cx + ax * ha + bx * hb, cz + az * ha + bz * hb],
+      [cx - ax * ha + bx * hb, cz - az * ha + bz * hb],
+    ];
+    for (let i = 0; i < 4; i++) {
+      const A = c[i], B = c[(i + 1) % 4];
+      const dx = B[0] - A[0], dz = B[1] - A[1], l = Math.hypot(dx, dz) || 1;
+      const nx = dz / l, nz = -dx / l;
+      pushV(A[0], y0, A[1], nx, 0, nz, col, 0, 0, Hb, kind);
+      pushV(B[0], y1, B[1], nx, 0, nz, col, l, y1 - y0, Hb, kind);
+      pushV(B[0], y0, B[1], nx, 0, nz, col, l, 0, Hb, kind);
+      pushV(A[0], y0, A[1], nx, 0, nz, col, 0, 0, Hb, kind);
+      pushV(A[0], y1, A[1], nx, 0, nz, col, 0, y1 - y0, Hb, kind);
+      pushV(B[0], y1, B[1], nx, 0, nz, col, l, y1 - y0, Hb, kind);
+    }
+    // обход угловых точек против часовой; вверх грань смотрит при обратном
+    for (const t of [[c[0], c[2], c[1]], [c[0], c[3], c[2]]])
+      for (const q of t) pushV(q[0], y1, q[1], 0, 1, 0, col, q[0], q[1], Hb, kind);
+  };
+
+  // Конёк — брус по линии стыка скатов. Без него кровля обрывается ребром
+  // и издали читается как срезанный клин, а не как крыша.
+  const ridgeBar = (A, B, y, col, Hb) => {
+    const dx = B[0] - A[0], dz = B[1] - A[1], l = Math.hypot(dx, dz);
+    if (l < 2.2) return;                 // на коротком ребре брус не читается
+    // Концы вытянуты на полуширину, чтобы на углах брусья сошлись без щели.
+    // Брус низкий: при высоте больше ~12 см его теневой бок читается с крыши
+    // как чёрная щель в кровле, а не как конёк.
+    boxSolid((A[0] + B[0]) / 2, (A[1] + B[1]) / 2, l / 2 + 0.15, 0.15,
+             y - 0.05, y + 0.11, col, 1, dx / l, dz / l, Hb);
   };
 
   for (const b of world.buildings) {
@@ -1155,10 +1246,16 @@ export function buildBuildings(world, terrain, chunk = 500) {
     const wall = b.wc ? hexRGB(b.wc)
                : market ? MARKET_WALLS[(rand() * MARKET_WALLS.length) | 0]
                         : WALLS[(rand() * WALLS.length) | 0];
-    // до 5 этажей и небольшим пятном в Севастополе почти всегда скатная черепица;
-    // крупные корпуса и высотки — плоская кровля
-    const pitched = market || wantHip || (b.fx !== 'glass' && !b.school && !b.temple && b.h <= 18 && area <= 900 && n >= 4 && rand() < 0.92);
+    // Черепица в центре Севастополя лежит не только на маленьких домах:
+    // послевоенный квартал — это 5–7 этажей и корпуса в пол-квартала, и они
+    // тоже под скатом. Прежний порог (18 м / 900 м²) оставлял 700+ крупных,
+    // но невысоких домов плоскими — квартал вырождался в поле коробок.
+    // Школы, храмы, рынок и витражные корпуса не трогаем: у них своя кровля.
+    const pitched = market || wantHip ||
+      (b.fx !== 'glass' && !b.school && !b.temple && b.rs !== 'flat' &&
+       b.h <= 22 && area <= 2200 && n >= 4 && rand() < 0.92);
     const flatRoof = !pitched;
+    stats.total++; if (pitched) stats.pitched++;
     const roof = b.rc ? hexRGB(b.rc)
       : market ? MARKET_ROOF
       : flatRoof ? ROOFS_FLAT[(rand() * ROOFS_FLAT.length) | 0]
@@ -1285,15 +1382,31 @@ export function buildBuildings(world, terrain, chunk = 500) {
       }
     }
 
-    // Скатная кровля вместо плоской плиты — именно плоский верх и делал город
-    // набором коробок. Строим по охватывающему прямоугольнику: у почти
-    // прямоугольного пятна застройки вальма садится точно, свес выпускаем наружу.
-    // Вальма строится по охватывающему прямоугольнику. Если пятно скошенное
-    // или Г-образное, кровля разворачивается относительно стен и висит углом
-    // наружу — на угловых домах это бросается в глаза. Пускаем её только на
-    // почти прямоугольные пятна и только на небольшие дома.
-    const box = pitched ? obb(poly) : null;
-    if (box && area / box.area > 0.86 && area < 620) {
+    // Двор внутри контура (b.holes) кровлей не закрываем: сквозной колодец —
+    // примета севастопольского квартала, скат по внешнему контуру его затянет.
+    const roofable = pitched && !(b.holes && b.holes.length);
+
+    // Труба: 1–3 на дом по величине пятна. Скатная кровля без труб издали
+    // читается как палатка, силуэт квартала держится именно на них.
+    const chimneys = (spots, yDeck, ax, az) => {
+      const cc = [w[0] * 0.80, w[1] * 0.74, w[2] * 0.70];
+      for (const [cx, cz] of spots) {
+        const s = 0.32 + rand() * 0.16;
+        const ht = 1.05 + rand() * 0.85;
+        // низ утоплен в кровлю: труба стоит на скате, а он наклонный
+        boxSolid(cx, cz, s, s * 0.78, yDeck - 0.6, yDeck + ht, cc, 2, ax, az, Hb);
+        boxSolid(cx, cz, s + 0.11, s * 0.78 + 0.11, yDeck + ht - 0.14, yDeck + ht + 0.04,
+                 roof, 3, ax, az, Hb);
+      }
+    };
+    const nChim = area < 210 ? 1 : area < 900 ? 2 : 3;
+
+    // Вальма по охватывающему прямоугольнику даёт честный конёк только на
+    // почти прямоугольном пятне: у скошенного или Г-образного она разворачи-
+    // вается относительно стен и висит углом над двором. Поэтому здесь —
+    // только мелкие простые дома, всё остальное кроет «юбка» по контуру ниже.
+    const box = roofable ? obb(poly) : null;
+    if (box && area / box.area > 0.90 && area < 620) {
       const EAVE = 0.42;
       const { ux, uz } = box;
       const u0 = box.u0 - EAVE, u1 = box.u1 + EAVE;
@@ -1346,13 +1459,26 @@ export function buildBuildings(world, terrain, chunk = 500) {
         };
         soff(c1, c2, c3); soff(c1, c3, c4);
       }
+      ridgeBar(r1, r2, ridgeY, roof, Hb);
+      {
+        const dx = r2[0] - r1[0], dz = r2[1] - r1[1], dl = Math.hypot(dx, dz);
+        const ax = dl > 0.2 ? dx / dl : 1, az = dl > 0.2 ? dz / dl : 0;
+        const spots = [];
+        for (let k = 0; k < nChim; k++) {
+          const t = (k + 0.7 + rand() * 0.6) / (nChim + 0.4);
+          spots.push([r1[0] + dx * t, r1[1] + dz * t]);
+        }
+        chimneys(spots, ridgeY, ax, az);
+      }
+      stats.hip++;
       continue;
     }
 
-    // Вальма по контуру для корпусов, которым габаритная рамка не годится:
-    // у Г-образного здания она висит углом над двором. Здесь скат идёт вдоль
-    // КАЖДОЙ стены внутрь, а середину закрывает плоская палуба по коньку.
-    if (wantHip) {
+    // «Юбка» по контуру — основной способ скатной кровли. Скат идёт вдоль
+    // КАЖДОЙ стены внутрь, а середину закрывает палуба по коньку: у Г-образного
+    // корпуса и у скошенного пятна такая кровля садится на стены, а не висит
+    // углом над двором, как вальма по габаритной рамке.
+    if (roofable) {
       // Контуры OSM замкнуты дублем первой точки, а рядом попадаются вершины
       // в паре сантиметров: биссектриса на нулевом ребре уводит скат в стену.
       const poly2 = [];
@@ -1366,36 +1492,38 @@ export function buildBuildings(world, terrain, chunk = 500) {
           Math.hypot(poly2[0] - poly2[poly2.length - 2], poly2[1] - poly2[poly2.length - 1]) < 0.2)
         poly2.length -= 2;
       const n2 = poly2.length / 2;
-      const RW = Math.min(3.6, Math.sqrt(area) * 0.22), RH = Math.min(2.0, RW * 0.5);
-      const inner = new Array(n2 * 2);
-      let okIn = n2 >= 4;
-      for (let i = 0; okIn && i < n2; i++) {
-        const h = (i - 1 + n2) % n2, j = (i + 1) % n2;
-        const e1x = poly2[i * 2] - poly2[h * 2], e1z = poly2[i * 2 + 1] - poly2[h * 2 + 1];
-        const e2x = poly2[j * 2] - poly2[i * 2], e2z = poly2[j * 2 + 1] - poly2[i * 2 + 1];
-        const l1 = Math.hypot(e1x, e1z) || 1, l2 = Math.hypot(e2x, e2z) || 1;
-        // контур обходится против часовой, внутренняя нормаль ребра — (-dz, dx)
-        const n1x = -e1z / l1, n1z = e1x / l1, n2x = -e2z / l2, n2z = e2x / l2;
-        let mx = n1x + n2x, mz = n1z + n2z;
-        const ml = Math.hypot(mx, mz);
-        if (ml < 0.2) { okIn = false; break; }
-        mx /= ml; mz /= ml;
-        const k = Math.min(2.4, 1 / Math.max(0.42, (mx * n1x + mz * n1z)));
-        inner[i * 2] = poly2[i * 2] + mx * RW * k;
-        inner[i * 2 + 1] = poly2[i * 2 + 1] + mz * RW * k;
+      // Ширина ската — от глубины корпуса, а не от площади: узкое крыло
+      // должно сойтись в конёк (палуба вырождается в ленту), широкий корпус —
+      // оставить палубу. Одна цифра на все дома давала на флигелях плоский стол.
+      const half = n2 >= 4 ? corpsHalfDepth(poly2, area) : 0;
+      // У S- и Г-образного корпуса сжатый контур на изломах перехлёстывается
+      // сам с собой: earcut такой многоугольник не дотриангулирует, палуба
+      // выходит дырявой. Поэтому ширину ската подбираем — берём первую, при
+      // которой палуба закрывается полностью (n-2 треугольника) и не вылезает
+      // за стены. Не подошла ни одна — дом уходит на плоскую кровлю.
+      let inner = null, deck = null, cIn = null, RW = 0;
+      for (const f of [0.92, 0.62, 0.4, 0.25]) {
+        const rw = Math.min(4.2, half * f);
+        if (rw < 0.8) break;
+        const q = offsetPoly(poly2, rw);
+        if (!q || signedArea(q) <= 0.4) continue;
+        let ok = true;
+        for (let i = 0; ok && i < n2; i++) ok = pointInPoly(q[i * 2], q[i * 2 + 1], poly2);
+        if (!ok) continue;
+        const pts = [];
+        for (let i = 0; i < n2; i++) pts.push(new THREE.Vector2(q[i * 2], q[i * 2 + 1]));
+        let tri = [];
+        try { tri = THREE.ShapeUtils.triangulateShape(pts, []); } catch { tri = []; }
+        if (tri.length !== n2 - 2) continue;
+        inner = q; deck = tri; cIn = pts; RW = rw; break;
       }
-      const aIn = okIn ? polyArea(inner) : 0;
-      if (okIn && aIn > area * 0.16) {
+      const RH = Math.min(2.3, Math.max(0.9, RW * 0.62));
+      const outer = inner ? offsetPoly(poly2, -0.45) : null;   // свес наружу
+      if (inner && outer) {
         const eaveY = yTop, ridgeY = yTop + RH;
-        const EAVE_OUT = 0.45;
         for (let i = 0; i < n2; i++) {
           const j = (i + 1) % n2;
-          const ax = poly2[i * 2], az = poly2[i * 2 + 1];
-          const bx2 = poly2[j * 2], bz2 = poly2[j * 2 + 1];
-          const dx = bx2 - ax, dz = bz2 - az, l = Math.hypot(dx, dz);
-          if (l < 0.2) continue;
-          const ox = dz / l * EAVE_OUT, oz = -dx / l * EAVE_OUT;   // наружу
-          const A = [ax + ox, az + oz], B = [bx2 + ox, bz2 + oz];
+          const A = [outer[i * 2], outer[i * 2 + 1]], B = [outer[j * 2], outer[j * 2 + 1]];
           const C = [inner[j * 2], inner[j * 2 + 1]], D = [inner[i * 2], inner[i * 2 + 1]];
           const tri = (p1, y1, p2, y2, p3, y3) => {
             const u1 = [p2[0] - p1[0], y2 - y1, p2[1] - p1[1]];
@@ -1411,20 +1539,50 @@ export function buildBuildings(world, terrain, chunk = 500) {
             for (const [q, qy] of V)
               pushV(q[0], qy, q[1], nx, ny, nz, roof, q[0], q[1], Hb, 1);
           };
+          // Свес считаем тем же смещением по биссектрисам, что и палубу:
+          // при независимом сдвиге каждой стены на углах оставался открытый
+          // клин между соседними скатами — снизу в него было видно небо.
           tri(A, eaveY, B, eaveY, C, ridgeY);
           tri(A, eaveY, C, ridgeY, D, ridgeY);
+          // Софит: свес односторонний, снизу кровля просвечивала насквозь.
+          const P0 = [poly2[i * 2], poly2[i * 2 + 1]], P1 = [poly2[j * 2], poly2[j * 2 + 1]];
+          const soff = (p, q, r) => {
+            const e1 = [q[0] - p[0], 0, q[1] - p[1]];
+            const e2 = [r[0] - p[0], 0, r[1] - p[1]];
+            const ny = e1[2] * e2[0] - e1[0] * e2[2];
+            const V = ny > 0 ? [p, r, q] : [p, q, r];
+            for (const t of V) pushV(t[0], eaveY - 0.02, t[1], 0, -1, 0, roof, t[0], t[1], Hb, 1);
+          };
+          soff(P0, P1, B); soff(P0, B, A);
+          ridgeBar(D, C, ridgeY, roof, Hb);
         }
-        const cIn = [];
-        for (let i = 0; i < n2; i++) cIn.push(new THREE.Vector2(inner[i * 2], inner[i * 2 + 1]));
-        let fIn = [];
-        try { fIn = THREE.ShapeUtils.triangulateShape(cIn, []); } catch { fIn = []; }
-        for (const f of fIn) {
+        for (const f of deck) {
           const p0 = cIn[f[0]], p1 = cIn[f[1]], p2 = cIn[f[2]];
           if (!p0 || !p1 || !p2) continue;
           const cr = (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
           const t = cr > 0 ? [p0, p2, p1] : [p0, p1, p2];
           for (const q of t) pushV(q.x, ridgeY, q.y, 0, 1, 0, roof, q.x, q.y, Hb, 1);
         }
+        // Трубы ставим на палубу: точки берём с самих её рёбер, чтобы попасть
+        // на кровлю и у ленточной палубы узкого крыла, где выборка по bbox мажет.
+        {
+          let e0 = 0, eL = -1;
+          for (let i = 0; i < n2; i++) {
+            const j = (i + 1) % n2;
+            const l = Math.hypot(inner[j * 2] - inner[i * 2], inner[j * 2 + 1] - inner[i * 2 + 1]);
+            if (l > eL) { eL = l; e0 = i; }
+          }
+          const j0 = (e0 + 1) % n2;
+          const dx = inner[j0 * 2] - inner[e0 * 2], dz = inner[j0 * 2 + 1] - inner[e0 * 2 + 1];
+          const dl = Math.hypot(dx, dz) || 1;
+          const spots = [];
+          for (let k = 0; k < nChim; k++) {
+            const t = (k + 0.7 + rand() * 0.6) / (nChim + 0.4);
+            spots.push([inner[e0 * 2] + dx * t, inner[e0 * 2 + 1] + dz * t]);
+          }
+          chimneys(spots, ridgeY, dx / dl, dz / dl);
+        }
+        stats.skirt++;
         continue;
       }
     }
@@ -1447,6 +1605,7 @@ export function buildBuildings(world, terrain, chunk = 500) {
       // для кровли в атрибут кладём мировые координаты — по ним рисуется черепица
       for (const q of t) pushV(q.x, yTop, q.y, 0, 1, 0, roof, q.x, q.y, Hb, roofKind);
     }
+    stats.flat++;
   }
 
   const group = new THREE.Group();
@@ -1468,6 +1627,7 @@ export function buildBuildings(world, terrain, chunk = 500) {
     verts += ch.P.length / 3;
   }
   group.userData.verts = verts;
+  group.userData.roofStats = stats;
   return group;
 }
 
