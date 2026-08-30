@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=19e4895f';
+import { PolyGrid } from './worldgen.js?v=b5c48cbc';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
@@ -134,7 +134,7 @@ function trafficGeo() {
 // Щиток рисуем на холсте: круг, треугольник, восьмиугольник и цифры не собрать
 // из коробок так, чтобы знак читался с двадцати метров. Один атлас 512×512,
 // восемь клеток по 128 — весь набор.
-const SIGN_CELL = 128, SIGN_COLS = 4, SIGN_ROWS = 3;
+const SIGN_CELL = 256, SIGN_COLS = 4, SIGN_ROWS = 3;
 const CELL_GREY = 8;      // ровная серая клетка: изнанка щитка и сама стойка
 function signAtlas() {
   const cv = document.createElement('canvas');
@@ -144,76 +144,114 @@ function signAtlas() {
     g.save();
     g.translate((i % SIGN_COLS) * SIGN_CELL, Math.floor(i / SIGN_COLS) * SIGN_CELL);
     g.beginPath(); g.rect(0, 0, SIGN_CELL, SIGN_CELL); g.clip();
+    g.fillStyle = '#6d7075'; g.fillRect(0, 0, SIGN_CELL, SIGN_CELL);   // поле вокруг щитка
     draw(g, SIGN_CELL);
     g.restore();
   };
-  const disc = (g, S, fill, ring) => {
-    g.fillStyle = fill; g.beginPath(); g.arc(S / 2, S / 2, S * 0.46, 0, 7); g.fill();
-    g.strokeStyle = ring; g.lineWidth = S * 0.10;
-    g.beginPath(); g.arc(S / 2, S / 2, S * 0.40, 0, 7); g.stroke();
+  // Цвета по ГОСТ Р 52290: синий, красный и белый дорожных знаков.
+  const BLUE = '#1f4e9c', RED = '#c1272d', WHITE = '#f0eee7', BLACK = '#14161a';
+
+  // равносторонний треугольник, вписанный в поле; up=true — вершиной вверх
+  const tri = (g, S, up, fill, edge, pad) => {
+    const cx = S / 2, R = S * (0.5 - pad);
+    const pts = [];
+    for (let i = 0; i < 3; i++) {
+      const a = (up ? -Math.PI / 2 : Math.PI / 2) + i * 2.0944;
+      pts.push([cx + Math.cos(a) * R, S * 0.52 + Math.sin(a) * R]);
+    }
+    const round = (r) => {
+      g.beginPath();
+      for (let i = 0; i < 3; i++) {
+        const p0 = pts[i], p1 = pts[(i + 1) % 3];
+        i ? g.lineTo(p0[0], p0[1]) : g.moveTo(p0[0], p0[1]);
+        g.lineTo(p1[0], p1[1]);
+      }
+      g.closePath();
+      g.lineJoin = 'round'; g.lineWidth = r;
+    };
+    round(S * 0.06); g.fillStyle = edge; g.strokeStyle = edge; g.fill(); g.stroke();
+    g.save(); g.translate(cx, S * 0.52); g.scale(0.74, 0.74); g.translate(-cx, -S * 0.52);
+    round(S * 0.06); g.fillStyle = fill; g.strokeStyle = fill; g.fill(); g.stroke();
+    g.restore();
   };
-  const tri = (g, S, up, fill, edge) => {
-    g.fillStyle = fill; g.strokeStyle = edge; g.lineWidth = S * 0.09;
-    g.beginPath();
-    if (up) { g.moveTo(S / 2, S * 0.10); g.lineTo(S * 0.93, S * 0.84); g.lineTo(S * 0.07, S * 0.84); }
-    else { g.moveTo(S / 2, S * 0.90); g.lineTo(S * 0.93, S * 0.16); g.lineTo(S * 0.07, S * 0.16); }
-    g.closePath(); g.fill(); g.stroke();
+  // силуэт идущего человека — как на знаке 5.19: шаг, рука отведена назад
+  const walker = (g, S, cx, cy, h, col) => {
+    const u = h / 100;                       // человек высотой h пикселей
+    g.fillStyle = col; g.strokeStyle = col;
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    g.beginPath(); g.arc(cx + 2 * u, cy - 40 * u, 10 * u, 0, 7); g.fill();   // голова
+    g.lineWidth = 15 * u;                                                    // корпус
+    g.beginPath(); g.moveTo(cx + 2 * u, cy - 28 * u); g.lineTo(cx - 2 * u, cy - 2 * u); g.stroke();
+    g.lineWidth = 9 * u;                                                     // руки
+    g.beginPath(); g.moveTo(cx + 1 * u, cy - 24 * u); g.lineTo(cx + 20 * u, cy - 8 * u); g.stroke();
+    g.beginPath(); g.moveTo(cx + 1 * u, cy - 22 * u); g.lineTo(cx - 17 * u, cy - 30 * u); g.stroke();
+    g.lineWidth = 11 * u;                                                    // ноги в шаге
+    g.beginPath(); g.moveTo(cx - 1 * u, cy - 4 * u); g.lineTo(cx + 16 * u, cy + 34 * u); g.stroke();
+    g.beginPath(); g.moveTo(cx - 1 * u, cy - 4 * u); g.lineTo(cx - 18 * u, cy + 12 * u);
+    g.lineTo(cx - 20 * u, cy + 34 * u); g.stroke();
   };
-  const man = (g, S, cx, cy, k, col) => {         // силуэт пешехода
-    g.fillStyle = col;
-    g.beginPath(); g.arc(cx, cy - 13 * k, 5 * k, 0, 7); g.fill();
-    g.fillRect(cx - 4 * k, cy - 8 * k, 8 * k, 14 * k);
-    g.save(); g.translate(cx, cy + 6 * k); g.rotate(0.42);
-    g.fillRect(-3 * k, 0, 6 * k, 15 * k); g.restore();
-    g.save(); g.translate(cx, cy + 6 * k); g.rotate(-0.30);
-    g.fillRect(-3 * k, 0, 6 * k, 15 * k); g.restore();
-  };
-  // 5.19.1 — пешеходный переход: синий квадрат, белый треугольник, человек
+
+  // 5.19.1 — пешеходный переход: синий квадрат, белый треугольник,
+  // внутри человек, идущий по зебре. Полоски обязательны, без них знак
+  // читается как что угодно.
   cell(0, (g, S) => {
-    g.fillStyle = '#1b4d9b'; g.fillRect(S * 0.06, S * 0.06, S * 0.88, S * 0.88);
-    g.fillStyle = '#e9e9e5';
-    g.beginPath(); g.moveTo(S / 2, S * 0.16); g.lineTo(S * 0.86, S * 0.84); g.lineTo(S * 0.14, S * 0.84);
-    g.closePath(); g.fill();
-    man(g, S, S / 2, S * 0.58, 1.05, '#141414');
+    g.fillStyle = BLUE; g.fillRect(S * 0.03, S * 0.03, S * 0.94, S * 0.94);
+    g.fillStyle = WHITE;
+    g.beginPath(); g.moveTo(S / 2, S * 0.12); g.lineTo(S * 0.90, S * 0.88);
+    g.lineTo(S * 0.10, S * 0.88); g.closePath(); g.fill();
+    g.save();
+    g.beginPath(); g.moveTo(S / 2, S * 0.12); g.lineTo(S * 0.90, S * 0.88);
+    g.lineTo(S * 0.10, S * 0.88); g.closePath(); g.clip();
+    g.fillStyle = BLACK;                                   // зебра под ногами
+    for (let i = 0; i < 4; i++) g.fillRect(S * (0.16 + i * 0.19), S * 0.74, S * 0.10, S * 0.16);
+    walker(g, S, S * 0.50, S * 0.60, 88, BLACK);
+    g.restore();
   });
   // 2.4 — уступите дорогу
-  cell(1, (g, S) => tri(g, S, false, '#eceae4', '#b3241f'));
-  // 2.5 — STOP
+  cell(1, (g, S) => tri(g, S, false, WHITE, RED, 0.04));
+  // 2.5 — STOP: красный восьмиугольник с белой каймой
   cell(2, (g, S) => {
-    g.fillStyle = '#b3241f'; g.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const a = (i + 0.5) * Math.PI / 4;
-      const x = S / 2 + Math.cos(a) * S * 0.47, y = S / 2 + Math.sin(a) * S * 0.47;
-      i ? g.lineTo(x, y) : g.moveTo(x, y);
-    }
-    g.closePath(); g.fill();
-    g.fillStyle = '#f2f0ec'; g.font = 'bold ' + (S * 0.30) + 'px sans-serif';
+    const oct = (R, col) => {
+      g.fillStyle = col; g.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i + 0.5) * Math.PI / 4;
+        const x = S / 2 + Math.cos(a) * R, y = S / 2 + Math.sin(a) * R;
+        i ? g.lineTo(x, y) : g.moveTo(x, y);
+      }
+      g.closePath(); g.fill();
+    };
+    oct(S * 0.48, WHITE); oct(S * 0.435, RED);
+    g.fillStyle = WHITE; g.font = 'bold ' + (S * 0.26) + 'px "Helvetica Neue", Arial, sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('STOP', S / 2, S / 2);
+    g.fillText('STOP', S / 2, S * 0.52);
   });
   // 1.17 — искусственная неровность
   cell(3, (g, S) => {
-    tri(g, S, true, '#eceae4', '#b3241f');
-    g.fillStyle = '#141414';
-    g.beginPath(); g.moveTo(S * 0.26, S * 0.70);
-    g.quadraticCurveTo(S / 2, S * 0.36, S * 0.74, S * 0.70);
-    g.lineTo(S * 0.74, S * 0.74); g.lineTo(S * 0.26, S * 0.74); g.closePath(); g.fill();
+    tri(g, S, true, WHITE, RED, 0.04);
+    g.fillStyle = BLACK;
+    g.beginPath();
+    g.moveTo(S * 0.30, S * 0.70);
+    g.quadraticCurveTo(S * 0.50, S * 0.40, S * 0.70, S * 0.70);
+    g.lineTo(S * 0.70, S * 0.745); g.lineTo(S * 0.30, S * 0.745); g.closePath(); g.fill();
+    g.fillRect(S * 0.24, S * 0.745, S * 0.52, S * 0.035);
   });
-  // 8.23 — фотовидеофиксация
+  // 8.23 — фотовидеофиксация: белая табличка с чёрной камерой
   cell(4, (g, S) => {
-    g.fillStyle = '#eceae4'; g.fillRect(S * 0.06, S * 0.18, S * 0.88, S * 0.64);
-    g.strokeStyle = '#141414'; g.lineWidth = S * 0.05;
-    g.strokeRect(S * 0.09, S * 0.21, S * 0.82, S * 0.58);
-    g.fillStyle = '#141414';
-    g.fillRect(S * 0.24, S * 0.40, S * 0.40, S * 0.26);
-    g.fillRect(S * 0.32, S * 0.33, S * 0.16, S * 0.08);
-    g.beginPath(); g.moveTo(S * 0.64, S * 0.46); g.lineTo(S * 0.78, S * 0.38);
-    g.lineTo(S * 0.78, S * 0.68); g.lineTo(S * 0.64, S * 0.60); g.closePath(); g.fill();
+    g.fillStyle = WHITE; g.fillRect(S * 0.04, S * 0.20, S * 0.92, S * 0.60);
+    g.strokeStyle = BLACK; g.lineWidth = S * 0.035;
+    g.strokeRect(S * 0.075, S * 0.235, S * 0.85, S * 0.53);
+    g.fillStyle = BLACK;
+    g.fillRect(S * 0.22, S * 0.42, S * 0.36, S * 0.22);
+    g.fillRect(S * 0.30, S * 0.355, S * 0.14, S * 0.07);
+    g.beginPath(); g.moveTo(S * 0.58, S * 0.465); g.lineTo(S * 0.74, S * 0.385);
+    g.lineTo(S * 0.74, S * 0.675); g.lineTo(S * 0.58, S * 0.595); g.closePath(); g.fill();
+    g.beginPath(); g.arc(S * 0.34, S * 0.53, S * 0.055, 0, 7); g.fillStyle = WHITE; g.fill();
   });
   // 3.24 — ограничение скорости, три номинала
   [40, 5, 60].forEach((v, i) => cell(5 + i, (g, S) => {
-    disc(g, S, '#eceae4', '#b3241f');
-    g.fillStyle = '#141414'; g.font = 'bold ' + (S * 0.44) + 'px sans-serif';
+    g.fillStyle = RED; g.beginPath(); g.arc(S / 2, S / 2, S * 0.47, 0, 7); g.fill();
+    g.fillStyle = WHITE; g.beginPath(); g.arc(S / 2, S / 2, S * 0.355, 0, 7); g.fill();
+    g.fillStyle = BLACK; g.font = 'bold ' + (S * 0.40) + 'px "Helvetica Neue", Arial, sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(String(v), S / 2, S * 0.53);
   }));
@@ -247,12 +285,12 @@ function signGeo(cellIndex) {
       U.push(cu, cv);
     }
   };
-  const pole = new THREE.CylinderGeometry(0.042, 0.052, 2.45, 6);
-  pole.translate(0, 1.22, 0);
+  const pole = new THREE.CylinderGeometry(0.045, 0.058, 2.55, 8);
+  pole.translate(0, 1.27, 0);
   pushGeo(pole.toNonIndexed(), CELL_GREY);
 
   // щиток 0.7 м — малый типоразмер; лицо смотрит в локальный +z
-  const S = 0.35, Y = 2.10, T = 0.025;
+  const S = 0.45, Y = 2.25, T = 0.025;
   const quad = [[-S, -S], [S, -S], [S, S], [-S, -S], [S, S], [-S, S]];
   const uvs = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]];
   for (let i = 0; i < 6; i++) {                 // лицо

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=19e4895f';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=19e4895f';
-import { buildCoverage } from './coverage.js?v=19e4895f';
+import { SEA_FLOOR } from './terrain.js?v=b5c48cbc';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=b5c48cbc';
+import { buildCoverage } from './coverage.js?v=b5c48cbc';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -680,7 +680,7 @@ export function buildRoads(world, terrain, chunk = 500) {
   const bucket = (x, z) => {
     const k = Math.floor(x / chunk) + ',' + Math.floor(z / chunk);
     let c = chunks.get(k);
-    if (!c) chunks.set(k, c = { P: [], C: [], R: [], K: [], O: [], I: [], base: 0 });
+    if (!c) chunks.set(k, c = { P: [], C: [], R: [], K: [], O: [], S: [], I: [], base: 0 });
     return c;
   };
   // Последний рубеж. Какая бы причина ни развела профиль дороги и рельеф,
@@ -724,6 +724,22 @@ export function buildRoads(world, terrain, chunk = 500) {
     }
     return far;
   };
+  // Сплошную перед перекрёстком ставим ТОЛЬКО у пересечения проезжих улиц
+  // (самая широкая ветка от 8 м) и на коротком подходе. С радиусом 14 м и
+  // всеми узлами подряд сплошной оказывалось 45% длины улиц — «везде сплошная».
+  const nearBigJunction = (x, z, extra) => {
+    const a = jmap.get(Math.floor(x / jcell) * 100003 + Math.floor(z / jcell));
+    if (!a) return false;
+    for (const j of a) {
+      if ((j.mw || 0) < 8) continue;
+      const R = j.r + 1.6 + extra;
+      if ((x - j.x) ** 2 + (z - j.z) ** 2 >= R * R) continue;
+      if (j.poly && polyOut(j.poly, x, z) > 1.6 + extra) continue;
+      return true;
+    }
+    return false;
+  };
+
   const inJunction = (x, z, extra = 0) => {
     const a = jmap.get(Math.floor(x / jcell) * 100003 + Math.floor(z / jcell));
     if (!a) return false;
@@ -756,7 +772,7 @@ export function buildRoads(world, terrain, chunk = 500) {
 
   // offA/offB — либо число (постоянная полуширина), либо массив на вершину:
   // проезжая часть ужимается там, где под неё лезет соседняя улица.
-  const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1, lanes = 0) => {
+  const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1, lanes = 0, surf = 0) => {
     const col = ROAD_COLORS[cls];
     const start = ch.base;
     const aArr = typeof offA === 'number' ? null : offA;
@@ -777,8 +793,10 @@ export function buildRoads(world, terrain, chunk = 500) {
         // Дробные 0.4 в классе — «до перекрёстка меньше 14 м». По ПДД пунктир
         // 1.5 перед перекрёстком сменяется сплошной 1.1: перестраиваться там
         // нельзя. Все пороги классов стоят на .5, поэтому добавка безопасна.
-        ch.K.push(lanes !== 0 && inJunction(x, z, 14) ? cls + 0.4 : cls);
-        ch.O.push(own);
+        // И только на многополосной: на обычной двухполосной улице осевая идёт
+        // к перекрёстку пунктиром, сплошную там по ПДД не рисуют.
+        ch.K.push(Math.abs(lanes) >= 3 && nearBigJunction(x, z, 9) ? cls + 0.4 : cls);
+        ch.O.push(own); ch.S.push(surf);
       }
     }
     // Обход даёт нормаль вверх ТОЛЬКО при таком порядке: offA левее offB,
@@ -804,7 +822,7 @@ export function buildRoads(world, terrain, chunk = 500) {
       for (const y of [g + yLow, g + yHigh]) {
         ch.P.push(x, y, z);
         ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-        ch.R.push(0, mt.D[i], 0.3, 0);
+        ch.R.push(0, mt.D[i], 0.3, 0); ch.S.push(0);
         ch.K.push(6); ch.O.push(own);
       }
     }
@@ -1030,7 +1048,7 @@ export function buildRoads(world, terrain, chunk = 500) {
       // рисовались обе внахлёст. Растр уже решил, чья это земля, — этого хватает.
       for (const [bx, bz] of pts3) if (!onOtherRoad(bx, bz, ri)) return false;
       return true;      // кусок целиком на чужой проезжей части
-    }, ri, laneEnc(r));
+    }, ri, laneEnc(r), r.sf || 0);
     if (r.c === 4) {
       // Дорожка метит свою полосу, чтобы параллельная соседка не легла сверху.
       // Метим ТОЛЬКО нарисованное: раньше снятый пролёт всё равно занимал
@@ -1116,11 +1134,11 @@ export function buildRoads(world, terrain, chunk = 500) {
     }
     ch.P.push(j.x, H(j.x, j.z) + ROAD_Y - 0.025, j.z);
     ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-    ch.R.push(0, 0, 0.5, 0); ch.K.push(1); ch.O.push(-1);   // без этого aOwn съезжал на вершину
+    ch.R.push(0, 0, 0.5, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);   // без этого aOwn съезжал на вершину
     for (const [x, z] of ring) {
       ch.P.push(x, H(x, z) + ROAD_Y - 0.025, z);
       ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-      ch.R.push(0, 0, 0.5, 0); ch.K.push(1); ch.O.push(-1);
+      ch.R.push(0, 0, 0.5, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);
     }
     for (let k = 0; k < ring.length; k++)
       ch.I.push(start, start + 1 + (k + 1) % ring.length, start + 1 + k);
@@ -1133,18 +1151,36 @@ export function buildRoads(world, terrain, chunk = 500) {
     // иногда съезжает с полотна — рисуем только там, где под ней асфальт
     const cc = cellOf(c.x, c.z);
     if (!(cc >= 0 && cover[cc] >= 0)) continue;
-    const ch = bucket(c.x, c.z);
     const ux = Math.sin(c.a), uz = Math.cos(c.a);      // вдоль улицы
     const nx = -uz, nz = ux;                            // поперёк
-    const hw = c.w / 2, hd = c.d / 2, start = ch.base;
+    // Ширину зебры брали из ширины улицы по OSM, а полотно ужимается растром
+    // покрытия: 484 зебры из 3475 не доходили до кромки или наоборот вылезали
+    // на тротуар, а 122 висели меньше чем на трёх четвертях асфальта — те самые
+    // «застрявшие наполовину». Меряем настоящую кромку под самой зеброй и
+    // рисуем ровно по ней; если асфальта нет вовсе, зебру не рисуем.
+    const onAsp = (x, z) => { const k = cellOf(x, z); return k >= 0 && cover[k] >= 0; };
+    let eL = 0, eR = 0;
+    const LIM = c.w * 0.5 + 3.0;
+    for (let t = 0.1; t <= LIM; t += 0.25) {
+      if (onAsp(c.x - nx * t, c.z - nz * t)) eL = t; else break;
+    }
+    for (let t = 0.1; t <= LIM; t += 0.25) {
+      if (onAsp(c.x + nx * t, c.z + nz * t)) eR = t; else break;
+    }
+    if (eL + eR < 3.2) continue;                        // под зеброй нет дороги
+    // центр смещаем в середину найденной полосы, ширину берём по ней
+    const shift = (eR - eL) / 2;
+    const cx0 = c.x + nx * shift, cz0 = c.z + nz * shift;
+    const ch = bucket(cx0, cz0);
+    const hw = (eL + eR) / 2 - 0.12, hd = c.d / 2, start = ch.base;
     const col = ROAD_COLORS[1];
     for (const sd of [-1, 1])
       for (const sw of [-1, 1]) {
-        const x = c.x + ux * hd * sd + nx * hw * sw;
-        const z = c.z + uz * hd * sd + nz * hw * sw;
+        const x = cx0 + ux * hd * sd + nx * hw * sw;
+        const z = cz0 + uz * hd * sd + nz * hw * sw;
         ch.P.push(x, H(x, z) + ROAD_Y + 0.02, z);
         ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-        ch.R.push(sw, hd * sd, c.w, 0); ch.K.push(7); ch.O.push(-1);
+        ch.R.push(sw, hd * sd, hw * 2, 0); ch.K.push(7); ch.O.push(-1); ch.S.push(0);
       }
     ch.I.push(start, start + 1, start + 2, start + 1, start + 3, start + 2);
     ch.base += 4;
@@ -1164,6 +1200,7 @@ export function buildRoads(world, terrain, chunk = 500) {
     geo.setAttribute('color', new THREE.Uint8BufferAttribute(ch.C, 3, true));
     geo.setAttribute('aRoad', new THREE.Float32BufferAttribute(ch.R, 4));
     geo.setAttribute('aCls', new THREE.Float32BufferAttribute(ch.K, 1));
+    geo.setAttribute('aSurf', new THREE.Float32BufferAttribute(ch.S, 1));
     geo.setAttribute('aOwn', new THREE.Float32BufferAttribute(ch.O, 1));
     geo.setIndex(ch.I);
     geo.computeVertexNormals();

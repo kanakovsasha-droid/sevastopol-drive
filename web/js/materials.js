@@ -530,10 +530,10 @@ export function roadMaterial() {
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -6,
   });
   return inject(mat, 'sev-road', {
-    vertHead: `attribute vec4 aRoad; attribute float aCls;
-               varying vec4 vRoad; varying float vCls;`,
-    vertBody: `vRoad = aRoad; vCls = aCls;`,
-    fragHead: `varying vec4 vRoad; varying float vCls;`,
+    vertHead: `attribute vec4 aRoad; attribute float aCls; attribute float aSurf;
+               varying vec4 vRoad; varying float vCls; varying float vSurf;`,
+    vertBody: `vRoad = aRoad; vCls = aCls; vSurf = aSurf;`,
+    fragHead: `varying vec4 vRoad; varying float vCls; varying float vSurf;`,
     fragBody: `
       {
         vec3 c = diffuseColor.rgb;
@@ -563,6 +563,48 @@ export function roadMaterial() {
           // ---- бордюрный камень ----
           c *= 0.90 + 0.13 * hash21(vec2(floor(v / 0.95), 0.0));
           c *= 1.0 - 0.35 * band(fract(v / 0.95), 0.0, 0.05);
+        } else if (vSurf > 0.5 && vSurf < 1.5) {
+          // ---- брусчатка: тег surface=paving_stones/sett из OSM ----
+          // Камень кладут ДУГАМИ поперёк проезда, а не сеткой: ряд смещается
+          // тем сильнее, чем дальше от середины полотна.
+          float row = v / 0.30;
+          float bow = 0.55 * cos(clamp(m / max(2.0, halfW), -1.0, 1.0) * 1.5708);
+          float rr = floor(row + bow);
+          float col = m / 0.22 + 0.5 * mod(rr, 2.0);
+          vec2 cell = vec2(floor(col), rr);
+          float rnd = hash21(cell);
+          // серо-бежевый инкерманский камень с разбросом по тону
+          vec3 stone = mix(vec3(0.300, 0.286, 0.264), vec3(0.470, 0.446, 0.406), rnd);
+          stone *= 0.90 + 0.16 * hash21(cell + 19.0);
+          // шов между камнями
+          vec2 f = abs(fract(vec2(col, row + bow)) - 0.5);
+          float joint = smoothstep(0.34, 0.47, max(f.x, f.y));
+          c = mix(stone, stone * 0.55, joint);
+          // колея: по накатанному камень темнее и глаже
+          float rut = band(am, halfW * 0.42, 0.9);
+          c *= 1.0 - 0.10 * rut;
+          rough = mix(0.88, 0.70, rut) - 0.10 * (1.0 - joint);
+          diffuseColor.rgb = c; procRough = rough; 
+        } else if (vSurf > 1.5 && vSurf < 2.5) {
+          // ---- бетонные плиты: surface=concrete ----
+          vec2 g2 = vec2(m / 2.9, v / 5.8);
+          vec2 f2 = abs(fract(g2) - 0.5);
+          float seam = smoothstep(0.43, 0.492, max(f2.x, f2.y));
+          vec3 slab = vec3(0.412, 0.408, 0.396) * (0.93 + 0.12 * hash21(floor(g2)));
+          slab *= 0.97 + 0.06 * fbm(vec2(m, v) * 0.7);
+          c = mix(slab, slab * 0.72, seam);
+          rough = 0.90;
+          diffuseColor.rgb = c; procRough = rough;
+        } else if (vSurf > 2.5) {
+          // ---- грунт и щебень: surface=ground/gravel/unpaved ----
+          vec3 soil = mix(vec3(0.263, 0.216, 0.161), vec3(0.400, 0.345, 0.263), fbm(vec2(m, v) * 1.3));
+          soil *= 0.86 + 0.28 * hash21(floor(vec2(m * 6.0, v * 6.0)));
+          // две колеи от колёс, между ними трава
+          float rut2 = band(am, halfW * 0.45, 0.75);
+          soil = mix(soil, soil * 0.78, rut2);
+          soil = mix(soil, vec3(0.263, 0.290, 0.180), 0.35 * (1.0 - rut2) * step(am, halfW * 0.18));
+          c = soil; rough = 0.98;
+          diffuseColor.rgb = c; procRough = rough;
         } else {
           // ---- асфальт ----
           c *= 0.89 + 0.16 * hash21(floor(vec2(m * 1.6, v * 1.6)));

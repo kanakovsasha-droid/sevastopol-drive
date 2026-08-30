@@ -16,6 +16,15 @@ try { STREETS = JSON.parse(readFileSync(DIR + 'streets.json', 'utf8')); } catch 
 // Полоса городской улицы по ГОСТ 33150 — 3.5 м. На 3.3 четырёхполосная
 // Большая Морская выходила уже трёхполосной по факту, и разметка врала.
 const LANE_W = 3.5;
+// Покрытие из тега surface, а не на глаз: в центре 141 улица вымощена
+// плиткой и 10 — колотым камнем, и рисовать на них асфальт нечестно.
+// 0 асфальт · 1 камень и плитка · 2 бетон · 3 грунт и щебень
+const SURFACE = {
+  paving_stones: 1, sett: 1, cobblestone: 1, unhewn_cobblestone: 1, bricks: 1, brick: 1,
+  concrete: 2, 'concrete:plates': 2, 'concrete:lanes': 2,
+  ground: 3, dirt: 3, earth: 3, sand: 3, unpaved: 3, compacted: 3, gravel: 3,
+  fine_gravel: 3, pebblestone: 3, grass: 3, mud: 3,
+};
 // Полосность: сначала ручное переопределение по имени, потом тег OSM.
 function laneCount(t) {
   const o = STREETS[t['name:ru'] || t.name];
@@ -251,6 +260,7 @@ for (const w of ways.values()) {
       ...(t.bridge ? { br: 1 } : {}),
       ...(t.tunnel ? { tn: 1 } : {}),
       ...(twoWay(t) ? {} : { ow: 1 }),
+      ...(SURFACE[t.surface] ? { sf: SURFACE[t.surface] } : {}),
       ...(lanes ? { l: lanes } : {}),
       ...(STREETS[t['name:ru'] || t.name]?.bus ? { bus: 1 } : {}),
       ...(STREETS[t['name:ru'] || t.name]?.parking ? { pk: 1 } : {}),
@@ -431,7 +441,12 @@ function reverse(p) {
       const cx = sx / g.length, cz = sz / g.length;
       let R = 0;
       for (const j of g) R = Math.max(R, Math.hypot(j.x - cx, j.z - cz) + j.r);
-      const rec = { x: R1(cx), z: R1(cz), r: R1(R) };
+      // mw — ширина самой широкой улицы узла. По ней отличаем настоящий
+      // перекрёсток от выезда со двора: сплошную перед перекрёстком по ПДД
+      // рисуют не у каждого заезда, а у пересечения проезжих улиц.
+      let mw = 0;
+      for (const j of g) mw = Math.max(mw, (j.r - 1.2) * 2);
+      const rec = { x: R1(cx), z: R1(cz), r: R1(R), mw: R1(mw) };
       if (g.length > 1) {
         // Обход приводим к положительной площади: worldgen считает «наружу» по
         // левой нормали ребра и без единого обхода вывернул бы пятно наизнанку.
@@ -593,6 +608,67 @@ function reverse(p) {
 }
 
 // ---------- накладываем описания осмотренных домов ----------
+// ---------- этажность по соседям ----------
+// В OSM этажность есть у 14% домов центра. У остальных я угадывал её по пятну
+// застройки, и на улице Льва Толстого дом в 1200 м² получал шесть этажей,
+// стоя среди трёхэтажных. Пятно говорит о РАЗМЕРЕ, а не о высоте: этажность
+// задаёт КВАРТАЛ. Берём медиану ближайших домов, у которых этажность известна
+// из OSM, и притягиваем к ней оценку. Оценка по пятну остаётся как поправка:
+// корпус вчетверо крупнее соседей всё-таки чуть выше их.
+{
+  const known = [];
+  for (const b of world.buildings) {
+    if (!b.lv) continue;
+    const p = b.poly, n = p.length / 2;
+    let cx = 0, cz = 0;
+    for (let k = 0; k < n; k++) { cx += p[k * 2]; cz += p[k * 2 + 1]; }
+    known.push({ x: cx / n, z: cz / n, h: b.h });
+  }
+  const CELL = 150;
+  const grid = new Map();
+  const key = (ix, iz) => ix * 100003 + iz;
+  for (const k of known) {
+    const g = key(Math.floor(k.x / CELL), Math.floor(k.z / CELL));
+    (grid.get(g) || grid.set(g, []).get(g)).push(k);
+  }
+  const around = (x, z, R) => {
+    const out = [];
+    const r = Math.ceil(R / CELL);
+    const ix = Math.floor(x / CELL), iz = Math.floor(z / CELL);
+    for (let a = -r; a <= r; a++) for (let c = -r; c <= r; c++) {
+      const arr = grid.get(key(ix + a, iz + c));
+      if (!arr) continue;
+      for (const k of arr) {
+        const d = Math.hypot(k.x - x, k.z - z);
+        if (d <= R) out.push({ d, h: k.h });
+      }
+    }
+    return out;
+  };
+  let fixed = 0, sumDelta = 0;
+  for (const b of world.buildings) {
+    if (b.lv) continue;                       // высота из тегов — не трогаем
+    const p = b.poly, n = p.length / 2;
+    let cx = 0, cz = 0;
+    for (let k = 0; k < n; k++) { cx += p[k * 2]; cz += p[k * 2 + 1]; }
+    cx /= n; cz /= n;
+    let near = around(cx, cz, 220);
+    if (near.length < 5) near = around(cx, cz, 500);
+    if (near.length < 4) continue;            // не на что опереться
+    near.sort((a, c) => a.d - c.d);
+    near = near.slice(0, 12);
+    const med = near.map(o => o.h).sort((a, c) => a - c)[near.length >> 1];
+    // поправка на размер пятна: крупнее среднего — чуть выше, мельче — ниже
+    const est = b.h;
+    const want = med * 0.72 + est * 0.28;
+    const capped = Math.min(want, maxFloorsForArea(Math.abs(area(p))) * FLOOR * 1.1 + 2);
+    const nh = R1(Math.max(3.4, capped));
+    if (Math.abs(nh - b.h) > 0.05) { sumDelta += Math.abs(nh - b.h); fixed++; }
+    b.h = nh;
+  }
+  console.log(`этажность по соседям пересчитана у ${fixed} домов, средняя правка ${(sumDelta / Math.max(1, fixed)).toFixed(1)} м`);
+}
+
 {
   let applied = 0;
   for (const h of HOUSES) {
