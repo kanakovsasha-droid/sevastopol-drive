@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=43acbe00';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=43acbe00';
-import { buildCoverage } from './coverage.js?v=43acbe00';
+import { SEA_FLOOR } from './terrain.js?v=ace257ea';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=ace257ea';
+import { buildCoverage } from './coverage.js?v=ace257ea';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -2046,9 +2046,9 @@ export function buildAreas(world, terrain) {
   // беговую дорожку, и парковку рядом с ним. На одной высоте они дерутся за
   // глубину, и полотно шло пятнами — то асфальт, то газон. Разводим по слоям:
   // чем мельче и «главнее» площадка, тем выше она лежит.
-  const LAYER = { cemetery: 0, sportsground: 1, pitch: 2, football: 3, track: 4, parking: 5, playground: 6 };
+  const LAYER = { cemetery: 0, sportsground: 1, pitch: 2, football: 3, track: 4, parking: 5, playground: 6, path: 7 };
   const LIFT0 = 0.13;
-  const KIND = { parking: 0, football: 1, pitch: 2, track: 3, playground: 4, sportsground: 5, cemetery: 6 };
+  const KIND = { parking: 0, football: 1, pitch: 2, track: 3, playground: 4, sportsground: 5, cemetery: 6, path: 7 };
   const COL = {
     parking:      [0.168, 0.166, 0.172],
     football:     [0.196, 0.373, 0.161],
@@ -2057,6 +2057,7 @@ export function buildAreas(world, terrain) {
     playground:   [0.400, 0.243, 0.196],
     sportsground: [0.267, 0.286, 0.243],
     cemetery:     [0.318, 0.361, 0.243],
+    path:         [0.573, 0.549, 0.494],
   };
   const P = [], C = [], U = [], K = [], I = [];
   let base = 0, drawn = 0;
@@ -2121,6 +2122,51 @@ export function buildAreas(world, terrain) {
       if (cross > 0) emit(A, Cc, B, 0); else emit(A, B, Cc, 0);
     }
     drawn++;
+  }
+
+  // ---- аллеи парков: лента заданной ширины по обмеренной оси ----
+  // Ось снята агентом по спутнику, ширина из отчёта. Ленту строим сами:
+  // на каждой вершине берём биссектрису двух соседних отрезков, иначе на
+  // повороте аллея рвётся или наезжает сама на себя.
+  {
+    const LIFT = LIFT0 + 7 * 0.035;
+    for (const pa of (world.places && world.places.paths) || []) {
+      const q = pa.pts, m = q.length / 2;
+      if (m < 2) continue;
+      const hw = Math.max(0.9, (pa.w || 3) / 2);
+      const kind = KIND.path;
+      const col = pa.s === 'ground' ? [0.412, 0.353, 0.271] : COL.path;
+      let prev = null, along = 0;
+      for (let i = 0; i < m; i++) {
+        let nx = 0, nz = 0, cnt = 0;
+        if (i > 0) {
+          const dx = q[i * 2] - q[i * 2 - 2], dz = q[i * 2 + 1] - q[i * 2 - 1];
+          const l = Math.hypot(dx, dz);
+          if (l > 1e-6) { nx += -dz / l; nz += dx / l; cnt++; along += l; }
+        }
+        if (i < m - 1) {
+          const dx = q[i * 2 + 2] - q[i * 2], dz = q[i * 2 + 3] - q[i * 2 + 1];
+          const l = Math.hypot(dx, dz);
+          if (l > 1e-6) { nx += -dz / l; nz += dx / l; cnt++; }
+        }
+        let len = Math.hypot(nx, nz);
+        if (!cnt || len < 1e-6) { nx = 1; nz = 0; len = 1; cnt = 1; }
+        const sc = Math.min(1.6, cnt / len);
+        nx /= len; nz /= len;
+        const cur = [];
+        for (const sg of [-1, 1]) {
+          const x = q[i * 2] + nx * sg * hw * sc, z = q[i * 2 + 1] + nz * sg * hw * sc;
+          P.push(x, H(x, z) + LIFT, z);
+          C.push(enc(col[0]), enc(col[1]), enc(col[2]));
+          U.push(along, sg * hw, hw * 2, 0);
+          K.push(kind);
+          cur.push(base++);
+        }
+        if (prev) I.push(prev[0], prev[1], cur[0], prev[1], cur[1], cur[0]);
+        prev = cur;
+      }
+      drawn++;
+    }
   }
 
   const geo = new THREE.BufferGeometry();

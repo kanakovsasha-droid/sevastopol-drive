@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=43acbe00';
+import { PolyGrid } from './worldgen.js?v=ace257ea';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,
@@ -429,6 +429,35 @@ export function buildStreetProps(world, terrain, roadIndex) {
     }
   }
 
+  // ОБМЕРЕННЫЕ ДЕРЕВЬЯ. Агенты сняли посадки Исторического бульвара,
+  // Комсомольского парка и двух кладбищ по спутнику: 1283 дерева, у каждого
+  // своя координата, порода и радиус кроны. Эти сажаем ПЕРВЫМИ и по факту,
+  // а не по плотности — там, где реально стоят.
+  const SPEC_MAP = {
+    'платан': 'platan', 'платан восточный': 'platan', 'каштан': 'chestnut',
+    'конский каштан': 'chestnut', 'акация': 'acacia', 'робиния': 'acacia',
+    'софора': 'acacia', 'тополь': 'poplar', 'кипарис': 'cypress', 'туя': 'cypress',
+    'сосна': 'pine', 'сосна крымская': 'pine', 'ель': 'pine', 'кедр': 'pine',
+    'олива': 'olive', 'маслина': 'olive', 'миндаль': 'olive', 'сирень': 'olive',
+    'багряник': 'olive', 'фисташка': 'olive', 'фисташка туполистая': 'olive',
+    'клён': 'platan', 'липа': 'platan', 'дуб': 'platan', 'ясень': 'platan',
+  };
+  let measured = 0;
+  for (const t of (world.places && world.places.trees) || []) {
+    const key = (t.sp || '').toLowerCase();
+    const sp = SPEC_MAP[key] || (key.includes('кипар') ? 'cypress' : key.includes('сосн') ? 'pine' : 'platan');
+    const list = bins[sp] || bins.platan;
+    // размер берём ИЗ ОБМЕРА, а не из хеша: у бульвара кроны до 9 м
+    const w = Math.max(0.55, (t.r || 3.5) / 5.0);
+    const h = Math.max(0.55, (t.h || 9) / 11.0);
+    list.push(t.x, H(t.x, t.z) - 0.25, t.z, w, h,
+      hash2(t.x, t.z) * 6.283,
+      (hash2(t.x * 0.9, t.z * 0.9) - 0.5) * 0.075,
+      hash2(t.z * 0.6, t.x * 0.6) * 6.283);
+    measured++;
+  }
+  // счётчик отдадим в userData ниже
+
   // деревья в парках и на склонах — там, где OSM отметил зелень
   for (const g of world.green) {
     const dens = { wood: 105, park: 130, scrub: 260, grass: 620 }[g.kind];
@@ -563,7 +592,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
   let nL = 0;
   for (const k in LAMP_GEO) nL += place(LAMP_GEO[k], lampBins[k], false);
 
-  group.userData.counts = { деревья: nT, кусты: nB, изгороди: nH, фонари: nL, чанков: group.children.length };
+  group.userData.counts = { деревья: nT, 'из них обмеренных': measured, кусты: nB, изгороди: nH, фонари: nL, чанков: group.children.length };
   group.userData.species = byKind;
   group.userData.onRoad = onRoad;   // тем же растром пользуется уличная мебель
   return group;

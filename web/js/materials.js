@@ -842,6 +842,15 @@ export function areaMaterial() {
           rough = 0.80;
         } else if (vAK < 5.5) {
           c *= 0.92 + 0.14 * fbm(vec2(u, v) * 1.1);
+        } else if (vAK > 6.5) {
+          // ---- аллея парка: плитка со швом, к кромке темнее ----
+          vec2 g3 = vec2(u / 0.52, v / 0.52);
+          vec2 f3 = abs(fract(g3 + vec2(0.0, step(0.5, fract(g3.x * 0.5)) * 0.5)) - 0.5);
+          float grout = smoothstep(0.38, 0.47, max(f3.x, f3.y));
+          c *= 1.0 - 0.14 * grout;
+          c *= 0.94 + 0.11 * hash21(floor(g3));
+          c *= 1.0 - 0.16 * smoothstep(0.55, 0.98, abs(v) / max(0.5, W * 0.5));
+          rough = 0.88;
         } else {
           // ---- кладбище: трава с проплешинами и дорожками ----
           c *= 0.90 + 0.16 * fbm(vec2(u, v) * 0.8);

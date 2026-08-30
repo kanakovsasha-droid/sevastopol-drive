@@ -12,6 +12,8 @@ let ZONES = [], SHOPS = [];
 try { ZONES = JSON.parse(readFileSync(DIR + 'zones.json', 'utf8')); } catch { /* файла может не быть */ }
 let AREAS = { parking: [], sport: [], cemetery: [], fuel: [] };
 try { AREAS = { ...AREAS, ...JSON.parse(readFileSync(DIR + 'areas.json', 'utf8')) }; } catch { /* файла может не быть */ }
+let PLACES = null;
+try { PLACES = JSON.parse(readFileSync(DIR + 'places.json', 'utf8')); } catch { /* файла может не быть */ }
 let STREETS = {};
 try { STREETS = JSON.parse(readFileSync(DIR + 'streets.json', 'utf8')); } catch { /* файла может не быть */ }
 
@@ -622,6 +624,21 @@ function reverse(p) {
   for (const a of AREAS.cemetery || [])
     world.areas.push({ k: 'cemetery', poly: R1p(a.poly), ...(a.n ? { n: a.n } : {}) });
   world.fuel = (AREAS.fuel || []).map(f => ({ x: f.x, z: f.z, ...(f.n ? { n: f.n } : {}) }));
+
+  // Обмеры парков, стадиона и вокзала, снятые агентами по спутнику и
+  // панорамам (data/places.json): аллеи, деревья поимённо, фонтаны,
+  // лестницы, беговой овал, мост-путепровод, платформы и составы.
+  if (PLACES) {
+    for (const a of PLACES.areas || []) world.areas.push(a);
+    world.places = {
+      paths: PLACES.paths || [], trees: PLACES.trees || [],
+      features: PLACES.features || [], fences: PLACES.fences || [],
+      structures: PLACES.structures || [], trains: PLACES.trains || [],
+    };
+    console.log(`обмеры  аллей ${world.places.paths.length}, деревьев ${world.places.trees.length}, `
+      + `объектов ${world.places.features.length}, сооружений ${world.places.structures.length}, `
+      + `составов ${world.places.trains.length}`);
+  }
   {
     const c = {};
     for (const a of world.areas) c[a.k] = (c[a.k] || 0) + 1;

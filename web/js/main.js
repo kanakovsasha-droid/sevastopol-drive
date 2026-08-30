@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=43acbe00';
-import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=43acbe00';
-import { buildStreetProps } from './props.js?v=43acbe00';
-import { buildYards } from './yards.js?v=43acbe00';
-import { buildFurniture } from './furniture.js?v=43acbe00';
-import { buildLandmarks } from './landmarks.js?v=43acbe00';
-import { buildSigns } from './signs.js?v=43acbe00';
-import { audit } from './audit.js?v=43acbe00';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=43acbe00';
-import { Collider, RoadIndex } from './collision.js?v=43acbe00';
-import { Car, createCarMesh } from './vehicle.js?v=43acbe00';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=ace257ea';
+import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=ace257ea';
+import { buildStreetProps } from './props.js?v=ace257ea';
+import { buildYards } from './yards.js?v=ace257ea';
+import { buildFurniture } from './furniture.js?v=ace257ea';
+import { buildLandmarks } from './landmarks.js?v=ace257ea';
+import { buildSigns } from './signs.js?v=ace257ea';
+import { audit } from './audit.js?v=ace257ea';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=ace257ea';
+import { Collider, RoadIndex } from './collision.js?v=ace257ea';
+import { Car, createCarMesh } from './vehicle.js?v=ace257ea';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -101,8 +101,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=43acbe00').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=43acbe00').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=ace257ea').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=ace257ea').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
