@@ -797,10 +797,13 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       for (let i = 0; i < colN; i++) {
         const t = 0.09 + (0.82) * (i / (colN - 1));
         const [x, z] = at(t, OUT);
-        const yb = yOrder;
+        // Колонны идут ДО ЗЕМЛИ. Посаженные на линию первого этажа, они висели
+        // в воздухе: под ними была пустота вместо опоры.
+        const gCol = terrain.gridHeightAt(x, z);
+        const yb = gCol + 0.30;
         const shaftH = Math.max(3.0, entBot - yb - 0.62);
-        const plinth = new THREE.BoxGeometry(1.55, 0.34, 1.55);
-        plinth.rotateY(ang); plinth.translate(x, yb + 0.17, z);
+        const plinth = new THREE.BoxGeometry(1.66, 0.32, 1.66);
+        plinth.rotateY(ang); plinth.translate(x, gCol + 0.16, z);
         const shaft = new THREE.CylinderGeometry(R * 0.90, R, shaftH, 16);
         shaft.translate(x, yb + 0.34 + shaftH / 2, z);
         // капитель: шейка, кольцо и абака
@@ -1154,6 +1157,34 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       const cor = new THREE.BoxGeometry(6.2, 0.42, eLen + 1.0);
       cor.rotateY(eAng); cor.translate((ex0 + ex1) / 2, entTop + 0.21, (ez0 + ez1) / 2);
       parts.push({ geo: cor, color: STONE_D });
+    }
+
+    // Крыльцо под колоннадой: широкий марш к парадному входу.
+    if (d.stairs) {
+      const LH = d.stairH ?? 1.15, SW2 = d.stairW ?? 7.0;
+      const [px2, pz2] = atWall(0.5, 1.1);
+      const gP = terrain.gridHeightAt(px2, pz2);
+      const yP = gP + LH;
+      const sAng = Math.atan2(...(() => { const a = atWall(0.42, 1.1), b2 = atWall(0.58, 1.1);
+        return [b2[0] - a[0], b2[1] - a[1]]; })());
+      const pad = new THREE.BoxGeometry(2.4, LH, SW2);
+      pad.rotateY(sAng); pad.translate(px2, gP + LH / 2, pz2);
+      parts.push({ geo: pad, color: STONE_D });
+      const RISE = 0.17, TREAD = 0.33;
+      const nS = Math.max(3, Math.round(LH / RISE));
+      for (let k = 0; k < nS; k++) {
+        const [sx, sz] = atWall(0.5, 2.3 + k * TREAD);
+        const gS = terrain.gridHeightAt(sx, sz);
+        const hS = Math.max(0.10, yP - k * RISE - gS);
+        const st = new THREE.BoxGeometry(TREAD + 0.05, hS, SW2 - k * 0.10);
+        st.rotateY(sAng); st.translate(sx, yP - k * RISE - hS / 2, sz);
+        parts.push({ geo: st, color: k % 2 ? STONE : STONE_D });
+      }
+      // тёмная двустворчатая дверь в глубине
+      const [dx3, dz3] = atWall(0.5, 0.12);
+      const dr = new THREE.BoxGeometry(0.3, 3.4, 2.4);
+      dr.rotateY(sAng); dr.translate(dx3, yP + 1.75, dz3);
+      parts.push({ geo: dr, color: [0.235, 0.176, 0.129] });
     }
 
     // балюстрада по всему периметру кровли

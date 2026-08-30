@@ -50,6 +50,9 @@ export class Car {
     this.steerVis = 0;
     this.crash = 0;
     this.slip = 0;       // насколько сорваны задние шины — для звука и следа
+    this.wheelDrop = [0, 0, 0, 0];   // ход подвески по каждому колесу
+    this.vy = 0;         // вертикальная скорость: прыжки и съезды с бордюра
+    this.airborne = false;
     this.inWater = false;
   }
 
@@ -57,7 +60,7 @@ export class Car {
     this.pos.set(x, this.terrain.driveHeightAt(x, z) + ROAD_LIFT, z);
     this.yaw = yaw;
     this.vLong = 0; this.vLat = 0; this.yawRate = 0;
-    this.steer = 0; this.crash = 0;
+    this.steer = 0; this.crash = 0; this.vy = 0; this.airborne = false;
   }
 
   get speed() { return Math.hypot(this.vLong, this.vLat); }
@@ -116,8 +119,9 @@ export class Car {
     const af = Math.atan2(vy + A_AX * r, vsafe) - d * Math.sign(vx >= 0 ? 1 : -1);
     const ar = Math.atan2(vy - B_AX * r, vsafe);
 
-    const muF = this.inWater ? 0.35 : MU;
-    const muR = (input.handbrake ? MU_HB : MU) * (this.inWater ? 0.28 : 1);
+    const air = this.airborne ? 0.10 : 1;    // в воздухе колёса ничего не держат
+    const muF = (this.inWater ? 0.35 : MU) * air;
+    const muR = (input.handbrake ? MU_HB : MU) * (this.inWater ? 0.28 : 1) * air;
     const capF = muF * Nf, capR = muR * Nr;
     let Fyf = clamp(-CF * af, -capF, capF);
     let Fyr = clamp(-CR * ar, -capR, capR);
@@ -204,11 +208,24 @@ export class Car {
       const hh = t.driveHeightAt(wx, wz) + ROAD_LIFT;
       wh.push(hh); sum += hh;
     }
-    // Колёса стоят на земле ЖЁСТКО. Плавный подход к опоре я добавил как
-    // «подвеску» — и на спусках кузов не успевал за землёй и повисал в воздухе.
-    // Плавность оставляем только наклонам, положение по высоте — точное.
-    this.pos.y = sum / 4;
-    const tp = Math.atan2((wh[0] + wh[1]) / 2 - (wh[2] + wh[3]) / 2, WB * 2);
+    // Полёт. Раньше высота просто присваивалась по земле: сойдя с бордюра или
+    // с обрыва, машина мгновенно телепортировалась вниз, а на трамплине
+    // втыкалась в склон. Теперь есть вертикальная скорость: пока опора ниже
+    // кузова, машина падает по тяжести; коснувшись — садится и гасит удар.
+    const groundY = sum / 4;
+    if (this.pos.y > groundY + 0.06) {
+      this.airborne = true;
+      this.vy -= 9.81 * dt;
+      this.pos.y += this.vy * dt;
+      if (this.pos.y <= groundY) { this.pos.y = groundY; this.vy = 0; this.airborne = false; }
+    } else {
+      if (this.airborne && this.vy < -4) this.crash = Math.min(1, -this.vy / 16);
+      this.pos.y = groundY; this.vy = 0; this.airborne = false;
+    }
+    // Знак: rotateX(+) в Three ОПУСКАЕТ нос (точка при z>0 уходит вниз на
+    // -z*sin). Раньше сюда клали угол как есть, и на подъёме машина клевала
+    // носом вниз, а на спуске задирала — колёса отрывались на любом уклоне.
+    const tp = -Math.atan2((wh[0] + wh[1]) / 2 - (wh[2] + wh[3]) / 2, WB * 2);
     const tr = Math.atan2((wh[0] + wh[2]) / 2 - (wh[1] + wh[3]) / 2, TR * 2);
     // лёгкий клевок и крен от собственных ускорений, но так, чтобы кузов
     // не заваливало: ограничение в пару градусов
@@ -218,6 +235,20 @@ export class Car {
     // кузов не успевал за переломом профиля, и колёса отрывались на треть метра.
     this.pitch += (clamp(tp, -0.45, 0.45) + dyn - this.pitch) * Math.min(1, dt * 26);
     this.roll += (clamp(tr, -0.35, 0.35) + rollDyn - this.roll) * Math.min(1, dt * 26);
+
+    // НЕЗАВИСИМАЯ ПОДВЕСКА. Кузов — жёсткая плита, а земля под четырьмя точками
+    // почти никогда не плоская: на седловине два колеса неизбежно повисают,
+    // сколько ни подбирай высоту и наклон. Поэтому колёса ходят вертикально
+    // сами: считаем, где оказалось колесо по плоскости кузова, и опускаем его
+    // до земли. Ход ограничен, иначе на бордюре колесо уедет внутрь арки.
+    const sp = Math.sin(this.pitch), sr = Math.sin(this.roll);
+    for (let i = 0; i < 4; i++) {
+      const a = i < 2 ? WB : -WB, b = (i % 2 === 0) ? TR : -TR;
+      const planeY = this.pos.y - sp * a + sr * b;
+      const want2 = wh[i] - planeY;                       // сколько не хватает до земли
+      const tgt = clamp(want2, -0.40, 0.40);   // ход подвески
+      this.wheelDrop[i] += (tgt - this.wheelDrop[i]) * Math.min(1, dt * 22);
+    }
   }
 }
 

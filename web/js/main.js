@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=d7b1de1d';
-import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=d7b1de1d';
-import { buildStreetProps } from './props.js?v=d7b1de1d';
-import { buildFurniture } from './furniture.js?v=d7b1de1d';
-import { buildLandmarks } from './landmarks.js?v=d7b1de1d';
-import { buildSigns } from './signs.js?v=d7b1de1d';
-import { audit } from './audit.js?v=d7b1de1d';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=d7b1de1d';
-import { Collider, RoadIndex } from './collision.js?v=d7b1de1d';
-import { Car, createCarMesh } from './vehicle.js?v=d7b1de1d';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=1e0f8d17';
+import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=1e0f8d17';
+import { buildStreetProps } from './props.js?v=1e0f8d17';
+import { buildFurniture } from './furniture.js?v=1e0f8d17';
+import { buildLandmarks } from './landmarks.js?v=1e0f8d17';
+import { buildSigns } from './signs.js?v=1e0f8d17';
+import { audit } from './audit.js?v=1e0f8d17';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=1e0f8d17';
+import { Collider, RoadIndex } from './collision.js?v=1e0f8d17';
+import { Car, createCarMesh } from './vehicle.js?v=1e0f8d17';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -68,8 +68,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=d7b1de1d').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=d7b1de1d').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=1e0f8d17').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=1e0f8d17').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -515,6 +515,9 @@ function loop(now) {
   carMesh.rotateY(car.yaw);
   carMesh.rotateX(car.pitch);
   carMesh.rotateZ(car.roll);
+  // колёса ходят вертикально каждое своё — кузов плитой земле не следует
+  const ws = carMesh.userData.wheels;
+  if (ws) for (let i = 0; i < ws.length && i < 4; i++) ws[i].position.y = 0.34 + car.wheelDrop[i];
   const w = carMesh.userData.wheels;
   for (let i = 0; i < 4; i++) {
     w[i].rotation.set(0, i < 2 ? car.steerVis : 0, 0);
