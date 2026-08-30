@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=77132067';
-import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=77132067';
-import { buildStreetProps } from './props.js?v=77132067';
-import { buildFurniture } from './furniture.js?v=77132067';
-import { buildLandmarks } from './landmarks.js?v=77132067';
-import { buildSigns } from './signs.js?v=77132067';
-import { audit } from './audit.js?v=77132067';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=77132067';
-import { Collider, RoadIndex } from './collision.js?v=77132067';
-import { Car, createCarMesh } from './vehicle.js?v=77132067';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=b1760f30';
+import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=b1760f30';
+import { buildStreetProps } from './props.js?v=b1760f30';
+import { buildFurniture } from './furniture.js?v=b1760f30';
+import { buildLandmarks } from './landmarks.js?v=b1760f30';
+import { buildSigns } from './signs.js?v=b1760f30';
+import { audit } from './audit.js?v=b1760f30';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=b1760f30';
+import { Collider, RoadIndex } from './collision.js?v=b1760f30';
+import { Car, createCarMesh } from './vehicle.js?v=b1760f30';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -76,12 +76,13 @@ const walk = { x: 0, z: 0, yaw: 0, pitch: 0, vy: 0 };
 // Орбитальная камера. ГЛАВНОЕ: yaw здесь — угол В МИРЕ, а не относительно
 // кузова. Раньше он был относительным (camYaw + carYaw), и любой поворот руля
 // утаскивал за собой весь обзор: мышь ставила камеру сбоку, машина входила в
-// поворот — и вид уезжал сам. В GTA орбита живёт в мировых координатах, а за
-// корму камеру возвращает отдельная доводка, и только когда мышь молчит.
+// поворот — и вид уезжал сам. Плюс к этому камера «подкручивалась» за кормой на
+// ходу. Ни того, ни другого больше нет: камера стоит там, куда её отвела мышь,
+// и трогается только мышью. Вернуть её за корму — клавиша V.
 const cam = {
   yaw: 0,          // куда смотрит камера по горизонту, радианы, ось Y мира
   pitch: 0.24,     // подъём камеры над целью по дуге, радианы
-  mode: 0, dist: 1, idle: 9,
+  mode: 0, dist: 1,
   pos: new THREE.Vector3(), look: new THREE.Vector3(),
 };
 const CAM_SENS = 0.0026;       // одна чувствительность на обе оси
@@ -99,8 +100,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=77132067').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=77132067').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=b1760f30').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=b1760f30').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -168,6 +169,7 @@ async function boot() {
     window.G = { THREE, scene, camera, renderer, car, world, terrain, collider, roads,
                  get info() { return renderer.info; }, walk, cam, get mode() { return mode; } };
     window.G.audit = () => audit(window.G);
+    window.G.lm = lm.userData.stats;      // отчёт по достопримечательностям
     $('load').classList.add('done');
     setTimeout(() => $('load').remove(), 600);
     requestAnimationFrame(loop);
@@ -308,7 +310,7 @@ function snapToRoad(x, z) {
 function respawn(x, z) {
   const s = snapToRoad(x, z);
   car.reset(s.x, s.z, s.yaw);
-  cam.yaw = car.yaw; cam.pitch = 0.24; cam.idle = 9;
+  cam.yaw = car.yaw; cam.pitch = 0.24; cam.carYaw = car.yaw;
 }
 
 // ------------------------------------------------------------------ ввод
@@ -321,7 +323,7 @@ function bindInput() {
     if (k === 'KeyC') { cam.mode = (cam.mode + 1) % CAM_MODES.length; }
     if (k === 'KeyM') { const m = $('menu'); m.classList.toggle('on'); if (m.classList.contains('on')) document.exitPointerLock?.(); }
     if (k === 'KeyR' && mode === 'car') respawn(car.pos.x, car.pos.z);
-    if (k === 'KeyV') { cam.yaw = car.yaw; cam.pitch = 0.24; cam.dist = 1; cam.idle = 9; }   // сбросить обзор
+    if (k === 'KeyV') { cam.yaw = car.yaw; cam.pitch = 0.24; cam.dist = 1; }   // вернуть камеру за корму
     if (k === 'KeyN') { miniOn = !miniOn; document.body.classList.toggle('nomap', !miniOn); }
     if (k === 'KeyH') document.body.classList.toggle('nohud');
     if (k === 'Tab') { toggleMap(); e.preventDefault(); }
@@ -354,7 +356,6 @@ function bindInput() {
       // опускать камеру по дуге — значит pitch убывает. Отсюда плюс.
       cam.yaw = wrapPi(cam.yaw - e.movementX * CAM_SENS);
       cam.pitch = clamp(cam.pitch + e.movementY * CAM_SENS, PITCH_MIN, PITCH_MAX);
-      cam.idle = 0;                      // мышь работает — доводку глушим
     }
   });
 }
@@ -493,19 +494,16 @@ function updateCamera(dt) {
     { back: 13.5, aim: 1.80 },
   ][cam.mode];
 
-  cam.idle += dt;
-  // Шаг 4 доводки: пока мышь молчит, камера сама уходит за корму. В салоне
-  // голова возвращается вперёд почти сразу, снаружи — мягко и только на ходу.
-  const hold = cam.mode === 2 ? 0.25 : 1.1;
-  if (cam.idle > hold) {
-    const spd = Math.abs(car.vLong);
-    const rate = cam.mode === 2 ? 6.0 : (spd > 2.5 ? 0.5 + spd * 0.05 : 0);
-    if (rate > 0) {
-      const pull = 1 - Math.exp(-dt * rate);
-      cam.yaw = wrapPi(cam.yaw + wrapPi(car.yaw - cam.yaw) * pull);
-      cam.pitch += (0.24 - cam.pitch) * pull * 0.35;
-    }
-  }
+  // Автодоводки за корму НЕТ. Камера стоит там, куда её отвела мышь, и сама
+  // никуда не едет: на ходу она «подкручивалась» за кузовом, и на каждом
+  // повороте руля обзор уплывал сам собой — смотреть было невозможно.
+  // Вернуть камеру за корму — клавиша V.
+  // Исключение — вид из салона: там камера сидит в голове водителя, и голова
+  // обязана поворачиваться вместе с кузовом. Прибавляем ровно то, на сколько
+  // за кадр повернулась машина, — мышью наведённое смещение при этом цело.
+  if (cam.carYaw === undefined) cam.carYaw = car.yaw;
+  if (cam.mode === 2) cam.yaw = wrapPi(cam.yaw + wrapPi(car.yaw - cam.carYaw));
+  cam.carYaw = car.yaw;
 
   const yaw = cam.yaw;
   cam.pitch = clamp(cam.pitch, PITCH_MIN, PITCH_MAX);   // зажимаем само хранимое значение

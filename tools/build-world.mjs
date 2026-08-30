@@ -616,6 +616,7 @@ function reverse(p) {
     if (h.roof) b.rs = h.roof;
     if (h.roofColor) b.rc = h.roofColor;
     if (h.wallColor) b.wc = h.wallColor;
+    if (h.fx) b.fx = h.fx;                 // витражный фасад назначен вручную
     if (h.porch) b.porch = 1;
     if (h.chimney) b.chim = h.chimney;
     b.hand = 1;
@@ -690,6 +691,10 @@ function reverse(p) {
     const big = b.poly.length >= 8;
     const kind = (b.sg || []).some(o => o.c === 'mall' || o.c === 'cinema');
     const byTag = /^(retail|commercial|supermarket|department_store|mall)$/.test(b.t || '');
+    // Дом, описанный руками, автоматике не отдаём: «Победа» и «Украина» по
+    // тегам проходят как кинотеатры, и штукатурка сталинского портика
+    // подменялась стеклопакетами.
+    if (b.hand) continue;
     if (big && (kind || byTag) && b.h >= 5) { b.fx = 'glass'; glass++; }
   }
   console.log(`витражных фасадов ${glass}`);
