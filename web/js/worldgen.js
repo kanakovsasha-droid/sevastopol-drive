@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=a3330213';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=a3330213';
-import { buildCoverage } from './coverage.js?v=a3330213';
+import { SEA_FLOOR } from './terrain.js?v=4bf6e0a4';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=4bf6e0a4';
+import { buildCoverage } from './coverage.js?v=4bf6e0a4';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -1307,7 +1307,12 @@ function garageBoxes(poly, terrain, pushV, rnd) {
         const wc = [Math.min(1, wall[0] * tint), Math.min(1, wall[1] * tint), Math.min(1, wall[2] * tint)];
 
         // четыре стены; поперечные (шириной STEP) — с воротами
-        const quad = (P1, P2, P3, P4, col, kind, uv) => {
+        // Лицевую сторону грани задаёт ПОРЯДОК ОБХОДА, а не записанная нормаль.
+        // Я передавал вершины «как получилось» и лишь иногда менял их местами
+        // вручную — часть стенок бокса уходила изнанкой наружу и отсекалась,
+        // в ряду появлялись сквозные пустоты. Теперь грань знает, куда ей
+        // смотреть, и обход разворачивается сам.
+        const quad = (P1, P2, P3, P4, col, kind, uv, ox, oz) => {
           const e1 = [P2[0] - P1[0], P2[1] - P1[1], P2[2] - P1[2]];
           const e2 = [P3[0] - P1[0], P3[1] - P1[1], P3[2] - P1[2]];
           let nx = e1[1] * e2[2] - e1[2] * e2[1];
@@ -1315,27 +1320,31 @@ function garageBoxes(poly, terrain, pushV, rnd) {
           let nz = e1[0] * e2[1] - e1[1] * e2[0];
           const ln = Math.hypot(nx, ny, nz) || 1;
           nx /= ln; ny /= ln; nz /= ln;
-          const V = [P1, P2, P3, P1, P3, P4], T = [uv[0], uv[1], uv[2], uv[0], uv[2], uv[3]];
+          let V = [P1, P2, P3, P1, P3, P4], T = [uv[0], uv[1], uv[2], uv[0], uv[2], uv[3]];
+          if (ox !== undefined && nx * ox + nz * oz < 0) {
+            nx = -nx; ny = -ny; nz = -nz;
+            V = [P1, P3, P2, P1, P4, P3]; T = [uv[0], uv[2], uv[1], uv[0], uv[3], uv[2]];
+          }
           for (let k = 0; k < 6; k++)
             pushV(V[k][0], V[k][1], V[k][2], nx, ny, nz, col, T[k][0], T[k][1], Hb, kind);
         };
         const P = (s, p, y) => { const q = XZ(s, p); return [q[0], y, q[1]]; };
 
         // торцы с воротами: наружу смотрят обе стороны бокса
-        for (const [pf, out] of [[p0, -1], [p1, 1]]) {
+        // Ось p идёт по (-az, ax): у грани при p1 наружу смотрит она, у p0 — обратная
+        for (const [pf, sg] of [[p0, -1], [p1, 1]]) {
           const Aq = P(s0, pf, yb), Bq = P(s1, pf, yb);
           const Cq = P(s1, pf, yt), Dq = P(s0, pf, yt);
-          const uv = [[0, 0], [1, 0], [1, Hb], [0, Hb]];
-          if (out < 0) quad(Bq, Aq, Dq, Cq, door, 8, [[0, 0], [1, 0], [1, Hb], [0, Hb]]);
-          else quad(Aq, Bq, Cq, Dq, door, 8, uv);
+          quad(Aq, Bq, Cq, Dq, door, 8, [[0, 0], [1, 0], [1, Hb], [0, Hb]],
+               -A.az * sg, A.ax * sg);
         }
         // боковые (общие) стены — глухие блоки
-        for (const [sf, out] of [[s0, -1], [s1, 1]]) {
+        // Ось s идёт по (ax, az): у грани при s1 наружу смотрит она, у s0 — обратная
+        for (const [sf, sg] of [[s0, -1], [s1, 1]]) {
           const Aq = P(sf, p0, yb), Bq = P(sf, p1, yb);
           const Cq = P(sf, p1, yt), Dq = P(sf, p0, yt);
-          const uv = [[0, 0], [rd, 0], [rd, Hb], [0, Hb]];
-          if (out > 0) quad(Aq, Bq, Cq, Dq, wc, 9, uv);
-          else quad(Bq, Aq, Dq, Cq, wc, 9, [[0, 0], [rd, 0], [rd, Hb], [0, Hb]]);
+          quad(Aq, Bq, Cq, Dq, wc, 9, [[0, 0], [rd, 0], [rd, Hb], [0, Hb]],
+               A.ax * sg, A.az * sg);
         }
         // пологая двускатная кровля из профнастила, конёк вдоль ряда
         const O = 0.16, hr = 0.32;
