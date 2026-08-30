@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=668a4f38';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=668a4f38';
-import { buildCoverage } from './coverage.js?v=668a4f38';
+import { SEA_FLOOR } from './terrain.js?v=df9b2d3e';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=df9b2d3e';
+import { buildCoverage } from './coverage.js?v=df9b2d3e';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -1226,10 +1226,49 @@ export function buildRoads(world, terrain, chunk = 500) {
       }
     }
   }
+  // РЕЛЬСЫ. Подъём 5 см меньше ошибки триангуляции рельефа: сетка 8.67 м, и
+  // земля протыкала полотно пути — 57 007 м² конфликта по замеру, худшее
+  // место города. Поднимаем на ту же высоту, что и улицы, и кладём сверху
+  // шпалы с двумя нитками рельса: полоса щебня одна была не похожа на путь.
   for (const r of world.rail) {
     if (r.pts.length < 4) continue;
     const dp = densify(r.pts);
-    strip(bucket(r.pts[0], r.pts[1]), dp, miters(dp), -1.7, 1.7, 0.05, 3, 3.4);
+    const mt = miters(dp);
+    const chR = bucket(r.pts[0], r.pts[1]);
+    strip(chR, dp, mt, -1.9, 1.9, ROAD_Y + 0.02, 3, 3.8);          // балласт
+    // шпалы поперёк, шаг 0.62 м
+    for (let i = 0; i < mt.n - 1; i++) {
+      const ax = dp[i * 2], az = dp[i * 2 + 1];
+      const bx = dp[i * 2 + 2], bz = dp[i * 2 + 3];
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L < 0.2) continue;
+      const ux = (bx - ax) / L, uz = (bz - az) / L, nx = -uz, nz = ux;
+      for (let t = 0; t < L; t += 0.62) {
+        const px = ax + ux * t, pz = az + uz * t;
+        const y = H(px, pz) + ROAD_Y + 0.045;
+        const st = chR.base;
+        for (const [su, sv] of [[-0.13, -1.35], [0.13, -1.35], [0.13, 1.35], [-0.13, 1.35]]) {
+          chR.P.push(px + ux * su + nx * sv, y, pz + uz * su + nz * sv);
+          chR.C.push(enc(0.204), enc(0.161), enc(0.118));
+          chR.R.push(0, 0, 0.5, 0); chR.K.push(3); chR.O.push(-1); chR.S.push(0);
+        }
+        chR.I.push(st, st + 1, st + 2, st, st + 2, st + 3);
+        chR.base += 4;
+      }
+      // две нитки рельса
+      for (const sv of [-0.7175, 0.7175]) {
+        const st = chR.base;
+        for (const [qx, qz] of [[ax, az], [bx, bz]]) {
+          for (const w2 of [-0.035, 0.035]) {
+            chR.P.push(qx + nx * (sv + w2), H(qx, qz) + ROAD_Y + 0.085, qz + nz * (sv + w2));
+            chR.C.push(enc(0.404), enc(0.376), enc(0.353));
+            chR.R.push(0, 0, 0.5, 0); chR.K.push(3); chR.O.push(-1); chR.S.push(0);
+          }
+        }
+        chR.I.push(st, st + 1, st + 2, st + 1, st + 3, st + 2);
+        chR.base += 4;
+      }
+    }
   }
 
   // Пятно перекрёстка. Кладём ЧУТЬ НИЖЕ полотен и ровно в их цвет: его задача —
@@ -1259,11 +1298,11 @@ export function buildRoads(world, terrain, chunk = 500) {
         ring.push([j.x + Math.cos(a) * r, j.z + Math.sin(a) * r]);
       }
     }
-    ch.P.push(j.x, H(j.x, j.z) + ROAD_Y - 0.025, j.z);
+    ch.P.push(j.x, H(j.x, j.z) + ROAD_Y + 0.045, j.z);
     ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
     ch.R.push(0, 0, 0.5, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);   // без этого aOwn съезжал на вершину
     for (const [x, z] of ring) {
-      ch.P.push(x, H(x, z) + ROAD_Y - 0.025, z);
+      ch.P.push(x, H(x, z) + ROAD_Y + 0.045, z);
       ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
       ch.R.push(0, 0, 0.5, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);
     }
@@ -1271,6 +1310,14 @@ export function buildRoads(world, terrain, chunk = 500) {
       ch.I.push(start, start + 1 + (k + 1) % ring.length, start + 1 + k);
     ch.base += ring.length + 1;
   }
+
+  // Порядок высот на асфальте теперь строго монотонный и объяснимый:
+  //   полотно улицы   ROAD_Y + ширина*0.0016  (0.146 .. 0.162)
+  //   пятно перекрёстка ROAD_Y + 0.045         (0.185)
+  //   зебра            ROAD_Y + 0.055          (0.195)
+  // Раньше пятно лежало на 2.5 см НИЖЕ полотна: разница внутри точности
+  // буфера глубины, и на дистанции они спорили пятнами — 105 664 м² по
+  // замеру. Теперь пятно накрывает концы улиц, как и положено перекрёстку.
 
   // Зебра на подходах. Полосы идут вдоль движения, в России чередуются белая и жёлтая.
   for (const c of world.crossings || []) {

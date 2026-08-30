@@ -70,6 +70,14 @@ if (false && V.bridge && V.bridge.from && V.bridge.to) {
 }
 for (const pl of V.platforms || []) {
   if (!pl.from || !pl.to) continue;
+  // Надземный переход записан агентом как «платформа» высотой 6.5 м — то есть
+  // сплошная бетонная стена поперёк путей, сквозь которую шёл поезд. Это мост,
+  // и рисовать его надо настилом на ногах.
+  if ((pl.height || 0) > 2 || /мост|переход/i.test(pl.name || '')) {
+    out.structures.push({ k: 'overbridge', from: pl.from.map(R1), to: pl.to.map(R1),
+      w: pl.width || 3, deck: pl.height || 6.5, n: pl.name });
+    continue;
+  }
   out.structures.push({ k: 'platform', from: pl.from.map(R1), to: pl.to.map(R1),
     w: pl.width || 7, h: pl.height || 0.35, canopy: !!pl.canopy, canopyH: pl.canopyH || 5.0, n: pl.name });
 }

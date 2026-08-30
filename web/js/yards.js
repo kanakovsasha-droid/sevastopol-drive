@@ -483,17 +483,35 @@ export function buildStructures(world, terrain) {
     const ux = (x1 - x0) / L, uz = (z1 - z0) / L;
     const ang = Math.atan2(ux, uz);
     const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+    // Платформа шла ОДНОЙ усреднённой отметкой на всю длину: на склоне один
+    // её конец уходил под землю на 3.9 м, другой висел. Режем на звенья по
+    // 8 м и каждое сажаем на свою землю.
+    const SEGL = 8;
+    const nSeg = Math.max(1, Math.round(L / SEGL));
+    for (let k = 0; k < nSeg; k++) {
+      const t0 = k / nSeg, t1 = (k + 1) / nSeg;
+      const sx0 = x0 + (x1 - x0) * t0, sz0 = z0 + (z1 - z0) * t0;
+      const sx1 = x0 + (x1 - x0) * t1, sz1 = z0 + (z1 - z0) * t1;
+      const gy2 = (H(sx0, sz0) + H(sx1, sz1)) / 2;
+      const seg = new THREE.BoxGeometry(s.w, s.h + 0.35, L / nSeg + 0.05);
+      seg.rotateY(ang);
+      seg.translate((sx0 + sx1) / 2, gy2 + (s.h + 0.35) / 2 - 0.35, (sz0 + sz1) / 2);
+      parts.push({ geo: seg, color: CONCRETE });
+    }
     const gy = (H(x0, z0) + H(x1, z1)) / 2;
-    const deck = new THREE.BoxGeometry(s.w, s.h, L);
-    deck.rotateY(ang); deck.translate(mx, gy + s.h / 2, mz);
-    parts.push({ geo: deck, color: CONCRETE });
     // жёлтая линия безопасности по кромкам
     for (const sg of [-1, 1]) {
       const off = sg * (s.w / 2 - 0.55);
-      const line = new THREE.BoxGeometry(0.35, 0.03, L);
-      line.rotateY(ang);
-      line.translate(mx - uz * off, gy + s.h + 0.02, mz + ux * off);
-      parts.push({ geo: line, color: [0.78, 0.62, 0.13] });
+      for (let k = 0; k < nSeg; k++) {
+        const t0 = k / nSeg, t1 = (k + 1) / nSeg;
+        const sx0 = x0 + (x1 - x0) * t0, sz0 = z0 + (z1 - z0) * t0;
+        const sx1 = x0 + (x1 - x0) * t1, sz1 = z0 + (z1 - z0) * t1;
+        const gy2 = (H(sx0, sz0) + H(sx1, sz1)) / 2;
+        const line = new THREE.BoxGeometry(0.35, 0.03, L / nSeg);
+        line.rotateY(ang);
+        line.translate((sx0 + sx1) / 2 - uz * off, gy2 + s.h + 0.02, (sz0 + sz1) / 2 + ux * off);
+        parts.push({ geo: line, color: [0.78, 0.62, 0.13] });
+      }
     }
     if (s.canopy) {
       const ch = s.canopyH;
@@ -501,23 +519,65 @@ export function buildStructures(world, terrain) {
       for (let i = 0; i <= nCol; i++) {
         const t = i / nCol;
         const px = x0 + (x1 - x0) * t, pz = z0 + (z1 - z0) * t;
-        const c = new THREE.CylinderGeometry(0.14, 0.16, ch, 10);
-        c.translate(px, gy + s.h + ch / 2, pz);
+        const gyC = H(px, pz);
+        const yTopCol = Math.max(H(x0, z0), H(x1, z1)) + s.h + ch;
+        const hCol = Math.max(1.5, yTopCol - gyC - s.h);
+        const c = new THREE.CylinderGeometry(0.14, 0.16, hCol, 10);
+        c.translate(px, gyC + s.h + hCol / 2, pz);
         parts.push({ geo: c, color: [0.15, 0.31, 0.52] });
       }
+      // Навес горизонтальный: по звеньям он шёл пилой со щелями на стыках.
+      // Одна плита на всю платформу, на отметке самого высокого её конца.
       const roofW = s.w + 1.6;
+      const yTopC = Math.max(H(x0, z0), H(x1, z1)) + s.h + ch;
       const roof = new THREE.BoxGeometry(roofW, 0.22, L);
-      roof.rotateY(ang); roof.translate(mx, gy + s.h + ch + 0.11, mz);
+      roof.rotateY(ang); roof.translate(mx, yTopC + 0.11, mz);
       parts.push({ geo: roof, color: [0.22, 0.27, 0.33] });
-      for (const sg of [-1, 1]) {          // подзоры по кромке навеса
+      for (const sg of [-1, 1]) {
         const off = sg * roofW / 2;
-        const fas = new THREE.BoxGeometry(0.16, 0.42, L);
+        const fas = new THREE.BoxGeometry(0.16, 0.40, L);
         fas.rotateY(ang);
-        fas.translate(mx - uz * off, gy + s.h + ch - 0.10, mz + ux * off);
+        fas.translate(mx - uz * off, yTopC - 0.09, mz + ux * off);
         parts.push({ geo: fas, color: [0.15, 0.31, 0.52] });
       }
+
     }
     bump('платформ');
+  }
+
+  // ---- надземный пешеходный переход: настил на ногах, а не стена
+  for (const s2 of P.structures || []) {
+    if (s2.k !== 'overbridge') continue;
+    const [x0, z0] = s2.from, [x1, z1] = s2.to;
+    const L = Math.hypot(x1 - x0, z1 - z0) || 1;
+    const ux = (x1 - x0) / L, uz = (z1 - z0) / L;
+    const ang = Math.atan2(ux, uz);
+    const y = Math.max(H(x0, z0), H(x1, z1)) + s2.deck;
+    const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+    const deck = new THREE.BoxGeometry(s2.w, 0.35, L);
+    deck.rotateY(ang); deck.translate(mx, y, mz);
+    parts.push({ geo: deck, color: CONCRETE });
+    const nLeg = Math.max(2, Math.round(L / 12));
+    for (let i = 0; i <= nLeg; i++) {
+      const t = i / nLeg;
+      const px = x0 + (x1 - x0) * t, pz = z0 + (z1 - z0) * t;
+      const g0 = H(px, pz);
+      const hgt = Math.max(1.0, y - 0.2 - g0);
+      for (const sg of [-1, 1]) {
+        const leg = new THREE.BoxGeometry(0.4, hgt, 0.4);
+        leg.rotateY(ang);
+        leg.translate(px - uz * sg * (s2.w / 2 - 0.3), g0 + hgt / 2, pz + ux * sg * (s2.w / 2 - 0.3));
+        parts.push({ geo: leg, color: CONCRETE_D });
+      }
+    }
+    for (const sg of [-1, 1]) {
+      const off = sg * (s2.w / 2 + 0.05);
+      const rail = new THREE.BoxGeometry(0.08, 1.15, L);
+      rail.rotateY(ang);
+      rail.translate(mx - uz * off, y + 0.75, mz + ux * off);
+      parts.push({ geo: rail, color: RAIL_STEEL });
+    }
+    bump('переходов');
   }
 
   // ---- составы. Ось состава из отчёта — прикидка; сажаем его на НАСТОЯЩУЮ
@@ -558,17 +618,35 @@ export function buildStructures(world, terrain) {
     const body = hexTo(t.body), roofC = hexTo(t.roof);
     const n = Math.max(1, t.cars | 0);
     const step = Math.min(t.len + 1.2, L / n);
-    const gy = (H(x0, z0) + H(x1, z1)) / 2;
     for (let i = 0; i < n; i++) {
       const c = (i + 0.5) * step;
       if (c > L) break;
       const px = x0 + ux * c, pz = z0 + uz * c;
+      // Вагон стоит на СВОЕЙ земле. Раньше у всего состава была одна средняя
+      // отметка на сто метров: тележки уходили под рельс на три метра, а
+      // кузова резало навесом платформы.
+      const gy = H(px, pz);
       const car = new THREE.BoxGeometry(t.w, t.h - 1.0, Math.min(t.len, step - 0.8));
       car.rotateY(ang); car.translate(px, gy + 1.05 + (t.h - 1.0) / 2, pz);
       parts.push({ geo: car, color: body });
       const rf = new THREE.BoxGeometry(t.w - 0.35, 0.35, Math.min(t.len, step - 0.8) - 0.5);
       rf.rotateY(ang); rf.translate(px, gy + 1.05 + (t.h - 1.0) + 0.16, pz);
       parts.push({ geo: rf, color: roofC });
+      // полоса окон по борту и двери: без них вагон читался синим брусом
+      const carL = Math.min(t.len, step - 0.8);
+      const win = new THREE.BoxGeometry(t.w + 0.03, 0.95, carL - 2.4);
+      win.rotateY(ang); win.translate(px, gy + 1.05 + (t.h - 1.0) * 0.68, pz);
+      parts.push({ geo: win, color: [0.086, 0.106, 0.129] });
+      for (const dt of [-0.28, 0.28]) {
+        const dr = new THREE.BoxGeometry(t.w + 0.05, (t.h - 1.0) * 0.86, 1.25);
+        dr.rotateY(ang);
+        dr.translate(px + ux * carL * dt, gy + 1.05 + (t.h - 1.0) * 0.47, pz + uz * carL * dt);
+        parts.push({ geo: dr, color: [0.129, 0.161, 0.192] });
+      }
+      // юбка между тележками
+      const skirt = new THREE.BoxGeometry(t.w - 0.5, 0.55, carL - 1.0);
+      skirt.rotateY(ang); skirt.translate(px, gy + 0.9, pz);
+      parts.push({ geo: skirt, color: [0.11, 0.12, 0.13] });
       // тележки и белая полоса по низу борта
       for (const sg of [-1, 1]) {
         const bog = new THREE.BoxGeometry(t.w - 0.6, 0.5, 2.6);
