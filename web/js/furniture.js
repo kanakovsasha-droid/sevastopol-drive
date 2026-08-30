@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=b1760f30';
+import { PolyGrid } from './worldgen.js?v=19e4895f';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
@@ -19,7 +19,7 @@ const rng = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967
 // браузер отдаст мир из кеша вместо второй закачки. На локальном сервере
 // заголовок no-store, так что там это честное второе чтение с 127.0.0.1.
 let BUILDINGS = null;
-fetch(`../data/world.json`)
+fetch(`../data/world.json` + (document.querySelector('meta[name="build"]')?.content ? '?v=' + document.querySelector('meta[name="build"]').content : ''))
   .then(r => r.json())
   // держим ТОЛЬКО контуры: вторая копия всего мира в памяти нам не нужна
   .then(w => { BUILDINGS = new PolyGrid(w.buildings.map(b => ({ poly: b.poly, holes: b.holes })), 90); })

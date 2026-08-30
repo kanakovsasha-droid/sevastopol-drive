@@ -14,10 +14,16 @@ export class Terrain {
   }
 
   static async load(base = '..') {
+    // Адреса собраны шаблонной строкой — tools/stamp.mjs их не видит и версию
+    // не приклеивает. Pages отдаёт world.json с max-age=600, и браузер честно
+    // держал СТАРЫЕ дороги и дома десять минут после выкатки, хотя код был уже
+    // новый: правки «не доезжали до прода». Клеим версию сами, из <meta build>.
+    const v = document.querySelector('meta[name="build"]')?.content || '';
+    const q = v ? '?v=' + v : '';
     const [world, dem, bin] = await Promise.all([
-      fetch(`${base}/data/world.json`).then(r => r.json()),
-      fetch(`${base}/data/terrain.json`).then(r => r.json()),
-      fetch(`${base}/data/terrain.bin`).then(r => r.arrayBuffer()),
+      fetch(`${base}/data/world.json${q}`).then(r => r.json()),
+      fetch(`${base}/data/terrain.json${q}`).then(r => r.json()),
+      fetch(`${base}/data/terrain.bin${q}`).then(r => r.arrayBuffer()),
     ]);
     return { world, terrain: new Terrain(world.meta, dem, new Float32Array(bin)) };
   }

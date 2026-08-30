@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=b1760f30';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=b1760f30';
-import { buildCoverage } from './coverage.js?v=b1760f30';
+import { SEA_FLOOR } from './terrain.js?v=19e4895f';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=19e4895f';
+import { buildCoverage } from './coverage.js?v=19e4895f';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
