@@ -10,6 +10,8 @@ let HOUSES = [];
 try { HOUSES = JSON.parse(readFileSync(DIR + 'houses.json', 'utf8')); } catch { /* файла может не быть */ }
 let ZONES = [], SHOPS = [];
 try { ZONES = JSON.parse(readFileSync(DIR + 'zones.json', 'utf8')); } catch { /* файла может не быть */ }
+let AREAS = { parking: [], sport: [], cemetery: [], fuel: [] };
+try { AREAS = { ...AREAS, ...JSON.parse(readFileSync(DIR + 'areas.json', 'utf8')) }; } catch { /* файла может не быть */ }
 let STREETS = {};
 try { STREETS = JSON.parse(readFileSync(DIR + 'streets.json', 'utf8')); } catch { /* файла может не быть */ }
 
@@ -603,6 +605,28 @@ function reverse(p) {
     console.log(`зона «${zn.name}»: ${hit} контуров`);
   }
   world.zones = ZONES.map(z => ({ name: z.name, kind: z.kind, poly: z.poly }));
+
+  // Площадки из OSM: парковки, спортивные поля, беговые дорожки, детские
+  // площадки и кладбища. Всё по тегам, ничего не выдумано.
+  world.areas = [];
+  const R1p = a => a.map(v => Math.round(v * 10) / 10);
+  for (const a of AREAS.parking || [])
+    world.areas.push({ k: 'parking', poly: R1p(a.poly), ...(a.n ? { n: a.n } : {}), ...(a.capacity ? { cap: a.capacity } : {}) });
+  for (const a of AREAS.sport || []) {
+    const k = a.k === 'track' ? 'track'
+      : a.k === 'playground' ? 'playground'
+      : (a.sport === 'soccer' || a.sport === 'football') ? 'football'
+      : a.k === 'pitch' ? 'pitch' : 'sportsground';
+    world.areas.push({ k, poly: R1p(a.poly), ...(a.n ? { n: a.n } : {}), ...(a.sport ? { sp: a.sport } : {}) });
+  }
+  for (const a of AREAS.cemetery || [])
+    world.areas.push({ k: 'cemetery', poly: R1p(a.poly), ...(a.n ? { n: a.n } : {}) });
+  world.fuel = (AREAS.fuel || []).map(f => ({ x: f.x, z: f.z, ...(f.n ? { n: f.n } : {}) }));
+  {
+    const c = {};
+    for (const a of world.areas) c[a.k] = (c[a.k] || 0) + 1;
+    console.log('площадки  ' + Object.entries(c).map(([k, v]) => k + ' ' + v).join(', ') + (world.fuel.length ? ', АЗС ' + world.fuel.length : ''));
+  }
   // площадка зоны — не газон: асфальт и бетон между рядами
   for (const zn of ZONES) if (zn.kind === 'market') world.green.push({ kind: 'yard', poly: zn.poly });
 }

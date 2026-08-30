@@ -763,3 +763,99 @@ export function waterMaterial() {
   };
   return mat;
 }
+
+// ---------------------------------------------------------------- площадки
+// aArea: x — метры вдоль главной оси площадки, y — поперёк, z — её ширина,
+//        w — длина. aAKind: 0 парковка · 1 футбол · 2 площадка · 3 беговая
+//        дорожка · 4 детская · 5 спортядро · 6 кладбище
+export function areaMaterial() {
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.92, metalness: 0.0,
+    polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -4,
+  });
+  return inject(mat, 'sev-area', {
+    vertHead: `attribute vec4 aArea; attribute float aAKind;
+               varying vec4 vArea; varying float vAK;`,
+    vertBody: `vArea = aArea; vAK = aAKind;`,
+    fragHead: `varying vec4 vArea; varying float vAK;`,
+    fragBody: `
+      {
+        vec3 c = diffuseColor.rgb;
+        float u = vArea.x, v = vArea.y, W = vArea.z, L = vArea.w;
+        float rough = 0.92;
+        float paint = 0.0;
+        vec3 pcol = vec3(0.70, 0.69, 0.66);
+
+        if (vAK < 0.5) {
+          // ---- парковка: асфальт и разметка машиномест 2.5 x 5.3 м ----
+          c *= 0.90 + 0.16 * hash21(floor(vec2(u * 1.5, v * 1.5)));
+          c *= 0.96 + 0.07 * fbm(vec2(u, v) * 0.25);
+          // Ряды ставим вдоль КОРОТКОЙ стороны: 5.3 м место плюс 6 м проезд.
+          float band = mod(v, 16.6);
+          float inRow = step(band, 5.3) + step(10.6, band) * step(band, 15.9);
+          // поперечные штрихи между местами
+          float tick = 1.0 - smoothstep(0.05, 0.11, abs(fract(u / 2.5) - 0.5) * 2.5);
+          paint = inRow * tick;
+          // и продольная линия по головам мест
+          paint = max(paint, (1.0 - smoothstep(0.06, 0.12, abs(band - 5.3)))
+                           * step(1.0, W) * step(6.0, L));
+          rough = 0.90;
+        } else if (vAK < 1.5) {
+          // ---- футбольное поле: газон в полосы, белая разметка ----
+          float mow = step(0.5, fract(v / 6.0));
+          c *= 0.93 + 0.13 * mow;
+          c *= 0.95 + 0.10 * fbm(vec2(u, v) * 0.9);
+          float mU = 3.0, mV = 3.0;               // поле от кромки
+          float lineU = (1.0 - smoothstep(0.06, 0.13, abs(u - mU)))
+                      + (1.0 - smoothstep(0.06, 0.13, abs(u - (W - mU))));
+          float lineV = (1.0 - smoothstep(0.06, 0.13, abs(v - mV)))
+                      + (1.0 - smoothstep(0.06, 0.13, abs(v - (L - mV))));
+          float mid   = 1.0 - smoothstep(0.06, 0.13, abs(v - L * 0.5));
+          float circ  = 1.0 - smoothstep(0.07, 0.15,
+                        abs(length(vec2(u - W * 0.5, v - L * 0.5)) - min(9.15, W * 0.22)));
+          paint = clamp(lineU + lineV + mid + circ, 0.0, 1.0)
+                * step(mU - 0.4, u) * step(u, W - mU + 0.4)
+                * step(mV - 0.4, v) * step(v, L - mV + 0.4);
+          pcol = vec3(0.82, 0.82, 0.79);
+          rough = 0.95;
+        } else if (vAK < 2.5) {
+          // ---- спортплощадка: щебень с крошкой ----
+          c *= 0.88 + 0.22 * hash21(floor(vec2(u * 4.0, v * 4.0)));
+          c *= 0.94 + 0.12 * fbm(vec2(u, v) * 1.6);
+        } else if (vAK < 3.5) {
+          // ---- беговая дорожка: рыжее покрытие, белые линии дорожек ----
+          c *= 0.94 + 0.10 * fbm(vec2(u, v) * 2.2);
+          float lane = 1.0 - smoothstep(0.04, 0.09, abs(fract(v / 1.22) - 0.5) * 1.22);
+          paint = lane;
+          pcol = vec3(0.86, 0.86, 0.84);
+          rough = 0.86;
+        } else if (vAK < 4.5) {
+          // ---- детская площадка: резиновое покрытие плитами ----
+          vec2 g2 = vec2(u, v) / 1.0;
+          vec2 f2 = abs(fract(g2) - 0.5);
+          float seam = smoothstep(0.44, 0.495, max(f2.x, f2.y));
+          float tone = hash21(floor(g2));
+          // тёплая плитка вперемешку с синей — как на настоящих площадках
+          vec3 rub = tone > 0.72 ? vec3(0.180, 0.263, 0.400) : vec3(0.494, 0.243, 0.180);
+          rub *= 0.92 + 0.14 * hash21(floor(g2) + 7.0);
+          c = mix(rub, rub * 0.72, seam);
+          rough = 0.80;
+        } else if (vAK < 5.5) {
+          c *= 0.92 + 0.14 * fbm(vec2(u, v) * 1.1);
+        } else {
+          // ---- кладбище: трава с проплешинами и дорожками ----
+          c *= 0.90 + 0.16 * fbm(vec2(u, v) * 0.8);
+          float path = 1.0 - smoothstep(0.9, 1.5, abs(fract(v / 9.0) - 0.5) * 9.0);
+          c = mix(c, vec3(0.435, 0.416, 0.376), path * 0.75);
+        }
+
+        if (paint > 0.001) {
+          float wear = 0.62 + 0.38 * hash21(floor(vec2(u * 0.8, v * 0.8)));
+          c = mix(c, pcol * wear, clamp(paint, 0.0, 1.0) * 0.88);
+          rough = mix(rough, 0.66, clamp(paint, 0.0, 1.0));
+        }
+        diffuseColor.rgb = c;
+        procRough = rough;
+      }`,
+  });
+}

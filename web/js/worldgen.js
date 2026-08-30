@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=a8899780';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=a8899780';
-import { buildCoverage } from './coverage.js?v=a8899780';
+import { SEA_FLOOR } from './terrain.js?v=43acbe00';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=43acbe00';
+import { buildCoverage } from './coverage.js?v=43acbe00';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -2026,4 +2026,140 @@ export function buildTrees(world, terrain, limit = 40000) {
   mesh.castShadow = true;
   mesh.name = 'trees';
   return { mesh, count };
+}
+
+// ---------------------------------------------------------------- площадки
+// Парковки, футбольные поля, беговые дорожки, детские площадки и кладбища.
+// Всё из OSM (data/areas.json), ничего не выдумано. Каждая площадка ложится
+// на рельеф своим полотном: контур триангулируется, треугольники дробятся,
+// пока сторона не станет меньше 5 м, и каждая вершина садится на землю.
+// В атрибут пишем локальные метры от габаритной рамки — по ним шейдер кладёт
+// разметку машиномест, линии поля и дорожки.
+export function buildAreas(world, terrain) {
+  // Высоту берём тем же способом, что и дороги: сетка рельефа триангулирована
+  // двумя треугольниками на клетку, и билинейная выборка внутри клетки лежит
+  // то выше, то ниже настоящей поверхности. При подъёме в 5 см из полотна
+  // проступали чёрные заплаты — классическая борьба глубин. Поднимаем на
+  // 16 см, как проезжую часть, и берём рельеф там же.
+  const H = (x, z) => terrain.gridHeightAt(x, z);
+  // Площадки в OSM ЛЕЖАТ ДРУГ НА ДРУГЕ: спортивное ядро накрывает и поле, и
+  // беговую дорожку, и парковку рядом с ним. На одной высоте они дерутся за
+  // глубину, и полотно шло пятнами — то асфальт, то газон. Разводим по слоям:
+  // чем мельче и «главнее» площадка, тем выше она лежит.
+  const LAYER = { cemetery: 0, sportsground: 1, pitch: 2, football: 3, track: 4, parking: 5, playground: 6 };
+  const LIFT0 = 0.13;
+  const KIND = { parking: 0, football: 1, pitch: 2, track: 3, playground: 4, sportsground: 5, cemetery: 6 };
+  const COL = {
+    parking:      [0.168, 0.166, 0.172],
+    football:     [0.196, 0.373, 0.161],
+    pitch:        [0.376, 0.302, 0.208],
+    track:        [0.494, 0.216, 0.157],
+    playground:   [0.400, 0.243, 0.196],
+    sportsground: [0.267, 0.286, 0.243],
+    cemetery:     [0.318, 0.361, 0.243],
+  };
+  const P = [], C = [], U = [], K = [], I = [];
+  let base = 0, drawn = 0;
+
+  for (const a of world.areas || []) {
+    const n = a.poly.length / 2;
+    if (n < 3) continue;
+    // габаритная рамка по главной оси: локальные оси для разметки
+    const box = obbOf(a.poly);
+    if (!box) continue;
+    const { ox, oz, ux, uz, W, L } = box;
+    const kind = KIND[a.k] ?? 5;
+    const col = COL[a.k] || COL.sportsground;
+    const LIFT = LIFT0 + (LAYER[a.k] ?? 1) * 0.035;
+
+    // Контур way в OSM замкнут: последняя точка совпадает с первой. Оставлять
+    // её нельзя — earcut на задвоенной вершине сыпется и оставляет в полотне
+    // рваные дыры, сквозь которые светит трава (143 площадки из 146).
+    const pts = [];
+    let last = n;
+    if (Math.abs(a.poly[0] - a.poly[(n - 1) * 2]) < 1e-6 &&
+        Math.abs(a.poly[1] - a.poly[(n - 1) * 2 + 1]) < 1e-6) last = n - 1;
+    for (let i = 0; i < last; i++) {
+      const x = a.poly[i * 2], z = a.poly[i * 2 + 1];
+      // и подряд идущие совпадающие точки тоже выбрасываем
+      if (pts.length && Math.abs(pts[pts.length - 1].x - x) < 1e-6
+                     && Math.abs(pts[pts.length - 1].y - z) < 1e-6) continue;
+      pts.push(new THREE.Vector2(x, z));
+    }
+    if (pts.length < 3) continue;
+    let tri;
+    try { tri = THREE.ShapeUtils.triangulateShape(pts, []); } catch { tri = []; }
+    if (!tri.length) continue;
+
+    const push = (x, z) => {
+      const dx = x - ox, dz = z - oz;
+      P.push(x, H(x, z) + LIFT, z);
+      C.push(enc(col[0]), enc(col[1]), enc(col[2]));
+      U.push(dx * ux + dz * uz, -dx * uz + dz * ux, W, L);
+      K.push(kind);
+      return base++;
+    };
+    // дробим треугольник, пока сторона длиннее 5 м: иначе на склоне полотно
+    // висит над землёй серединой
+    const emit = (A, B, Cc, depth) => {
+      const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+      if (depth < 5 && Math.max(d(A, B), d(B, Cc), d(Cc, A)) > 5) {
+        const mAB = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+        const mBC = [(B[0] + Cc[0]) / 2, (B[1] + Cc[1]) / 2];
+        const mCA = [(Cc[0] + A[0]) / 2, (Cc[1] + A[1]) / 2];
+        emit(A, mAB, mCA, depth + 1); emit(mAB, B, mBC, depth + 1);
+        emit(mCA, mBC, Cc, depth + 1); emit(mAB, mBC, mCA, depth + 1);
+        return;
+      }
+      const i0 = push(A[0], A[1]), i1 = push(B[0], B[1]), i2 = push(Cc[0], Cc[1]);
+      I.push(i0, i1, i2);
+    };
+    for (const f of tri) {
+      const A = [pts[f[0]].x, pts[f[0]].y], B = [pts[f[1]].x, pts[f[1]].y], Cc = [pts[f[2]].x, pts[f[2]].y];
+      // обход к нормали вверх
+      const cross = (B[0] - A[0]) * (Cc[1] - A[1]) - (B[1] - A[1]) * (Cc[0] - A[0]);
+      if (cross > 0) emit(A, Cc, B, 0); else emit(A, B, Cc, 0);
+    }
+    drawn++;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('color', new THREE.Uint8BufferAttribute(C, 3, true));
+  geo.setAttribute('aArea', new THREE.Float32BufferAttribute(U, 4));
+  geo.setAttribute('aAKind', new THREE.Float32BufferAttribute(K, 1));
+  geo.setIndex(I);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, areaMaterial());
+  mesh.name = 'areas';
+  mesh.receiveShadow = true;
+  mesh.userData.count = drawn;
+  return mesh;
+}
+
+// габаритная рамка многоугольника по вращающимся штангенциркулям
+function obbOf(poly) {
+  const n = poly.length / 2;
+  let best = null;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const dx = poly[j * 2] - poly[i * 2], dz = poly[j * 2 + 1] - poly[i * 2 + 1];
+    const l = Math.hypot(dx, dz);
+    if (l < 1e-6) continue;
+    const ux = dx / l, uz = dz / l;
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (let k = 0; k < n; k++) {
+      const x = poly[k * 2], z = poly[k * 2 + 1];
+      const u = x * ux + z * uz, v = -x * uz + z * ux;
+      if (u < u0) u0 = u; if (u > u1) u1 = u;
+      if (v < v0) v0 = v; if (v > v1) v1 = v;
+    }
+    const area = (u1 - u0) * (v1 - v0);
+    if (!best || area < best.area) best = { area, ux, uz, u0, u1, v0, v1 };
+  }
+  if (!best) return null;
+  const { ux, uz, u0, u1, v0, v1 } = best;
+  // начало локальных осей — угол рамки, в мировых координатах
+  const ox = u0 * ux - v0 * uz, oz = u0 * uz + v0 * ux;
+  return { ox, oz, ux, uz, W: u1 - u0, L: v1 - v0 };
 }
