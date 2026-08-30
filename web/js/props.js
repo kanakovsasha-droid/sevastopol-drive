@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=da65c0c6';
+import { PolyGrid } from './worldgen.js?v=a3330213';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,
@@ -322,6 +322,11 @@ export function buildStreetProps(world, terrain, roadIndex) {
   const onRoad = (x, z) => COV.onRoad(x, z);
   const rand = rng(4242);
   const H = (x, z) => terrain.gridHeightAt(x, z);
+  // Тротуар РИСУЕТСЯ на 20 см выше рельефа (KERB_H + 0.03 в worldgen), а
+  // уличные посадки садились в голый рельеф да ещё утапливались на четверть
+  // метра — ствол оказывался на 45 см ниже плитки и торчал из неё без
+  // основания. У проезжих улиц с тротуаром сажаем на отметку тротуара.
+  const WALK_TOP = 0.20;
 
   // По корзине на породу: одна порода — одна геометрия — свои InstancedMesh.
   const bins = {}; for (const k in TREE_GEO) bins[k] = [];
@@ -372,6 +377,9 @@ export function buildStreetProps(world, terrain, roadIndex) {
     const lk = walkway ? 'park' : lampFor(r);
     // на бульваре деревья и фонари стоят чаще и ближе, чем на проезжей улице
     const stepT = walkway ? 9.0 : 11.5, stepL = walkway ? 22.0 : 31.0;
+    // тротуар строится только у проезжих улиц шириной от 5 м; у пешеходной
+    // улицы его нет, и там посадки остаются на рельефе
+    const walkTop = walkway ? 0 : WALK_TOP;
     const offT = walkway ? hw + 1.1 : hw + 1.8, offL = walkway ? hw + 0.9 : hw + 0.85;
     // идём вдоль осевой равномерным шагом, а не по узлам OSM: они стоят как попало
     let carry = 0, dist = 0;
@@ -398,11 +406,11 @@ export function buildStreetProps(world, terrain, roadIndex) {
                 const sp = hash2(x * 5.5, z * 5.5) < seaside
                   ? (hash2(x, z * 2) < 0.72 ? 'cypress' : 'pine')
                   : pickStreet(set, seed, x, z);
-                pushTree(bins[sp], x, h - 0.25, z, true);
+                pushTree(bins[sp], x, h + walkTop - 0.10, z, true);
               } else if (rand() < 0.34) {
                 // там, где дерева не вышло, остаётся приствольный газон с кустом:
                 // ряд перестаёт быть пунктиром из одинаковых промежутков
-                pushBush(x, H(x, z) - 0.1, z);
+                pushBush(x, H(x, z) + walkTop - 0.04, z);
               }
             }
           }
@@ -410,7 +418,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
           if (Math.abs(d % stepL - (side > 0 ? stepL * 0.26 : stepL * 0.74)) < 0.5) {
             const x = cx + nx * side * offL, z = cz + nz * side * offL;
             if (free(x, z) && !onOtherRoad(x, z))
-              lampBins[lk].push(x, H(x, z), z, 1, 1, Math.atan2(-nx * side, -nz * side), 0, 0);
+              lampBins[lk].push(x, H(x, z) + walkTop, z, 1, 1, Math.atan2(-nx * side, -nz * side), 0, 0);
           }
 
         }

@@ -303,7 +303,8 @@ function reverse(p) {
     }
   }
 
-  const junctions = [], crossings = [];
+  // Узел-перекрёсток: точка, где сходятся хотя бы две РАЗНЫЕ улицы.
+  const jn = [];
   for (const [id, u] of use) {
     if (u.ways.length < 2) continue;
     const distinct = new Set(u.ways.map(o => o.w.id));
@@ -311,77 +312,222 @@ function reverse(p) {
     const n = nodes.get(id);
     if (!n) continue;
     const p = project(n.lat, n.lon);
-    const r = u.maxW / 2 + 1.2;
-    junctions.push({ x: R1(p.x), z: R1(p.z), r: R1(r) });
+    jn.push({ id, x: p.x, z: p.z, r: u.maxW / 2 + 1.2, ways: u.ways });
+  }
 
-    // зебра на каждом подходе, за пределами пятна перекрёстка
-    const seen = new Set();
-    for (const o of u.ways) {
-      if (seen.has(o.w.id)) continue;
-      seen.add(o.w.id);
-      const j = o.i > 0 ? o.i - 1 : o.i + 1;
-      const nb = nodes.get(o.w.nodes[j]);
-      if (!nb) continue;
-      const q = project(nb.lat, nb.lon);
-      let dx = q.x - p.x, dz = q.z - p.z;
-      const l = Math.hypot(dx, dz);
-      if (l < 6) continue;                       // слишком короткий подход
-      dx /= l; dz /= l;
-      const off = r + 2.2;
-      crossings.push({
-        x: R1(p.x + dx * off), z: R1(p.z + dz * off),
-        a: Math.round(Math.atan2(dx, dz) * 1000) / 1000,
-        w: R1(o.width), d: 3.4,
-      });
+  // Один перекрёсток в OSM — это горсть узлов в паре метров друг от друга, а
+  // площадь (Ушакова, Лазарева) — полтора десятка узлов на семьдесят метров.
+  // Раньше отсюда выживал один узел на 14 м, и на площади оставалось шесть
+  // независимых кругов асфальта: они спорили друг с другом за глубину
+  // («ступени») и вокруг каждого расходился свой веер зебр под своим углом.
+  // Теперь узлы сливаются в СВЯЗНЫЕ кластеры (объединяем, когда пятна почти
+  // касаются), и на кластер приходится ровно одно пятно — выпуклая оболочка
+  // всех его кругов. Зебры раскладываются по кластеру, а не по узлу: по одной
+  // на каждый выход улицы наружу, уже за краем пятна.
+  const GAP = 10;                        // зазор, при котором пятна ещё считаем одним
+  const par = jn.map((_, i) => i);
+  const find = a => { while (par[a] !== a) a = par[a] = par[par[a]]; return a; };
+  const uni = (a, b) => { a = find(a); b = find(b); if (a !== b) par[b] = a; };
+  {
+    const CG = 30, g = new Map();        // максимум связи = r+r+GAP ≈ 27 < 30
+    jn.forEach((j, i) => {
+      const k = Math.floor(j.x / CG) + ',' + Math.floor(j.z / CG);
+      let a = g.get(k); if (!a) g.set(k, a = []);
+      a.push(i);
+    });
+    jn.forEach((j, i) => {
+      for (let cx = -1; cx <= 1; cx++)
+        for (let cz = -1; cz <= 1; cz++) {
+          const a = g.get((Math.floor(j.x / CG) + cx) + ',' + (Math.floor(j.z / CG) + cz));
+          if (!a) continue;
+          for (const o of a) {
+            if (o <= i) continue;
+            const q = jn[o], lim = j.r + q.r + GAP;
+            if ((q.x - j.x) ** 2 + (q.z - j.z) ** 2 < lim * lim) uni(i, o);
+          }
+        }
+    });
+  }
+  const groups = new Map();
+  jn.forEach((j, i) => {
+    const k = find(i);
+    let a = groups.get(k); if (!a) groups.set(k, a = []);
+    a.push(j);
+  });
+
+  // Выпуклая оболочка (обход Эндрю). Пятно кластера — оболочка контуров всех
+  // его кругов: круг вокруг центра тяжести накрыл бы тротуары и газон между
+  // перекрёстками, а оболочка обтягивает ровно занятое место.
+  const hull = (pts) => {
+    const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const build = (src) => {
+      const h = [];
+      for (const q of src) {
+        while (h.length >= 2 && cr(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop();
+        h.push(q);
+      }
+      h.pop(); return h;
+    };
+    return build(p).concat(build(p.reverse()));
+  };
+
+  const keptJ = [];
+  let airy = 0;
+  for (const g0 of groups.values()) {
+    // Оболочка обтягивает круги, но если они выстроились кольцом (площадь с
+    // газоном в середине), она накроет и середину. Такие кластеры не склеиваем:
+    // лучше два честных пятна, чем асфальт поверх сквера.
+    const parts = [g0];
+    if (g0.length > 1) {
+      const samp0 = [];
+      let disks = 0;
+      for (const j of g0) {
+        disks += Math.PI * j.r * j.r;
+        for (let k = 0; k < 14; k++) {
+          const a = k / 14 * Math.PI * 2;
+          samp0.push([j.x + Math.cos(a) * j.r, j.z + Math.sin(a) * j.r]);
+        }
+      }
+      const h0 = hull(samp0);
+      let A0 = 0;
+      for (let i = 0; i < h0.length; i++) {
+        const q = h0[(i + 1) % h0.length];
+        A0 += h0[i][0] * q[1] - q[0] * h0[i][1];
+      }
+      if (Math.abs(A0 / 2) > 2.6 * disks) { airy++; parts.length = 0; for (const j of g0) parts.push([j]); }
+    }
+    for (const g of parts) {
+      let sx = 0, sz = 0;
+      const samp = [];
+      for (const j of g) {
+        sx += j.x; sz += j.z;
+        for (let k = 0; k < 14; k++) {
+          const a = k / 14 * Math.PI * 2;
+          samp.push([j.x + Math.cos(a) * j.r, j.z + Math.sin(a) * j.r]);
+        }
+      }
+      const cx = sx / g.length, cz = sz / g.length;
+      let R = 0;
+      for (const j of g) R = Math.max(R, Math.hypot(j.x - cx, j.z - cz) + j.r);
+      const rec = { x: R1(cx), z: R1(cz), r: R1(R) };
+      if (g.length > 1) {
+        // Обход приводим к положительной площади: worldgen считает «наружу» по
+        // левой нормали ребра и без единого обхода вывернул бы пятно наизнанку.
+        const h = hull(samp);
+        let A = 0;
+        for (let i = 0; i < h.length; i++) {
+          const q = h[(i + 1) % h.length];
+          A += h[i][0] * q[1] - q[0] * h[i][1];
+        }
+        if (A < 0) h.reverse();
+        rec.poly = h.flatMap(q => [R1(q[0]), R1(q[1])]);
+      }
+      rec.__g = g;
+      keptJ.push(rec);
     }
   }
-  // Один перекрёсток в OSM — это несколько общих узлов в паре метров друг от
-  // друга. Каждый плодил свой круг асфальта и свой веер зебр, и всё это ложилось
-  // внахлёст. Склеиваем узлы в кластеры и оставляем по одному пятну на кластер.
-  const CLUSTER = 14;
-  junctions.sort((a, b) => b.r - a.r);
-  const jgrid = new Map(), keptJ = [];
-  const cellKey = (x, z) => Math.floor(x / CLUSTER) + ',' + Math.floor(z / CLUSTER);
-  for (const j of junctions) {
-    let dup = false;
-    for (let cx = -1; cx <= 1 && !dup; cx++)
-      for (let cz = -1; cz <= 1 && !dup; cz++) {
-        const list = jgrid.get(cellKey(j.x + cx * CLUSTER, j.z + cz * CLUSTER));
-        if (!list) continue;
-        for (const o of list)
-          if ((o.x - j.x) ** 2 + (o.z - j.z) ** 2 < CLUSTER * CLUSTER) { dup = true; break; }
+
+  // ---------- зебры ----------
+  // Точка вне пятна кластера? Для круга — по радиусу, для оболочки — по
+  // максимуму выноса за её рёбра (контур выпуклый, этого достаточно).
+  const outside = (j, x, z, m) => {
+    if (!j.poly) return (x - j.x) ** 2 + (z - j.z) ** 2 > (j.r + m) ** 2;
+    const p = j.poly, n = p.length / 2;
+    let far = -1e9;
+    for (let i = 0; i < n; i++) {
+      const k = (i + 1) % n;
+      const ax = p[i * 2], az = p[i * 2 + 1];
+      const ex = p[k * 2] - ax, ez = p[k * 2 + 1] - az;
+      const L = Math.hypot(ex, ez) || 1;
+      const d = ((x - ax) * ez - (z - az) * ex) / L;
+      if (d > far) far = d;
+    }
+    return far > m;
+  };
+
+  const crossings = [];
+  for (const j of keptJ) {
+    const ids = new Set(j.__g.map(o => o.id));
+    // по каждой улице кластера — её крайние узлы внутри пятна
+    const byWay = new Map();
+    for (const o of j.__g) for (const wo of o.ways) {
+      let e = byWay.get(wo.w.id);
+      if (!e) byWay.set(wo.w.id, e = { w: wo.w, width: wo.width, lo: wo.i, hi: wo.i });
+      if (wo.i < e.lo) e.lo = wo.i;
+      if (wo.i > e.hi) e.hi = wo.i;
+      if (wo.width > e.width) e.width = wo.width;
+    }
+    for (const e of byWay.values()) {
+      // Зебра — принадлежность улицы, а не выезда со двора: на каждом
+      // служебном проезде она только сорит полосами поперёк перекрёстка.
+      if (e.width < 5.5) continue;
+      // два выхода: назад от первого узла кластера и вперёд от последнего
+      for (const [from, dir] of [[e.lo, -1], [e.hi, 1]]) {
+        let px = null, pz = null, ax = 0, az = 0, run = 0;
+        for (let i = from; i + dir >= 0 && i + dir < e.w.nodes.length; i += dir) {
+          const n0 = nodes.get(e.w.nodes[i]), n1 = nodes.get(e.w.nodes[i + dir]);
+          if (!n0 || !n1) break;
+          if (i !== from && ids.has(e.w.nodes[i])) break;   // вернулись в пятно
+          const p0 = project(n0.lat, n0.lon), p1 = project(n1.lat, n1.lon);
+          const dx = p1.x - p0.x, dz = p1.z - p0.z, L = Math.hypot(dx, dz);
+          if (L < 0.5) continue;
+          const steps = Math.ceil(L);
+          for (let s = 1; s <= steps; s++) {
+            const x = p0.x + dx * s / steps, z = p0.z + dz * s / steps;
+            run += L / steps;
+            if (outside(j, x, z, 2.4)) { px = x; pz = z; ax = dx / L; az = dz / L; break; }
+          }
+          if (px !== null) break;
+          if (run > 60) break;                              // подход бесконечно не тянем
+        }
+        // 1.7 м — половина глубины зебры: полоса не должна лизать край пятна
+        if (px === null || run < 5) continue;
+        crossings.push({
+          x: R1(px + ax * 1.7), z: R1(pz + az * 1.7),
+          a: Math.round(Math.atan2(ax, az) * 1000) / 1000,
+          w: R1(e.width), d: 3.4,
+        });
       }
-    if (dup) continue;
-    keptJ.push(j);
-    const k = cellKey(j.x, j.z);
-    (jgrid.get(k) || jgrid.set(k, []).get(k)).push(j);
+    }
   }
 
-  // Зебры: не ближе 11 м друг к другу и только у оставшихся перекрёстков.
+  // Зебры: не ближе 11 м друг к другу и ни одна не внутри пятна перекрёстка.
   const CROSS_MIN = 11;
   const cgrid = new Map(), keptC = [];
+  const jgrid = new Map();
+  for (const j of keptJ) {
+    const R = j.r + 6;
+    for (let cx = Math.floor((j.x - R) / 40); cx <= Math.floor((j.x + R) / 40); cx++)
+      for (let cz = Math.floor((j.z - R) / 40); cz <= Math.floor((j.z + R) / 40); cz++) {
+        const k = cx + ',' + cz;
+        let a = jgrid.get(k); if (!a) jgrid.set(k, a = []);
+        a.push(j);
+      }
+  }
   for (const c of crossings) {
     let near = false;
     for (let cx = -1; cx <= 1 && !near; cx++)
       for (let cz = -1; cz <= 1 && !near; cz++) {
-        const list = cgrid.get(Math.floor(c.x / CROSS_MIN) + cx + ',' + (Math.floor(c.z / CROSS_MIN) + cz));
+        const list = cgrid.get((Math.floor(c.x / CROSS_MIN) + cx) + ',' + (Math.floor(c.z / CROSS_MIN) + cz));
         if (!list) continue;
         for (const o of list)
           if ((o.x - c.x) ** 2 + (o.z - c.z) ** 2 < CROSS_MIN * CROSS_MIN) { near = true; break; }
       }
     if (near) continue;
-    // зебра нужна только там, где остался перекрёсток
-    let hasJ = false;
-    for (const j of keptJ) {
-      if ((j.x - c.x) ** 2 + (j.z - c.z) ** 2 < 900) { hasJ = true; break; }
-    }
-    if (!hasJ) continue;
+    // зебра лежит НА ПОДХОДЕ: внутри пятна ей делать нечего
+    const jl = jgrid.get(Math.floor(c.x / 40) + ',' + Math.floor(c.z / 40)) || [];
+    let inJ = false;
+    for (const j of jl) if (!outside(j, c.x, c.z, 1.0)) { inJ = true; break; }
+    if (inJ) continue;
     keptC.push(c);
     const k = Math.floor(c.x / CROSS_MIN) + ',' + Math.floor(c.z / CROSS_MIN);
     (cgrid.get(k) || cgrid.set(k, []).get(k)).push(c);
   }
 
-  console.log(`  узлов-перекрёстков ${junctions.length} → кластеров ${keptJ.length}`);
+  let poly = 0, big = 0;
+  for (const j of keptJ) { if (j.poly) poly++; if (j.r > 20) big++; delete j.__g; }
+  console.log(`  узлов-перекрёстков ${jn.length} → кластеров ${keptJ.length} (из них склеенных ${poly}, крупнее 20 м ${big}, рассыпано как «кольцо» ${airy})`);
   console.log(`  зебр ${crossings.length} → после чистки ${keptC.length}`);
   world.junctions = keptJ;
   world.crossings = keptC;

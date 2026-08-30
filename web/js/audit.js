@@ -89,6 +89,60 @@ export function audit(G) {
         .map(o => `${(o.v * 100).toFixed(0)} см @ ${o.x | 0},${o.z | 0}`) };
   }
 
+  // ---------- дыры в покрытии ----------
+  // Обратная сторона борьбы с нахлёстом: срезав лишнее, легко проделать
+  // проплешины, сквозь которые светит грунт. Считаем ячейки растра покрытия
+  // (то есть места, где по данным ДОЛЖЕН быть асфальт), над которыми не
+  // оказалось ни одного нарисованного треугольника — любого класса.
+  // Кромочные ячейки (растр берёт полуширину с запасом 0.6 м) сюда попадают
+  // законно, поэтому важно не абсолютное число, а его изменение «было/стало».
+  {
+    const R3 = COV.res, hx0 = COV.x0, hz0 = COV.z0, HW = COV.W, HH = COV.H;
+    const paint = new Uint8Array(HW * HH);
+    for (const m of grpRoads.children) {
+      const g = m.geometry;
+      const P = g.attributes.position.array, K = g.attributes.aCls.array;
+      const idx = g.index.array;
+      for (let t = 0; t + 2 < idx.length; t += 3) {
+        const i0 = idx[t], i1 = idx[t + 1], i2 = idx[t + 2];
+        if (K[i0] === 6) continue;             // бордюр вертикален, землю он не кроет
+        const ax = P[i0 * 3], az = P[i0 * 3 + 2];
+        const bx = P[i1 * 3], bz = P[i1 * 3 + 2];
+        const cx = P[i2 * 3], cz = P[i2 * 3 + 2];
+        const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+        if (Math.abs(den) < 1e-9) continue;
+        const ci0 = Math.floor((Math.min(ax, bx, cx) - hx0) / R3);
+        const ci1 = Math.floor((Math.max(ax, bx, cx) - hx0) / R3);
+        const cj0 = Math.floor((Math.min(az, bz, cz) - hz0) / R3);
+        const cj1 = Math.floor((Math.max(az, bz, cz) - hz0) / R3);
+        for (let cj = cj0; cj <= cj1; cj++) {
+          if (cj < 0 || cj >= HH) continue;
+          for (let ci = ci0; ci <= ci1; ci++) {
+            if (ci < 0 || ci >= HW) continue;
+            const px = hx0 + (ci + 0.5) * R3, pz = hz0 + (cj + 0.5) * R3;
+            const l1 = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / den;
+            const l2 = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / den;
+            const l3 = 1 - l1 - l2;
+            if (l1 < -0.02 || l2 < -0.02 || l3 < -0.02) continue;
+            paint[cj * HW + ci] = 1;
+          }
+        }
+      }
+    }
+    let need = 0, hole = 0; const hW = [];
+    for (let k = 0; k < HW * HH; k++) {
+      if (COV.owner[k] < 0) continue;
+      need++;
+      if (!paint[k]) {
+        hole++;
+        if (hW.length < 40) hW.push({ v: 1, x: hx0 + (k % HW + 0.5) * R3, z: hz0 + ((k / HW) | 0) * R3 });
+      }
+    }
+    out['дыры в покрытии'] = { ячеек: need, дефект: hole,
+      процент: need ? +(100 * hole / need).toFixed(2) : 0,
+      примеры: hW.slice(0, 5).map(o => `${o.x | 0},${o.z | 0}`) };
+  }
+
   // Честная метрика: сколько НАРИСОВАННОГО бордюра и тротуара лежит вглубь
   // чужой полосы. Вершины на самой кромке не считаем — они там законно.
   {

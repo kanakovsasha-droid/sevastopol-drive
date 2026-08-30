@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=da65c0c6';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=da65c0c6';
-import { buildCoverage } from './coverage.js?v=da65c0c6';
+import { SEA_FLOOR } from './terrain.js?v=a3330213';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=a3330213';
+import { buildCoverage } from './coverage.js?v=a3330213';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -708,30 +708,58 @@ export function buildRoads(world, terrain, chunk = 500) {
   }
   // Тротуар должен обрываться у угла квартала, а не заезжать на перекрёсток:
   // сходящиеся полосы там наползают друг на друга бледными клиньями.
+  // Вынос точки за выпуклый контур: контур выпуклый, поэтому хватает максимума
+  // по рёбрам. Обход в данных приведён к положительной площади, наружная
+  // нормаль ребра (ex,ez) — это (ez,-ex).
+  const polyOut = (p, x, z) => {
+    const n = p.length / 2;
+    let far = -1e9;
+    for (let i = 0; i < n; i++) {
+      const k = (i + 1) % n;
+      const ax = p[i * 2], az = p[i * 2 + 1];
+      const ex = p[k * 2] - ax, ez = p[k * 2 + 1] - az;
+      const L = Math.hypot(ex, ez) || 1;
+      const d = ((x - ax) * ez - (z - az) * ex) / L;
+      if (d > far) far = d;
+    }
+    return far;
+  };
   const inJunction = (x, z, extra = 0) => {
     const a = jmap.get(Math.floor(x / jcell) * 100003 + Math.floor(z / jcell));
     if (!a) return false;
     for (const j of a) {
       const R = j.r + 1.6 + extra;
-      if ((x - j.x) ** 2 + (z - j.z) ** 2 < R * R) return true;
+      if ((x - j.x) ** 2 + (z - j.z) ** 2 >= R * R) continue;
+      // У склеенного кластера r — радиус описанной окружности, и по нему
+      // тротуары исчезали на полквартала. Меряем по самому пятну.
+      if (j.poly && polyOut(j.poly, x, z) > 1.6 + extra) continue;
+      return true;
     }
     return false;
   };
   const midSkip = (pts, i, extra = 0) =>
     inJunction((pts[i * 2] + pts[i * 2 + 2]) / 2, (pts[i * 2 + 1] + pts[i * 2 + 3]) / 2, extra);
 
+  // offA/offB — либо число (постоянная полуширина), либо массив на вершину:
+  // проезжая часть ужимается там, где под неё лезет соседняя улица.
   const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1) => {
     const col = ROAD_COLORS[cls];
     const start = ch.base;
+    const aArr = typeof offA === 'number' ? null : offA;
+    const bArr = typeof offB === 'number' ? null : offB;
     for (let i = 0; i < mt.n; i++) {
       const t = 0.94 + 0.12 * (((i * 2654435761) >>> 8) & 255) / 255;
       for (let s = 0; s < 2; s++) {
-        const off = s === 0 ? offA : offB;
+        const off = s === 0 ? (aArr ? aArr[i] : offA) : (bArr ? bArr[i] : offB);
         const x = pts[i * 2] + mt.NX[i] * off * mt.S[i];
         const z = pts[i * 2 + 1] + mt.NZ[i] * off * mt.S[i];
         ch.P.push(x, H(x, z) + lift, z);
         ch.C.push(enc(col[0] * t), enc(col[1] * t), enc(col[2] * t));
-        ch.R.push(s === 0 ? -1 : 1, mt.D[i], uW);
+        // Разметку шейдер кладёт по aRoad.x·ширина/2 = метры от осевой. У
+        // ужатого полотна кромка уже не на ±полуширине, и постоянные ∓1
+        // утащили бы осевую линию в геометрический центр обрезка. Пишем
+        // настоящую долю — разметка остаётся привязанной к оси улицы.
+        ch.R.push(aArr ? off / (uW * 0.5) : (s === 0 ? -1 : 1), mt.D[i], uW);
         ch.K.push(cls); ch.O.push(own);
       }
     }
@@ -801,6 +829,123 @@ export function buildRoads(world, terrain, chunk = 500) {
     return false;
   };
 
+  // ---------------------------------------------------- обрезка полотен
+  // Осевые линии OSM у крупных улиц идут парой (по проезжей части в каждую
+  // сторону), и полотна перекрывались лентой в один-три метра. Прежний фильтр
+  // умел только одно — выбросить пролёт целиком, а это либо нахлёст, либо
+  // проплешина. Считаем каждой вершине СВОЮ полуширину: полотно ужимается
+  // ровно до кромки соседа, у которого приоритет выше.
+  //
+  // Приоритет — ширина, при равной ширине порядок в данных. Тот же ключ, что
+  // у растра покрытия: если бы двое уступали друг другу, на их общем месте
+  // осталась бы дыра. Мосты и тоннели не участвуют вовсе — они идут над (или
+  // под) чужим полотном, и обрезать там нечего.
+  // На столько заезжаем под соседа: шов вместо щели. Меньше — меньше остаточного
+  // нахлёста, но точность двоичного поиска ниже 8 см опускать нельзя, иначе
+  // вместо шва получится волосяная щель.
+  const LANE_EPS = 0.15;
+  const lanes = [];        // индекс в массиве = приоритет, меньше — главнее
+  const laneOf = new Map();
+  for (const o of world.roads.map((r, i) => ({ r, i }))
+       .filter(o => o.r.c <= 3 && o.r.pts.length >= 4 && !o.r.br && !o.r.tn
+                    // Уступать можно только тому, кто и правда ляжет на землю.
+                    // Улица, целиком накрытая более широкой, не рисуется вовсе —
+                    // и обрезанный по ней сосед оставлял проплешину.
+                    && (covered.get(o.i) ?? 0) <= 0.75)
+       .sort((a, b2) => b2.r.w - a.r.w || a.i - b2.i)) {
+    const hw = o.r.w / 2;
+    const ext = densify(extendEnds(o.r.pts, Math.min(hw, 5)));
+    // Митры считаем здесь и переиспользуем при отрисовке: сосед должен мерить
+    // по ТОМУ ЖЕ полотну, которое потом ляжет на землю.
+    const lane = { hw, ext, mt: miters(ext), rank: lanes.length };
+    laneOf.set(o.i, lane);
+    lanes.push(lane);
+  }
+  // Сегменты кладём в сетку УЖЕ раздутыми на свою полуширину: тогда запрос
+  // точки смотрит ровно одну ячейку, без обхода соседних.
+  const LG = 20, lgrid = new Map();
+  for (let li = 0; li < lanes.length; li++) {
+    // 1.6 — потолок множителя митры: на изломе полотно раздувает именно во столько
+    const p = lanes[li].ext, pad = lanes[li].hw * 1.6 + 0.5;
+    for (let s = 0; s < p.length / 2 - 1; s++) {
+      const cx0 = Math.floor((Math.min(p[s * 2], p[s * 2 + 2]) - pad) / LG);
+      const cx1 = Math.floor((Math.max(p[s * 2], p[s * 2 + 2]) + pad) / LG);
+      const cz0 = Math.floor((Math.min(p[s * 2 + 1], p[s * 2 + 3]) - pad) / LG);
+      const cz1 = Math.floor((Math.max(p[s * 2 + 1], p[s * 2 + 3]) + pad) / LG);
+      for (let cx = cx0; cx <= cx1; cx++)
+        for (let cz = cz0; cz <= cz1; cz++) {
+          const k = cx * 100003 + cz;
+          let a = lgrid.get(k); if (!a) lgrid.set(k, a = []);
+          a.push(li, s);
+        }
+    }
+  }
+  // Точка глубже чем на LANE_EPS внутри полотна более приоритетной улицы?
+  // Меряем по НАСТОЯЩЕМУ квадру пролёта, а не по «трубе радиусом в полуширину»:
+  // на изломе митра раздувает полотно до 1.6 полуширины, и труба недобирала
+  // как раз углы кварталов — там и оставался весь остаток нахлёста.
+  // Точка внутри треугольника: знаки трёх векторных произведений совпадают.
+  // Обход квадра может оказаться любым, поэтому годятся оба знака.
+  const inTri = (x, z, ax, az, bx, bz, cx, cz) => {
+    const d1 = (x - bx) * (az - bz) - (ax - bx) * (z - bz);
+    const d2 = (x - cx) * (bz - cz) - (bx - cx) * (z - cz);
+    const d3 = (x - ax) * (cz - az) - (cx - ax) * (z - az);
+    return !(((d1 < 0) || (d2 < 0) || (d3 < 0)) && ((d1 > 0) || (d2 > 0) || (d3 > 0)));
+  };
+  const blocked = (x, z, rank) => {
+    const a = lgrid.get(Math.floor(x / LG) * 100003 + Math.floor(z / LG));
+    if (!a) return false;
+    for (let t = 0; t < a.length; t += 2) {
+      const li = a[t];
+      if (li >= rank) continue;                 // равный или младший не помеха
+      const L = lanes[li], s = a[t + 1], p = L.ext, mt = L.mt;
+      const w0 = L.hw - LANE_EPS;               // ужимаем на допуск шва
+      if (w0 <= 0) continue;
+      const o0 = w0 * mt.S[s], o1 = w0 * mt.S[s + 1];
+      const ax = p[s * 2] + mt.NX[s] * o0, az = p[s * 2 + 1] + mt.NZ[s] * o0;
+      const bx = p[s * 2] - mt.NX[s] * o0, bz = p[s * 2 + 1] - mt.NZ[s] * o0;
+      const cx = p[s * 2 + 2] + mt.NX[s + 1] * o1, cz = p[s * 2 + 3] + mt.NZ[s + 1] * o1;
+      const dx = p[s * 2 + 2] - mt.NX[s + 1] * o1, dz = p[s * 2 + 3] - mt.NZ[s + 1] * o1;
+      if (inTri(x, z, ax, az, bx, bz, cx, cz) || inTri(x, z, bx, bz, dx, dz, cx, cz)) return true;
+      // Кругляш в узлах — запас поверх квадра. Он нужен по двум причинам.
+      // Первая: на изломе круче ~51° множитель митры упирается в потолок и
+      // внешний угол полотна срезается. Вторая важнее: уступаем мы ПО ВЕРШИНАМ,
+      // а между ними у полосы прямая кромка — и если в пролёт вдаётся угол
+      // чужого полотна, вершины его обходят, а кромка режет насквозь. Запас в
+      // полуширину вокруг узлов эти углы и закрывает.
+      const w2 = w0 * w0;
+      if ((x - p[s * 2]) ** 2 + (z - p[s * 2 + 1]) ** 2 < w2) return true;
+      if ((x - p[s * 2 + 2]) ** 2 + (z - p[s * 2 + 3]) ** 2 < w2) return true;
+    }
+    return false;
+  };
+  // Полуширины на каждую вершину: слева (отрицательные) и справа.
+  const clipOffsets = (pts, mt, hw, rank) => {
+    const offL = new Float64Array(mt.n), offR = new Float64Array(mt.n);
+    for (let i = 0; i < mt.n; i++) {
+      const bx = pts[i * 2], bz = pts[i * 2 + 1];
+      const nx = mt.NX[i] * mt.S[i], nz = mt.NZ[i] * mt.S[i];
+      let axis = -1;                            // ленивая проверка самой осевой
+      for (const sg of [1, -1]) {
+        let v = hw;
+        if (blocked(bx + nx * sg * hw, bz + nz * sg * hw, rank)) {
+          if (axis < 0) axis = blocked(bx, bz, rank) ? 1 : 0;
+          if (axis) v = 0;                      // и ось под соседом — полотна тут нет
+          else {
+            let lo = 0, hi = hw;
+            for (let k = 0; k < 8; k++) {
+              const m = (lo + hi) / 2;
+              if (blocked(bx + nx * sg * m, bz + nz * sg * m, rank)) hi = m; else lo = m;
+            }
+            v = lo;
+          }
+        }
+        if (sg > 0) offR[i] = v; else offL[i] = -v;
+      }
+    }
+    return { offL, offR };
+  };
+
   // Тротуары в растр покрытия не входят, а пешеходные дорожки OSM идут ровно
   // по ним — и ложились сверху вторым слоем светлой плитки. Заводим второй
   // растр: проезжие улицы рисуем первыми и попутно метим свои тротуары,
@@ -820,37 +965,71 @@ export function buildRoads(world, terrain, chunk = 500) {
     drawn.add(ri);
     const ch = bucket(r.pts[0], r.pts[1]);
     const hw = r.w / 2;
-    const ext = densify(extendEnds(r.pts, Math.min(hw, 5)));
+    const lane = laneOf.get(ri);
+    const ext = lane ? lane.ext : densify(extendEnds(r.pts, Math.min(hw, 5)));
     // широкая улица лежит чуть выше узкой: там, где полотна всё же перекрылись,
     // это снимает мерцание вместо случайной борьбы за глубину
     const lift = ROAD_Y + r.w * 0.0016;
-    const mtR = miters(ext);
-    strip(ch, ext, mtR, -hw, hw, lift, r.c, r.w, false, i => {
+    const mtR = lane ? lane.mt : miters(ext);
+    // Проезжей части режем полуширину по вершинам; пешеходной дорожке — нет,
+    // она в приоритетах не участвует и уступает целыми пролётами.
+    const cut = lane ? clipOffsets(ext, mtR, hw, lane.rank) : null;
+    // Пешеходная дорожка декоративна: под ней и так либо асфальт улицы, либо
+    // плитка тротуара. Проверять одну середину пролёта было мало — шестиметровая
+    // pedestrian ложилась на тротуар боками. Смотрим весь квад, и если задета
+    // хоть одна проба — пролёт не рисуем. Дыр это не делает: дорожки в растр
+    // покрытия не входят, а под снятым куском лежит то, что его перекрыло.
+    let keep4 = null;
+    if (r.c === 4) {
+      keep4 = new Uint8Array(Math.max(1, mtR.n));
+      const hq = Math.max(0.9, hw);
+      for (let i = 0; i < mtR.n - 1; i++) {
+        let hit = false;
+        for (const s2 of [0, 0.5, 1]) {
+          const bx = ext[i * 2] + (ext[i * 2 + 2] - ext[i * 2]) * s2;
+          const bz = ext[i * 2 + 1] + (ext[i * 2 + 3] - ext[i * 2 + 1]) * s2;
+          const nx = mtR.NX[i] + (mtR.NX[i + 1] - mtR.NX[i]) * s2;
+          const nz = mtR.NZ[i] + (mtR.NZ[i + 1] - mtR.NZ[i]) * s2;
+          const sc = mtR.S[i] + (mtR.S[i + 1] - mtR.S[i]) * s2;
+          for (const t of [-1, -0.5, 0, 0.5, 1]) {
+            const o = t * hq * sc;
+            if (onOtherRoad(bx + nx * o, bz + nz * o, ri) || onWalkOther(bx + nx * o, bz + nz * o, ri)) { hit = true; break; }
+          }
+          if (hit) break;
+        }
+        keep4[i] = hit ? 0 : 1;
+      }
+    }
+    strip(ch, ext, mtR, cut ? cut.offL : -hw, cut ? cut.offR : hw, lift, r.c, r.w, false, i => {
+      if (r.c === 4) return !keep4[i];
+      if (r.c > 3 || r.w < 4) return false;
+      // от обрезанного досуха пролёта остаются только вырожденные треугольники
+      if (cut && cut.offR[i] - cut.offL[i] < 0.25 && cut.offR[i + 1] - cut.offL[i + 1] < 0.25) return true;
       const pts3 = [0.15, 0.5, 0.85].map(s2 => [
         ext[i * 2] + (ext[i * 2 + 2] - ext[i * 2]) * s2,
         ext[i * 2 + 1] + (ext[i * 2 + 3] - ext[i * 2 + 1]) * s2]);
-      if (r.c === 4) {
-        // Дорожка узкая и чисто декоративная: под ней и так лежит мощение
-        // тротуара или асфальт. Хватает середины пролёта — требовать все три
-        // точки значило оставлять половину нахлёста ради ничего.
-        const [mx, mz] = pts3[1];
-        return onOtherRoad(mx, mz, ri) || onWalkOther(mx, mz, ri);
-      }
-      if (r.c > 3 || r.w < 4) return false;
       // Раньше требовалась именно БОЛЕЕ ШИРОКАЯ улица, и две равные по ширине
       // рисовались обе внахлёст. Растр уже решил, чья это земля, — этого хватает.
       for (const [bx, bz] of pts3) if (!onOtherRoad(bx, bz, ri)) return false;
       return true;      // кусок целиком на чужой проезжей части
     }, ri);
     if (r.c === 4) {
-      // дорожка метит свою полосу: параллельная соседка не ляжет сверху
+      // Дорожка метит свою полосу, чтобы параллельная соседка не легла сверху.
+      // Метим ТОЛЬКО нарисованное: раньше снятый пролёт всё равно занимал
+      // клетки и выбивал из них соседнюю дорожку — на месте обоих был газон.
+      // Шаг вдоль был в целый пролёт (6 м) при клетке в 2 м — половина полосы
+      // оставалась не помеченной, и нахлёст проходил насквозь.
       const w2 = Math.max(1.2, hw);
-      for (let i = 0; i < ext.length / 2 - 1; i++) {
-        const bx = (ext[i * 2] + ext[i * 2 + 2]) / 2, bz = (ext[i * 2 + 1] + ext[i * 2 + 3]) / 2;
+      for (let i = 0; i < mtR.n - 1; i++) {
+        if (!keep4[i]) continue;
         const dx2 = ext[i * 2 + 2] - ext[i * 2], dz2 = ext[i * 2 + 3] - ext[i * 2 + 1];
         const l2 = Math.hypot(dx2, dz2) || 1;
-        for (let o = -w2; o <= w2; o += 0.9)
-          claimWalk(bx + (-dz2 / l2) * o, bz + (dx2 / l2) * o, ri);
+        const steps = Math.max(1, Math.ceil(l2 / 1.2));
+        for (let k = 0; k <= steps; k++) {
+          const bx = ext[i * 2] + dx2 * k / steps, bz = ext[i * 2 + 1] + dz2 * k / steps;
+          for (let o = -w2; o <= w2 + 1e-6; o += 0.7)
+            claimWalk(bx + (-dz2 / l2) * o, bz + (dx2 / l2) * o, ri);
+        }
       }
     }
     // тротуары только у проезжих улиц и без вылета: иначе они лягут поперёк перекрёстка
@@ -866,14 +1045,19 @@ export function buildRoads(world, terrain, chunk = 500) {
            i => stripHitsRoad(dp, i, mt, hw - 0.2, hw + 0.8, ri), ri);
       kerb(ch, dp, mt, -hw, ROAD_Y, KERB_H + 0.03,
            i => stripHitsRoad(dp, i, mt, -hw + 0.2, -hw - 0.8, ri), ri);
-      // метим полосу тротуара, чтобы пешеходные дорожки её не перекрывали
+      // Метим полосу тротуара, чтобы пешеходные дорожки её не перекрывали.
+      // Шаг вдоль был в треть пролёта (3 м при клетке в 2 м) — между пробами
+      // оставались непомеченные клетки, и дорожка проходила сквозь них.
       for (let i = 0; i < mt.n - 1; i++) {
-        for (const s2 of [0, 0.5, 1]) {
+        const seg = Math.hypot(dp[i * 2 + 2] - dp[i * 2], dp[i * 2 + 3] - dp[i * 2 + 1]);
+        const steps = Math.max(2, Math.ceil(seg / 1.2));
+        for (let k = 0; k <= steps; k++) {
+          const s2 = k / steps;
           const bx = dp[i * 2] + (dp[i * 2 + 2] - dp[i * 2]) * s2;
           const bz = dp[i * 2 + 1] + (dp[i * 2 + 3] - dp[i * 2 + 1]) * s2;
           const nx = mt.NX[i], nz = mt.NZ[i], sc = mt.S[i];
           for (const sg of [1, -1])
-            for (let o = hw + 0.3; o <= hw + SIDEWALK; o += 0.8)
+            for (let o = hw + 0.3; o <= hw + SIDEWALK + 1e-6; o += 0.7)
               claimWalk(bx + nx * sg * o * sc, bz + nz * sg * o * sc, ri);
         }
       }
@@ -888,23 +1072,41 @@ export function buildRoads(world, terrain, chunk = 500) {
   // Пятно перекрёстка. Кладём ЧУТЬ НИЖЕ полотен и ровно в их цвет: его задача —
   // закрыть щель между сходящимися улицами, а не рисоваться поверх них кругом.
   // Раньше оно лежало сверху и читалось как круглая заплата другого оттенка.
+  // У склеенного кластера (площадь) вместо круга приходит выпуклый контур:
+  // шесть независимых кругов на площади Ушакова спорили друг с другом за
+  // глубину и читались ступенями. Один контур — одно ровное пятно.
   for (const j of world.junctions || []) {
     const ch = bucket(j.x, j.z);
     const col = ROAD_COLORS[1];
-    const SEG = 16, start = ch.base, r = j.r - 0.8;
-    if (r < 1.5) continue;
+    const start = ch.base;
+    const ring = [];
+    if (j.poly) {
+      const n = j.poly.length / 2;
+      for (let k = 0; k < n; k++) {
+        const x = j.poly[k * 2], z = j.poly[k * 2 + 1];
+        const dx = x - j.x, dz = z - j.z, L = Math.hypot(dx, dz) || 1;
+        // те же 0.8 м внутрь, что и у круга: пятно не должно вылезать из полотен
+        ring.push([x - dx / L * 0.8, z - dz / L * 0.8]);
+      }
+    } else {
+      const SEG = 16, r = j.r - 0.8;
+      if (r < 1.5) continue;
+      for (let k = 0; k < SEG; k++) {
+        const a = k / SEG * Math.PI * 2;
+        ring.push([j.x + Math.cos(a) * r, j.z + Math.sin(a) * r]);
+      }
+    }
     ch.P.push(j.x, H(j.x, j.z) + ROAD_Y - 0.025, j.z);
     ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
     ch.R.push(0, 0, 0.5); ch.K.push(1); ch.O.push(-1);   // без этого aOwn съезжал на вершину
-    for (let k = 0; k <= SEG; k++) {
-      const a = k / SEG * Math.PI * 2;
-      const x = j.x + Math.cos(a) * r, z = j.z + Math.sin(a) * r;
+    for (const [x, z] of ring) {
       ch.P.push(x, H(x, z) + ROAD_Y - 0.025, z);
       ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
       ch.R.push(0, 0, 0.5); ch.K.push(1); ch.O.push(-1);
     }
-    for (let k = 0; k < SEG; k++) ch.I.push(start, start + 1 + k + 1, start + 1 + k);
-    ch.base += SEG + 2;
+    for (let k = 0; k < ring.length; k++)
+      ch.I.push(start, start + 1 + (k + 1) % ring.length, start + 1 + k);
+    ch.base += ring.length + 1;
   }
 
   // Зебра на подходах. Полосы идут вдоль движения, в России чередуются белая и жёлтая.
