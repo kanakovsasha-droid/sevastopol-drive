@@ -10,6 +10,24 @@ let HOUSES = [];
 try { HOUSES = JSON.parse(readFileSync(DIR + 'houses.json', 'utf8')); } catch { /* файла может не быть */ }
 let ZONES = [], SHOPS = [];
 try { ZONES = JSON.parse(readFileSync(DIR + 'zones.json', 'utf8')); } catch { /* файла может не быть */ }
+let STREETS = {};
+try { STREETS = JSON.parse(readFileSync(DIR + 'streets.json', 'utf8')); } catch { /* файла может не быть */ }
+
+// Полоса городской улицы по ГОСТ 33150 — 3.5 м. На 3.3 четырёхполосная
+// Большая Морская выходила уже трёхполосной по факту, и разметка врала.
+const LANE_W = 3.5;
+// Полосность: сначала ручное переопределение по имени, потом тег OSM.
+function laneCount(t) {
+  const o = STREETS[t['name:ru'] || t.name];
+  if (o && isFinite(o.lanes)) return o.lanes;
+  const n = parseFloat(t.lanes);
+  return (isFinite(n) && n >= 1 && n <= 12) ? n : 0;
+}
+function twoWay(t) {
+  const o = STREETS[t['name:ru'] || t.name];
+  if (o && o.twoway !== undefined) return !!o.twoway;
+  return t.oneway !== 'yes';
+}
 try { SHOPS = JSON.parse(readFileSync(DIR + 'shops.json', 'utf8')); } catch { /* файла может не быть */ }
 
 // ---------- классы дорог: ширина в метрах + категория для материала ----------
@@ -223,8 +241,8 @@ for (const w of ways.values()) {
     if (!pts) continue;
     const spec = ROADS[t.highway];
     let width = spec.w;
-    const lanes = parseFloat(t.lanes);
-    if (isFinite(lanes) && lanes >= 1 && lanes <= 12) width = Math.max(width, lanes * 3.3);
+    const lanes = laneCount(t);
+    if (lanes) width = Math.max(width, lanes * LANE_W);
     const wt = parseFloat(t.width);
     if (isFinite(wt) && wt > 1 && wt < 40) width = wt;
     world.roads.push({
@@ -232,7 +250,10 @@ for (const w of ways.values()) {
       ...(t.name ? { n: t.name } : {}),
       ...(t.bridge ? { br: 1 } : {}),
       ...(t.tunnel ? { tn: 1 } : {}),
-      ...(t.oneway === 'yes' ? { ow: 1 } : {}),
+      ...(twoWay(t) ? {} : { ow: 1 }),
+      ...(lanes ? { l: lanes } : {}),
+      ...(STREETS[t['name:ru'] || t.name]?.bus ? { bus: 1 } : {}),
+      ...(STREETS[t['name:ru'] || t.name]?.parking ? { pk: 1 } : {}),
     });
     continue;
   }
@@ -292,8 +313,8 @@ function reverse(p) {
     const spec = ROADS[t.highway];
     if (!spec || spec.cls === 4) continue;      // пешеходные дорожки перекрёстков не делают
     let width = spec.w;
-    const lanes = parseFloat(t.lanes);
-    if (isFinite(lanes) && lanes >= 1 && lanes <= 12) width = Math.max(width, lanes * 3.3);
+    const lanes = laneCount(t);
+    if (lanes) width = Math.max(width, lanes * LANE_W);
     for (let i = 0; i < w.nodes.length; i++) {
       const id = w.nodes[i];
       let u = use.get(id);

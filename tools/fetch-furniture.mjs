@@ -12,6 +12,9 @@ const Q = `[out:json][timeout:200];
   node["amenity"~"^(bench|waste_basket|drinking_water|fountain|shelter|telephone|post_box|atm|vending_machine)$"](${bb});
   node["man_made"~"^(flagpole|monument|obelisk|utility_pole|street_cabinet)$"](${bb});
   node["highway"="crossing"](${bb});
+  node["highway"~"^(stop|give_way|speed_camera)$"](${bb});
+  node["traffic_calming"](${bb});
+  node["traffic_sign"](${bb});
   node["tourism"="artwork"](${bb});
   way["barrier"~"^(fence|wall|hedge|handrail|guard_rail|city_wall|retaining_wall)$"](${bb});
 );
@@ -49,12 +52,25 @@ for (const e of j.elements) {
     else if (t.man_made === 'flagpole') kind = 'flagpole';
     else if (t.man_made === 'monument' || t.man_made === 'obelisk' || t.tourism === 'artwork') kind = 'monument';
     else if (t.man_made === 'utility_pole' || t.man_made === 'street_cabinet') kind = 'pole';
+    // Дорожные знаки. Пешеходный переход берём с узлов crossing: их 368, и
+    // раньше они просто выбрасывались.
+    else if (t.highway === 'stop') kind = 'sign_stop';
+    else if (t.highway === 'give_way') kind = 'sign_yield';
+    else if (t.highway === 'speed_camera') kind = 'sign_camera';
+    else if (t.traffic_calming) kind = 'sign_bump';
+    else if (t.highway === 'crossing') kind = 'sign_crossing';
+    else if (t.maxspeed || /3\.24/.test(t.traffic_sign || '')) kind = 'sign_speed';
     if (!kind) continue;
     const p = project(e.lat, e.lon);
     const o = { k: kind, x: R1(p.x), z: R1(p.z) };
     const name = t['name:ru'] || t.name;
     if (name && (kind === 'bus_stop' || kind === 'monument' || kind === 'fountain')) o.n = name;
     if (t['tree:diameter'] || t.height) o.h = parseFloat(t.height) || undefined;
+    // предел скорости пишем цифрой на щиток
+    if (kind === 'sign_speed') {
+      const v = parseInt(t.maxspeed || (t.traffic_sign || '').split('-').pop(), 10);
+      o.v = (v >= 5 && v <= 130) ? v : 40;
+    }
     out.points.push(o);
     count[kind] = (count[kind] || 0) + 1;
   } else if (e.type === 'way' && e.tags?.barrier) {

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=ac9d78ec';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=ac9d78ec';
-import { buildCoverage } from './coverage.js?v=ac9d78ec';
+import { SEA_FLOOR } from './terrain.js?v=77132067';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=77132067';
+import { buildCoverage } from './coverage.js?v=77132067';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -740,9 +740,23 @@ export function buildRoads(world, terrain, chunk = 500) {
   const midSkip = (pts, i, extra = 0) =>
     inJunction((pts[i * 2] + pts[i * 2 + 2]) / 2, (pts[i * 2 + 1] + pts[i * 2 + 3]) / 2, extra);
 
+  // Полосность в атрибут: модуль — сколько полос, минус — движение в обе
+  // стороны (по осевой ляжет двойная сплошная). Ноль — размечать нечего.
+  // Без явного числа шейдер делил ширину на 3.5 и на девятиметровой улице
+  // без тега lanes рисовал три полосы вместо двух.
+  // Целая часть — число полос, десятая — флаги (1 автобусная справа,
+  // 2 парковочная слева, 3 обе), знак — минус у двустороннего движения.
+  const laneEnc = r => {
+    let n = r.l | 0;
+    if (!n) n = r.w >= 11 ? 4 : r.w >= 5.2 ? 2 : 0;
+    if (n < 2 || r.c > 2) return 0;
+    const v = n + ((r.bus ? 1 : 0) + (r.pk ? 2 : 0)) * 0.1;
+    return r.ow ? v : -v;
+  };
+
   // offA/offB — либо число (постоянная полуширина), либо массив на вершину:
   // проезжая часть ужимается там, где под неё лезет соседняя улица.
-  const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1) => {
+  const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1, lanes = 0) => {
     const col = ROAD_COLORS[cls];
     const start = ch.base;
     const aArr = typeof offA === 'number' ? null : offA;
@@ -759,8 +773,12 @@ export function buildRoads(world, terrain, chunk = 500) {
         // ужатого полотна кромка уже не на ±полуширине, и постоянные ∓1
         // утащили бы осевую линию в геометрический центр обрезка. Пишем
         // настоящую долю — разметка остаётся привязанной к оси улицы.
-        ch.R.push(aArr ? off / (uW * 0.5) : (s === 0 ? -1 : 1), mt.D[i], uW);
-        ch.K.push(cls); ch.O.push(own);
+        ch.R.push(aArr ? off / (uW * 0.5) : (s === 0 ? -1 : 1), mt.D[i], uW, lanes);
+        // Дробные 0.4 в классе — «до перекрёстка меньше 14 м». По ПДД пунктир
+        // 1.5 перед перекрёстком сменяется сплошной 1.1: перестраиваться там
+        // нельзя. Все пороги классов стоят на .5, поэтому добавка безопасна.
+        ch.K.push(lanes !== 0 && inJunction(x, z, 14) ? cls + 0.4 : cls);
+        ch.O.push(own);
       }
     }
     // Обход даёт нормаль вверх ТОЛЬКО при таком порядке: offA левее offB,
@@ -786,7 +804,7 @@ export function buildRoads(world, terrain, chunk = 500) {
       for (const y of [g + yLow, g + yHigh]) {
         ch.P.push(x, y, z);
         ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-        ch.R.push(0, mt.D[i], 0.3);
+        ch.R.push(0, mt.D[i], 0.3, 0);
         ch.K.push(6); ch.O.push(own);
       }
     }
@@ -1012,7 +1030,7 @@ export function buildRoads(world, terrain, chunk = 500) {
       // рисовались обе внахлёст. Растр уже решил, чья это земля, — этого хватает.
       for (const [bx, bz] of pts3) if (!onOtherRoad(bx, bz, ri)) return false;
       return true;      // кусок целиком на чужой проезжей части
-    }, ri);
+    }, ri, laneEnc(r));
     if (r.c === 4) {
       // Дорожка метит свою полосу, чтобы параллельная соседка не легла сверху.
       // Метим ТОЛЬКО нарисованное: раньше снятый пролёт всё равно занимал
@@ -1098,11 +1116,11 @@ export function buildRoads(world, terrain, chunk = 500) {
     }
     ch.P.push(j.x, H(j.x, j.z) + ROAD_Y - 0.025, j.z);
     ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-    ch.R.push(0, 0, 0.5); ch.K.push(1); ch.O.push(-1);   // без этого aOwn съезжал на вершину
+    ch.R.push(0, 0, 0.5, 0); ch.K.push(1); ch.O.push(-1);   // без этого aOwn съезжал на вершину
     for (const [x, z] of ring) {
       ch.P.push(x, H(x, z) + ROAD_Y - 0.025, z);
       ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-      ch.R.push(0, 0, 0.5); ch.K.push(1); ch.O.push(-1);
+      ch.R.push(0, 0, 0.5, 0); ch.K.push(1); ch.O.push(-1);
     }
     for (let k = 0; k < ring.length; k++)
       ch.I.push(start, start + 1 + (k + 1) % ring.length, start + 1 + k);
@@ -1126,7 +1144,7 @@ export function buildRoads(world, terrain, chunk = 500) {
         const z = c.z + uz * hd * sd + nz * hw * sw;
         ch.P.push(x, H(x, z) + ROAD_Y + 0.02, z);
         ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-        ch.R.push(sw, hd * sd, c.w); ch.K.push(7); ch.O.push(-1);
+        ch.R.push(sw, hd * sd, c.w, 0); ch.K.push(7); ch.O.push(-1);
       }
     ch.I.push(start, start + 1, start + 2, start + 1, start + 3, start + 2);
     ch.base += 4;
@@ -1144,7 +1162,7 @@ export function buildRoads(world, terrain, chunk = 500) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(ch.P, 3));
     geo.setAttribute('color', new THREE.Uint8BufferAttribute(ch.C, 3, true));
-    geo.setAttribute('aRoad', new THREE.Float32BufferAttribute(ch.R, 3));
+    geo.setAttribute('aRoad', new THREE.Float32BufferAttribute(ch.R, 4));
     geo.setAttribute('aCls', new THREE.Float32BufferAttribute(ch.K, 1));
     geo.setAttribute('aOwn', new THREE.Float32BufferAttribute(ch.O, 1));
     geo.setIndex(ch.I);

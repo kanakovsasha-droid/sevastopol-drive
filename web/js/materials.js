@@ -530,10 +530,10 @@ export function roadMaterial() {
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -6,
   });
   return inject(mat, 'sev-road', {
-    vertHead: `attribute vec3 aRoad; attribute float aCls;
-               varying vec3 vRoad; varying float vCls;`,
+    vertHead: `attribute vec4 aRoad; attribute float aCls;
+               varying vec4 vRoad; varying float vCls;`,
     vertBody: `vRoad = aRoad; vCls = aCls;`,
-    fragHead: `varying vec3 vRoad; varying float vCls;`,
+    fragHead: `varying vec4 vRoad; varying float vCls;`,
     fragBody: `
       {
         vec3 c = diffuseColor.rgb;
@@ -570,12 +570,53 @@ export function roadMaterial() {
           // накат от колёс
           c *= 1.0 - 0.10 * (band(am, halfW * 0.42, 0.55) + band(am, halfW * 0.42, 1.1) * 0.4);
 
-          if (vRoad.z > 5.2 && vCls < 2.5) {
-            float line = 0.0;
-            line += band(am, halfW - 0.55, 0.06);                       // краевая сплошная
-            line += band(am, 0.0, 0.07) * step(fract(v / 9.0), 0.46);  // осевая прерывистая
-            if (vRoad.z > 11.0) {                                       // разделение полос
-              line += band(am, halfW * 0.5, 0.06) * step(fract(v / 9.0 + 0.5), 0.40);
+          // vRoad.w: целая часть — число полос, десятая — флаги (1 автобусная,
+          // 2 парковочная), знак минус — движение в обе стороны.
+          // Раньше полосы считались по порогу ширины: всё уже 11 метров
+          // получало одну осевую, и четырёхполосная улица читалась как обычная.
+          float wAbs = abs(vRoad.w);
+          float nLane = floor(wAbs + 0.001);
+          float flags = floor((wAbs - nLane) * 10.0 + 0.5);
+          bool hasBus  = flags == 1.0 || flags == 3.0;   // выделенная справа
+          bool hasPark = flags == 2.0 || flags == 3.0;   // парковочная слева
+          bool twoWay  = vRoad.w < 0.0;
+          float nearJ  = step(0.2, fract(vCls));         // 14 м до перекрёстка
+          if (nLane > 1.5 && vCls < 2.9) {
+            float edge = halfW - 0.55;                   // краевые сплошные 1.2
+            float lw = edge * 2.0 / nLane;               // ширина полосы
+            float line = band(am, edge, 0.06);
+            // ПДД 1.5: штрих 3 м, промежуток 9 м. Перед перекрёстком — 1.1.
+            float dash = max(step(fract(v / 12.0), 0.25), nearJ);
+            for (int k = 1; k < 8; k++) {
+              if (float(k) > nLane - 1.0) break;
+              float mid = -edge + float(k) * lw;
+              bool axis = twoWay && abs(float(k) * 2.0 - nLane) < 0.01;
+              // Правая кромка потока — сторона возрастающего m.
+              bool busEdge  = hasBus  && float(k) == nLane - 1.0 && !twoWay;
+              bool parkEdge = hasPark && float(k) == 1.0 && !twoWay;
+              if (axis && nLane > 3.5) {
+                line += band(m, mid - 0.09, 0.05) + band(m, mid + 0.09, 0.05);  // 1.3
+              } else if (busEdge || parkEdge) {
+                line += band(m, mid, 0.06);              // 1.1 сплошная
+              } else {
+                line += band(m, mid, 0.06) * dash;
+              }
+            }
+            // Буква «А» посреди выделенной полосы — знак 5.14 на асфальте.
+            // Считаем прямо в МЕТРАХ: в нормированных координатах буква
+            // растянулась на девять метров и читалась как две длинные полосы.
+            if (hasBus && !twoWay) {
+              float cAx = -edge + (nLane - 0.5) * lw;      // ось правой полосы
+              float sy = (fract(v / 34.0) - 0.5) * 34.0;   // метры от центра буквы
+              float sx = m - cAx;
+              if (abs(sy) < 2.05 && abs(sx) < 0.95) {
+                float yn = sy / 2.0;                        // −1 низ, +1 верх
+                float span = 0.30 + 0.21 * (1.0 - yn);      // ножки сходятся кверху
+                float leg = 1.0 - smoothstep(0.07, 0.13, abs(abs(sx) - span));
+                float bar = (1.0 - smoothstep(0.07, 0.13, abs(sy + 0.55)))
+                          * step(abs(sx), 0.30 + 0.21 * 1.275);
+                line += clamp(leg + bar, 0.0, 1.0);
+              }
             }
             float wear = 0.55 + 0.45 * hash21(floor(vec2(v * 0.7, m * 2.5)));
             vec3 paint = vec3(0.66, 0.645, 0.60) * wear;

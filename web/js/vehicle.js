@@ -1,41 +1,28 @@
 import * as THREE from 'three';
 
-// Модель машины. Раньше это был кинематический «велосипед»: угол руля прямо
-// задавал скорость поворота, а занос был отдельной затухающей добавкой. Машина
-// ехала как по рельсам, а на пределе срывалась рывком — управлять этим нельзя.
-// Теперь считаем силы на шинах через углы увода: у каждой оси своя жёсткость
-// и свой предел сцепления, а поворот рождается моментом от этих сил. Отсюда
-// сами собой берутся снос передка, занос задка, ручник и вес в торможении.
+// Модель машины. Была попытка считать силы на шинах через углы увода — она
+// давала «честный» занос, но ездить стало нельзя: машину срывало в вращение
+// на обычном повороте. Вернулись к первой модели — кинематический велосипед:
+// угол руля напрямую задаёт скорость поворота, а занос живёт отдельной
+// затухающей добавкой. Машина всегда едет туда, куда смотрит нос, срыв даёт
+// только ручник. Всё, что нарабатывалось после (посадка на четыре колеса,
+// подвеска, полёт, скольжение вдоль стены, высота полотна), оставлено.
 
-const M      = 1380;      // масса, кг
-const IZ     = 1950;      // момент инерции по рысканью
-const A_AX   = 1.22;      // от центра тяжести до передней оси
-const B_AX   = 1.43;      // до задней
-const WHEELBASE = A_AX + B_AX;
-const CF     = 132000;   // жёстче: нос идёт за рулём, а не плывёт     // жёсткость увода передней оси, Н/рад
-const CR     = 118000;     // задней — больше, иначе машина вечно в заносе
-const MU     = 1.72;     // аркадное сцепление: держит, пока сам не сорвёшь      // сцепление сухого асфальта
-const MU_HB  = 0.42;      // задняя ось на ручнике
-// Центр тяжести смещён вперёд, значит на заднюю ось приходится меньше веса,
-// и при равном сцеплении она срывается ПЕРВОЙ — машина уходила в вращение
-// от обычного поворота. Даём задней оси запас: снос передка лечится сбросом
-// газа, занос задка на скорости уже не поймать.
-const MU_REAR = 1.20;     // множитель сцепления задней оси
-const P_MAX  = 215000;    // мощность, Вт
-const F_MAX  = 17000;     // тяга на низах, Н
-const F_BRK  = 16500;     // тормоза
-const F_REV  = 6000;      // задний ход
-const V_REV  = 12;        // предел заднего хода, м/с
-const DRAG   = 0.62;      // аэродинамика, Н/(м/с)^2
-const ROLL   = 215;       // сопротивление качению, Н
-const MAX_STEER = 0.58;
-const STEER_RATE = 3.4;   // как быстро доворачивается руль, рад/с
-const SUB    = 1 / 240;   // шаг интегрирования
+const WHEELBASE = 2.65;
+const MAX_STEER = 0.62;
+// Тяга и сопротивление подобраны так, чтобы равновесие наступало около
+// 58 м/с — это ~210 км/ч.
+const ENGINE = 18.5;
+const REVERSE = 7.0;
+const BRAKE = 24;
+const DRAG_AIR = 0.0019;
+const DRAG_ROLL = 0.11;
+const GRIP = 6.2;             // как быстро гаснет занос
+const GRIP_HANDBRAKE = 1.1;   // с ручником задок живёт своей жизнью
 // Полотно дороги рисуется на 0.14 м ВЫШЕ рельефа (ROAD_Y в worldgen), а колёса
 // опрашивали голый рельеф — машина проваливалась в асфальт, а на переломах
 // профиля кузов не совпадал с дорогой и повисал.
 const ROAD_LIFT = 0.145;
-const WHEEL_R = 0.34;
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
@@ -54,7 +41,6 @@ export class Car {
     this.wheelSpin = 0;
     this.steerVis = 0;
     this.crash = 0;
-    this.slip = 0;       // насколько сорваны задние шины — для звука и следа
     this.wheelDrop = [0, 0, 0, 0];   // ход подвески по каждому колесу
     this.vy = 0;         // вертикальная скорость: прыжки и съезды с бордюра
     this.airborne = false;
@@ -77,26 +63,46 @@ export class Car {
     const t = this.terrain;
     this.inWater = t.driveHeightAt(this.pos.x, this.pos.z) < 0.35;
 
-    // уклон под колёсами — продольная составляющая тяжести
-    const fx0 = Math.sin(this.yaw), fz0 = Math.cos(this.yaw);
-    const hF = t.driveHeightAt(this.pos.x + fx0 * 1.35, this.pos.z + fz0 * 1.35);
-    const hR = t.driveHeightAt(this.pos.x - fx0 * 1.35, this.pos.z - fz0 * 1.35);   // разница, подъём не важен
+    // уклон под колёсами: разница высот спереди и сзади
+    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
+    const hF = t.driveHeightAt(this.pos.x + fx * 1.35, this.pos.z + fz * 1.35);
+    const hR = t.driveHeightAt(this.pos.x - fx * 1.35, this.pos.z - fz * 1.35);
     const slopeAcc = -9.81 * clamp((hF - hR) / 2.7, -0.8, 0.8);
 
-    // руль доворачивается за конечное время и на скорости зажимается
-    const vAbs = Math.abs(this.vLong);
-    const lock = MAX_STEER * (0.34 + 0.66 / (1 + vAbs * vAbs / 420));
-    const want = clamp(input.steer, -1, 1) * lock;
-    const dSteer = clamp(want - this.steer, -STEER_RATE * dt, STEER_RATE * dt);
-    this.steer += dSteer;
-    this.steerVis += (this.steer / MAX_STEER - this.steerVis) * Math.min(1, dt * 12);
+    // ---- продольная динамика
+    let acc = 0;
+    if (!this.airborne) {
+      if (input.throttle > 0) acc += ENGINE * input.throttle * (1 - Math.min(0.72, Math.abs(this.vLong) / 82));
+      if (input.throttle < 0) acc += this.vLong > 0.5 ? -BRAKE : REVERSE * input.throttle;
+      if (input.handbrake) acc -= Math.sign(this.vLong) * BRAKE * 0.55;
+    }
+    acc += slopeAcc;
+    acc -= DRAG_AIR * this.vLong * Math.abs(this.vLong) + DRAG_ROLL * this.vLong;
+    if (this.inWater) acc -= this.vLong * 3.2;
+    this._ax = acc;
 
-    const n = Math.max(1, Math.min(12, Math.ceil(dt / SUB)));
-    const h = dt / n;
-    for (let k = 0; k < n; k++) this._step(h, input, slopeAcc);
+    this.vLong += acc * dt;
+    if (input.throttle === 0 && !input.handbrake && Math.abs(this.vLong) < 0.25) this.vLong = 0;
+    if (this.inWater) this.vLong = clamp(this.vLong, -2.5, 2.5);
 
-    // положение
-    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
+    // ---- руль: на скорости выкручивается меньше, иначе машина «ломается»
+    const steerMax = MAX_STEER * (1 - 0.72 * Math.min(1, Math.abs(this.vLong) / 52));
+    const steer = clamp(input.steer, -1, 1) * steerMax;
+    this.steer = steer;
+    this.steerVis += (steer - this.steerVis) * Math.min(1, dt * 11);
+
+    // ---- поворот. Скорость рыскания задаёт РУЛЬ, а не момент сил на осях:
+    // именно поэтому машина никогда не уходит в неуправляемое вращение.
+    const yawRate = this.airborne ? this.yawRate * 0.98 : (this.vLong / WHEELBASE) * Math.tan(steer);
+    this.yawRate = yawRate;
+    this.yaw += yawRate * dt;
+
+    // ---- занос: инерция тянет наружу поворота, шины сопротивляются
+    const grip = input.handbrake ? GRIP_HANDBRAKE : GRIP;
+    this.vLat += -yawRate * this.vLong * dt;
+    this.vLat *= Math.exp(-grip * dt);
+    this.vLat = clamp(this.vLat, -14, 14);
+
     const lx = Math.cos(this.yaw), lz = -Math.sin(this.yaw);      // влево
     this.pos.x += (fx * this.vLong + lx * this.vLat) * dt;
     this.pos.z += (fz * this.vLong + lz * this.vLat) * dt;
@@ -105,82 +111,6 @@ export class Car {
     this._settle(fx, fz, lx, lz, dt);
     this.wheelSpin += this.vLong * dt / 0.33;
     this.crash *= Math.exp(-dt * 4);
-  }
-
-  _step(h, input, slopeAcc) {
-    const vx = this.vLong, vy = this.vLat, r = this.yawRate;
-    const d = this.steer;
-
-    // Перенос веса: под тягой грузится задняя ось, под тормозом — передняя.
-    // Отсюда «клюёт носом» в оттормаживании и лучше держит задок под газом.
-    const axPrev = this._ax || 0;
-    const load = clamp(axPrev * 0.055, -0.32, 0.32);
-    const Nf = M * 9.81 * (B_AX / WHEELBASE - load);
-    const Nr = M * 9.81 * (A_AX / WHEELBASE + load);
-
-    // углы увода. На малой скорости знаменатель зажимаем, иначе на месте
-    // формула взрывается и машину крутит на стоянке.
-    const vsafe = Math.max(2.2, Math.abs(vx));
-    const af = Math.atan2(vy + A_AX * r, vsafe) - d * Math.sign(vx >= 0 ? 1 : -1);
-    const ar = Math.atan2(vy - B_AX * r, vsafe);
-
-    const air = this.airborne ? 0.10 : 1;    // в воздухе колёса ничего не держат
-    const muF = (this.inWater ? 0.35 : MU) * air;
-    const muR = (input.handbrake ? MU_HB : MU * MU_REAR) * (this.inWater ? 0.28 : 1) * air;
-    const capF = muF * Nf, capR = muR * Nr;
-    let Fyf = clamp(-CF * af, -capF, capF);
-    let Fyr = clamp(-CR * ar, -capR, capR);
-    this.slip = Math.min(1, Math.abs(-CR * ar) / Math.max(1, capR));
-
-    // продольная сила
-    let Fx = 0;
-    if (input.throttle > 0) {
-      const byPower = P_MAX / Math.max(4, Math.abs(vx));
-      Fx = input.throttle * Math.min(F_MAX, byPower);
-    } else if (input.throttle < 0) {
-      Fx = vx > 0.6 ? -F_BRK : Math.max(-F_REV, -F_REV * (1 - Math.abs(vx) / V_REV));
-    }
-    if (input.handbrake) Fx -= Math.sign(vx) * F_BRK * 0.45;
-    Fx -= Math.sign(vx) * ROLL + DRAG * vx * Math.abs(vx);
-    if (this.inWater) Fx -= vx * M * 2.4;
-
-    // круг сцепления: чем сильнее тянем, тем меньше остаётся на боковую
-    const gripLeft = Math.max(0, 1 - (Math.abs(Fx) / (muR * Nr)) ** 2);
-    Fyr *= 0.35 + 0.65 * Math.sqrt(gripLeft);
-
-    const ax = Fx / M + slopeAcc + r * vy;
-    const ay = (Fyf * Math.cos(d) + Fyr) / M - r * vx;
-    const ar2 = (A_AX * Fyf * Math.cos(d) - B_AX * Fyr) / IZ;
-
-    this._ax = ax;
-    this.vLong = vx + ax * h;
-    // Боковая инерция — то, из-за чего машина ехала не туда, куда смотрит нос:
-    // после поворота её продолжало нести вбок. Пока задние шины НЕ сорваны,
-    // гасим этот занос дополнительно — на руле машина едет по рулю. С ручником
-    // и на пределе сцепления гашение отпускается, и занос остаётся настоящим.
-    let vyN = vy + ay * h;
-    if (!input.handbrake) vyN *= Math.exp(-h * 3.2 * (1 - this.slip));
-    this.vLat = clamp(vyN, -18, 18);
-    // Гаситель рыскания: без него машина на пределе уходила в бесконечную
-    // карусель и вернуть её было нечем. Пока вращение близко к тому, что
-    // задаёт руль, не вмешиваемся — занос остаётся управляемым.
-    let rn = r + ar2 * h;
-    const rWant = (vx / WHEELBASE) * Math.tan(d);
-    // Ниже 6 м/с углы увода вырождаются (знаменатель зажат), и на парковочной
-    // скорости руль почти не действует. Подмешиваем кинематику велосипеда —
-    // ровно ту модель, что была раньше и на месте вела себя понятно.
-    const kin = clamp(1 - Math.abs(vx) / 6, 0, 1);
-    if (kin > 0) rn = rn * (1 - kin) + rWant * kin;
-    const over = Math.abs(rn) - (Math.abs(rWant) * 1.18 + 0.16);
-    if (over > 0) rn -= Math.sign(rn) * Math.min(Math.abs(rn), over * 14 * h);
-    this.yawRate = clamp(rn, -2.6, 2.6);
-    this.yaw += this.yawRate * h;
-
-    // на почти нулевой скорости гасим болтанку
-    if (Math.abs(this.vLong) < 0.22 && input.throttle === 0) {
-      this.vLong = 0; this.vLat *= 0.5; this.yawRate *= 0.5;
-    }
-    if (this.inWater) this.vLong = clamp(this.vLong, -2.5, 2.5);
   }
 
   // Столкновения. Раньше скорость просто множилась на коэффициент — машина

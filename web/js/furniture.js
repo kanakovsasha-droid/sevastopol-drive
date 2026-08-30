@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=ac9d78ec';
+import { PolyGrid } from './worldgen.js?v=77132067';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
@@ -90,18 +90,184 @@ function binGeo() {
   return merge([{ geo: b, color: [0.24, 0.28, 0.24] }, { geo: p, color: DARK }]);
 }
 
+// Светофор Т.1 на консоли: стойка, вынос над полотном и головка из трёх линз.
+// Раньше это была палка с коробочкой — над дорогой ничего не висело, и на
+// перекрёстке светофор было не видно из машины.
 function trafficGeo() {
   const parts = [];
-  const pole = new THREE.CylinderGeometry(0.07, 0.09, 3.3, 6); pole.translate(0, 1.65, 0);
-  const head = new THREE.BoxGeometry(0.30, 0.86, 0.24); head.translate(0, 3.55, 0);
-  parts.push({ geo: pole, color: DARK }, { geo: head, color: [0.10, 0.11, 0.12] });
-  const cols = [[0.62, 0.13, 0.10], [0.62, 0.52, 0.13], [0.16, 0.50, 0.22]];
+  const BODY = [0.10, 0.11, 0.12];
+  const pole = new THREE.CylinderGeometry(0.075, 0.10, 5.4, 8); pole.translate(0, 2.7, 0);
+  parts.push({ geo: pole, color: DARK });
+  // консоль загибается над проезжей частью — в сторону, куда светит головка
+  const arm = new THREE.CylinderGeometry(0.055, 0.065, 2.6, 6);
+  arm.rotateZ(Math.PI / 2); arm.translate(1.25, 5.28, 0);
+  const knee = new THREE.SphereGeometry(0.075, 6, 5); knee.translate(0, 5.28, 0);
+  parts.push({ geo: arm, color: DARK }, { geo: knee, color: DARK });
+
+  // основная головка — на конце консоли, линзами навстречу потоку
+  const head = new THREE.BoxGeometry(0.34, 0.98, 0.28); head.translate(2.4, 4.72, 0);
+  const visorTop = new THREE.BoxGeometry(0.40, 0.04, 0.12); visorTop.translate(2.4, 5.22, 0.09);
+  parts.push({ geo: head, color: BODY }, { geo: visorTop, color: BODY });
+  const cols = [[0.78, 0.12, 0.09], [0.80, 0.62, 0.10], [0.14, 0.60, 0.24]];
   cols.forEach((c, i) => {
-    const l = new THREE.CylinderGeometry(0.085, 0.085, 0.05, 8);
-    l.rotateX(Math.PI / 2); l.translate(0, 3.83 - i * 0.28, 0.13);
+    const l = new THREE.CylinderGeometry(0.098, 0.098, 0.06, 10);
+    l.rotateX(Math.PI / 2); l.translate(2.4, 5.05 - i * 0.29, 0.16);
+    parts.push({ geo: l, color: c });
+    // козырёк над линзой — по нему светофор и узнаётся с любого расстояния
+    const v = new THREE.BoxGeometry(0.26, 0.03, 0.10);
+    v.translate(2.4, 5.05 - i * 0.29 + 0.115, 0.20);
+    parts.push({ geo: v, color: BODY });
+  });
+
+  // пешеходная головка П.1 на самой стойке, ниже и на 90° к основной
+  const ped = new THREE.BoxGeometry(0.30, 0.62, 0.26); ped.translate(0, 2.95, 0.20);
+  parts.push({ geo: ped, color: BODY });
+  [[0.78, 0.12, 0.09], [0.14, 0.60, 0.24]].forEach((c, i) => {
+    const l = new THREE.BoxGeometry(0.19, 0.19, 0.04);
+    l.translate(0, 3.10 - i * 0.28, 0.34);
     parts.push({ geo: l, color: c });
   });
   return merge(parts);
+}
+
+// ---------------------------------------------------------------- знаки ПДД
+// Щиток рисуем на холсте: круг, треугольник, восьмиугольник и цифры не собрать
+// из коробок так, чтобы знак читался с двадцати метров. Один атлас 512×512,
+// восемь клеток по 128 — весь набор.
+const SIGN_CELL = 128, SIGN_COLS = 4, SIGN_ROWS = 3;
+const CELL_GREY = 8;      // ровная серая клетка: изнанка щитка и сама стойка
+function signAtlas() {
+  const cv = document.createElement('canvas');
+  cv.width = SIGN_CELL * SIGN_COLS; cv.height = SIGN_CELL * SIGN_ROWS;
+  const g = cv.getContext('2d');
+  const cell = (i, draw) => {
+    g.save();
+    g.translate((i % SIGN_COLS) * SIGN_CELL, Math.floor(i / SIGN_COLS) * SIGN_CELL);
+    g.beginPath(); g.rect(0, 0, SIGN_CELL, SIGN_CELL); g.clip();
+    draw(g, SIGN_CELL);
+    g.restore();
+  };
+  const disc = (g, S, fill, ring) => {
+    g.fillStyle = fill; g.beginPath(); g.arc(S / 2, S / 2, S * 0.46, 0, 7); g.fill();
+    g.strokeStyle = ring; g.lineWidth = S * 0.10;
+    g.beginPath(); g.arc(S / 2, S / 2, S * 0.40, 0, 7); g.stroke();
+  };
+  const tri = (g, S, up, fill, edge) => {
+    g.fillStyle = fill; g.strokeStyle = edge; g.lineWidth = S * 0.09;
+    g.beginPath();
+    if (up) { g.moveTo(S / 2, S * 0.10); g.lineTo(S * 0.93, S * 0.84); g.lineTo(S * 0.07, S * 0.84); }
+    else { g.moveTo(S / 2, S * 0.90); g.lineTo(S * 0.93, S * 0.16); g.lineTo(S * 0.07, S * 0.16); }
+    g.closePath(); g.fill(); g.stroke();
+  };
+  const man = (g, S, cx, cy, k, col) => {         // силуэт пешехода
+    g.fillStyle = col;
+    g.beginPath(); g.arc(cx, cy - 13 * k, 5 * k, 0, 7); g.fill();
+    g.fillRect(cx - 4 * k, cy - 8 * k, 8 * k, 14 * k);
+    g.save(); g.translate(cx, cy + 6 * k); g.rotate(0.42);
+    g.fillRect(-3 * k, 0, 6 * k, 15 * k); g.restore();
+    g.save(); g.translate(cx, cy + 6 * k); g.rotate(-0.30);
+    g.fillRect(-3 * k, 0, 6 * k, 15 * k); g.restore();
+  };
+  // 5.19.1 — пешеходный переход: синий квадрат, белый треугольник, человек
+  cell(0, (g, S) => {
+    g.fillStyle = '#1b4d9b'; g.fillRect(S * 0.06, S * 0.06, S * 0.88, S * 0.88);
+    g.fillStyle = '#e9e9e5';
+    g.beginPath(); g.moveTo(S / 2, S * 0.16); g.lineTo(S * 0.86, S * 0.84); g.lineTo(S * 0.14, S * 0.84);
+    g.closePath(); g.fill();
+    man(g, S, S / 2, S * 0.58, 1.05, '#141414');
+  });
+  // 2.4 — уступите дорогу
+  cell(1, (g, S) => tri(g, S, false, '#eceae4', '#b3241f'));
+  // 2.5 — STOP
+  cell(2, (g, S) => {
+    g.fillStyle = '#b3241f'; g.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i + 0.5) * Math.PI / 4;
+      const x = S / 2 + Math.cos(a) * S * 0.47, y = S / 2 + Math.sin(a) * S * 0.47;
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.closePath(); g.fill();
+    g.fillStyle = '#f2f0ec'; g.font = 'bold ' + (S * 0.30) + 'px sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('STOP', S / 2, S / 2);
+  });
+  // 1.17 — искусственная неровность
+  cell(3, (g, S) => {
+    tri(g, S, true, '#eceae4', '#b3241f');
+    g.fillStyle = '#141414';
+    g.beginPath(); g.moveTo(S * 0.26, S * 0.70);
+    g.quadraticCurveTo(S / 2, S * 0.36, S * 0.74, S * 0.70);
+    g.lineTo(S * 0.74, S * 0.74); g.lineTo(S * 0.26, S * 0.74); g.closePath(); g.fill();
+  });
+  // 8.23 — фотовидеофиксация
+  cell(4, (g, S) => {
+    g.fillStyle = '#eceae4'; g.fillRect(S * 0.06, S * 0.18, S * 0.88, S * 0.64);
+    g.strokeStyle = '#141414'; g.lineWidth = S * 0.05;
+    g.strokeRect(S * 0.09, S * 0.21, S * 0.82, S * 0.58);
+    g.fillStyle = '#141414';
+    g.fillRect(S * 0.24, S * 0.40, S * 0.40, S * 0.26);
+    g.fillRect(S * 0.32, S * 0.33, S * 0.16, S * 0.08);
+    g.beginPath(); g.moveTo(S * 0.64, S * 0.46); g.lineTo(S * 0.78, S * 0.38);
+    g.lineTo(S * 0.78, S * 0.68); g.lineTo(S * 0.64, S * 0.60); g.closePath(); g.fill();
+  });
+  // 3.24 — ограничение скорости, три номинала
+  [40, 5, 60].forEach((v, i) => cell(5 + i, (g, S) => {
+    disc(g, S, '#eceae4', '#b3241f');
+    g.fillStyle = '#141414'; g.font = 'bold ' + (S * 0.44) + 'px sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(v), S / 2, S * 0.53);
+  }));
+  // серая клетка под стойку и изнанку щитка
+  cell(CELL_GREY, (g, S) => { g.fillStyle = '#6d7075'; g.fillRect(0, 0, S, S); });
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+// Щиток на стойке одной геометрией: и труба, и обе стороны таблички берут
+// цвет из атласа, поэтому на весь тип знака уходит один вызов отрисовки.
+// Стойка и изнанка смотрят в серую клетку.
+function signGeo(cellIndex) {
+  const P = [], N = [], U = [];
+  const uvOf = (c, u, v) => [
+    ((c % SIGN_COLS) + u) / SIGN_COLS,
+    1 - (Math.floor(c / SIGN_COLS) + 1 - v) / SIGN_ROWS,
+  ];
+  // произвольная геометрия Three -> наши массивы, все UV в одну клетку
+  const pushGeo = (geo, cell) => {
+    const pos = geo.attributes.position, nor = geo.attributes.normal;
+    const idx = geo.index ? geo.index.array : null;
+    const n = idx ? idx.length : pos.count;
+    const [cu, cv] = uvOf(cell, 0.5, 0.5);
+    for (let i = 0; i < n; i++) {
+      const k = idx ? idx[i] : i;
+      P.push(pos.getX(k), pos.getY(k), pos.getZ(k));
+      N.push(nor.getX(k), nor.getY(k), nor.getZ(k));
+      U.push(cu, cv);
+    }
+  };
+  const pole = new THREE.CylinderGeometry(0.042, 0.052, 2.45, 6);
+  pole.translate(0, 1.22, 0);
+  pushGeo(pole.toNonIndexed(), CELL_GREY);
+
+  // щиток 0.7 м — малый типоразмер; лицо смотрит в локальный +z
+  const S = 0.35, Y = 2.10, T = 0.025;
+  const quad = [[-S, -S], [S, -S], [S, S], [-S, -S], [S, S], [-S, S]];
+  const uvs = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]];
+  for (let i = 0; i < 6; i++) {                 // лицо
+    P.push(quad[i][0], Y + quad[i][1], T); N.push(0, 0, 1);
+    const [u, v] = uvOf(cellIndex, uvs[i][0], uvs[i][1]); U.push(u, v);
+  }
+  for (let i = 5; i >= 0; i--) {                // изнанка: обратный обход
+    P.push(quad[i][0], Y + quad[i][1], -T); N.push(0, 0, -1);
+    const [u, v] = uvOf(CELL_GREY, 0.5, 0.5); U.push(u, v);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  return g;
 }
 
 function kioskGeo() {
@@ -289,6 +455,47 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   // как было раньше, светофор смотреть не может.
   put('светофоры', trafficGeo(), byKind.traffic_light,
     p => snapToKerb(p, FP.pole, 0.9, true) || offRoad(p, FP.pole, anyAngle));
+
+  // ---------------- знаки ПДД ----------------
+  // Ставим так же, как светофор: на бордюр своей стороны, щитком навстречу
+  // потоку. Знак вне обочины бессмыслен, поэтому если бордюра не нашлось —
+  // объект просто не рисуем, а не бросаем его посреди газона.
+  {
+    const atlas = signAtlas();
+    const signMat = () => new THREE.MeshStandardMaterial({
+      map: atlas, roughness: 0.55, metalness: 0.05, side: THREE.FrontSide,
+    });
+    // знак → клетка атласа. У ограничения скорости клетка зависит от номинала.
+    const CELL = { sign_crossing: 0, sign_yield: 1, sign_stop: 2, sign_bump: 3, sign_camera: 4 };
+    const speedCell = v => v <= 20 ? 6 : v >= 60 ? 7 : 5;
+    const groups = new Map();          // клетка → список мест
+    let skipped = 0;
+    for (const kind of ['sign_crossing', 'sign_yield', 'sign_stop', 'sign_bump', 'sign_camera', 'sign_speed']) {
+      for (const p of byKind[kind] || []) {
+        const r = snapToKerb(p, FP.pole, 0.75, true);
+        if (!r) { skipped++; continue; }
+        const c = kind === 'sign_speed' ? speedCell(p.v || 40) : CELL[kind];
+        (groups.get(c) || groups.set(c, []).get(c)).push(r);
+      }
+    }
+    let total = 0;
+    for (const [c, list] of groups) {
+      const m = new THREE.InstancedMesh(signGeo(c), signMat(), list.length);
+      m.castShadow = true;
+      const mx = new THREE.Matrix4(), q = new THREE.Quaternion(),
+            up = new THREE.Vector3(0, 1, 0), pv = new THREE.Vector3(), sv = new THREE.Vector3(1, 1, 1);
+      list.forEach((r, i) => {
+        pv.set(r.x, H(r.x, r.z), r.z);
+        q.setFromAxisAngle(up, r.a);
+        m.setMatrixAt(i, mx.compose(pv, q, sv));
+      });
+      m.instanceMatrix.needsUpdate = true;
+      group.add(m);
+      total += list.length;
+    }
+    stats['знаки'] = total;
+    if (skipped) stats['знаки без обочины'] = skipped;
+  }
   // «Киоск» — это банкомат, автомат или таксофон, а OSM вешает их узлом на
   // стену: 74 из 94 лежат внутри контура дома, где коробка просто тонет.
   // Выталкиваем наружу и разворачиваем ОТ стены, лицом на улицу.
