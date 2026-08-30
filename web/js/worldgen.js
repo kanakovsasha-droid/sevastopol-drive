@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=8f130476';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=8f130476';
-import { buildCoverage } from './coverage.js?v=8f130476';
+import { SEA_FLOOR } from './terrain.js?v=fcd256a8';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=fcd256a8';
+import { buildCoverage } from './coverage.js?v=fcd256a8';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -1303,7 +1303,16 @@ export function buildRoads(world, terrain, chunk = 500) {
       for (const sw of [-1, 1]) {
         const x = cx0 + ux * hd * sd + nx * hw * sw;
         const z = cz0 + uz * hd * sd + nz * hw * sw;
-        ch.P.push(x, H(x, z) + ROAD_Y + 0.02, z);
+        // Полотно поднимается тем выше, чем ШИРЕ улица (ROAD_Y + w*0.0016 —
+        // так снимается борьба за глубину между широкой и узкой). Зебра же
+        // лежала на постоянных ROAD_Y + 0.02, и на четырнадцатиметровой
+        // Большой Морской оказывалась НИЖЕ асфальта на 2.4 мм — отсюда
+        // «проваленные переходы». Поднимаем её над ЕЁ улицей.
+        // Ширина улицы под зеброй бывает не той, что у соседней на том же
+        // перекрёстке, и по своей ширине зебра всё равно ныряла под чужой,
+        // более широкий асфальт. Берём запас над САМЫМ высоким полотном
+        // города: 14 м * 0.0016 = 2.2 см, кладём 5.5 см — этого хватает всем.
+        ch.P.push(x, H(x, z) + ROAD_Y + 0.055, z);
         ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
         ch.R.push(sw, hd * sd, hw * 2, 0); ch.K.push(7); ch.O.push(-1); ch.S.push(0);
       }
@@ -2128,12 +2137,12 @@ export function buildAreas(world, terrain) {
   // беговую дорожку, и парковку рядом с ним. На одной высоте они дерутся за
   // глубину, и полотно шло пятнами — то асфальт, то газон. Разводим по слоям:
   // чем мельче и «главнее» площадка, тем выше она лежит.
-  const LAYER = { cemetery: 0, sportsground: 1, pitch: 2, football: 3, track: 4, parking: 5, playground: 6, path: 7 };
+  const LAYER = { cemetery: 0, sportsground: 1, pitch: 2, football: 3, track: 4, parking: 5, playground: 6, path: 7, fuel: 5 };
   const LIFT0 = 0.13;
   // Подъём каждой площадки отдаём наружу: машины и качели ставились по
   // рельефу, а полотно лежит выше — машины оказывались ПОД парковкой.
   const liftOf = new Map();
-  const KIND = { parking: 0, football: 1, pitch: 2, track: 3, playground: 4, sportsground: 5, cemetery: 6, path: 7 };
+  const KIND = { parking: 0, football: 1, pitch: 2, track: 3, playground: 4, sportsground: 5, cemetery: 6, path: 7, fuel: 8 };
   const COL = {
     parking:      [0.168, 0.166, 0.172],
     football:     [0.196, 0.373, 0.161],
@@ -2143,6 +2152,7 @@ export function buildAreas(world, terrain) {
     sportsground: [0.267, 0.286, 0.243],
     cemetery:     [0.318, 0.361, 0.243],
     path:         [0.573, 0.549, 0.494],
+    fuel:         [0.176, 0.176, 0.184],
   };
   const P = [], C = [], U = [], K = [], I = [];
   let base = 0, drawn = 0;
@@ -2168,7 +2178,7 @@ export function buildAreas(world, terrain) {
     // горизонт, и по рельефу горбился. Поле, корты, детские площадки и
     // парковки оставляем на земле — выровненные, они задирались над склоном
     // и вырастала подпорная стенка там, где её нет.
-    const LEVELED = a.k === 'track';
+    const LEVELED = a.k === 'track' || a.k === 'fuel';   // площадка АЗС и в жизни ровная
     // На дороге площадке делать нечего — кроме кладбища, где растр покрытия
     // и так пуст, и аллей, которые сами по себе тропинки.
     const skipOnRoad = a.k !== 'cemetery';   // на дороге площадке делать нечего

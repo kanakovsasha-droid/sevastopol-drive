@@ -630,7 +630,13 @@ function reverse(p) {
   }
   for (const a of AREAS.cemetery || [])
     world.areas.push({ k: 'cemetery', poly: R1p(a.poly), ...(a.n ? { n: a.n } : {}) });
-  world.fuel = (AREAS.fuel || []).map(f => ({ x: f.x, z: f.z, ...(f.n ? { n: f.n } : {}) }));
+  // АЗС: где в OSM есть контур — берём его целиком (по нему разворачиваем
+  // навес и по нему же ровняем площадку), где только точка — ставим компактную.
+  world.fuel = (AREAS.fuel || []).map(f => ({
+    x: f.x, z: f.z, ...(f.n ? { n: f.n } : {}), ...(f.poly ? { poly: f.poly } : {}),
+  }));
+  for (const f of AREAS.fuel || [])
+    if (f.poly && f.poly.length >= 8) world.areas.push({ k: 'fuel', poly: f.poly, ...(f.n ? { n: f.n } : {}) });
 
   // Обмеры парков, стадиона и вокзала, снятые агентами по спутнику и
   // панорамам (data/places.json): аллеи, деревья поимённо, фонтаны,

@@ -520,9 +520,38 @@ export function buildStructures(world, terrain) {
     bump('платформ');
   }
 
-  // ---- составы: вагоны коробками по оси пути
+  // ---- составы. Ось состава из отчёта — прикидка; сажаем его на НАСТОЯЩУЮ
+  // линию пути из OSM (world.rails): ищем ближайший рельсовый отрезок к
+  // середине состава и берём его направление. Иначе вагоны стоят наискось
+  // к путям и торчат из платформы.
+  const snapToRail = (mx, mz) => {
+    let best = null, bd = 40;
+    for (const r of world.rail || []) {
+      const q = r.pts || r;
+      for (let i = 0; i < q.length - 2; i += 2) {
+        const ax = q[i], az = q[i + 1], bx2 = q[i + 2], bz2 = q[i + 3];
+        const vx = bx2 - ax, vz = bz2 - az;
+        const vv = vx * vx + vz * vz || 1;
+        const tt = Math.max(0, Math.min(1, ((mx - ax) * vx + (mz - az) * vz) / vv));
+        const px = ax + vx * tt, pz = az + vz * tt;
+        const d = Math.hypot(mx - px, mz - pz);
+        if (d < bd) { bd = d; best = { px, pz, ux: vx / Math.sqrt(vv), uz: vz / Math.sqrt(vv) }; }
+      }
+    }
+    return best;
+  };
+
   for (const t of P.trains || []) {
-    const [x0, z0] = t.from, [x1, z1] = t.to;
+    let [x0, z0] = t.from; let [x1, z1] = t.to;
+    {
+      const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+      const snap = snapToRail(mx, mz);
+      if (snap) {
+        const half = Math.hypot(x1 - x0, z1 - z0) / 2;
+        x0 = snap.px - snap.ux * half; z0 = snap.pz - snap.uz * half;
+        x1 = snap.px + snap.ux * half; z1 = snap.pz + snap.uz * half;
+      }
+    }
     const L = Math.hypot(x1 - x0, z1 - z0) || 1;
     const ux = (x1 - x0) / L, uz = (z1 - z0) / L;
     const ang = Math.atan2(ux, uz);
@@ -630,25 +659,58 @@ export function buildStructures(world, terrain) {
   // Точки из OSM (amenity=fuel). Навес разворачиваем вдоль ближайшей улицы,
   // чтобы заезд был с дороги, а не в бок.
   for (const f of world.fuel || []) {
-    const g0 = H(f.x, f.z);
-    // куда смотрит АЗС: на ближайшую проезжую улицу
-    let ang = 0;
-    let bd = 1e9;
-    for (const r of world.roads || []) {
-      if (r.c > 2) continue;
-      const q = r.pts;
-      for (let i = 0; i < q.length - 2; i += 2) {
-        const ax = q[i], az = q[i + 1], bx2 = q[i + 2], bz2 = q[i + 3];
-        const vx = bx2 - ax, vz = bz2 - az;
-        const t = Math.max(0, Math.min(1, ((f.x - ax) * vx + (f.z - az) * vz) / (vx * vx + vz * vz || 1)));
-        const d = Math.hypot(f.x - ax - t * vx, f.z - az - t * vz);
-        if (d < bd) { bd = d; ang = Math.atan2(vx, vz); }
+    // Разворот и габарит берём из КОНТУРА OSM, если он есть: раньше навес
+    // ставился «в пяти метрах от точки» под углом к ближайшей улице и вставал
+    // вкривь, а на склоне повисал в воздухе. Площадку АЗС теперь ровняет
+    // buildAreas, и H здесь уже возвращает её отметку.
+    let ang = 0, CW = 14, CD = 9;
+    let cx0 = f.x, cz0 = f.z;
+    if (f.poly && f.poly.length >= 8) {
+      const q = f.poly, n = q.length / 2;
+      let best = null;
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const dx = q[j * 2] - q[i * 2], dz = q[j * 2 + 1] - q[i * 2 + 1];
+        const l = Math.hypot(dx, dz);
+        if (l < 1e-6) continue;
+        const px = dx / l, pz = dz / l;
+        let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+        for (let k = 0; k < n; k++) {
+          const u = q[k * 2] * px + q[k * 2 + 1] * pz, v = -q[k * 2] * pz + q[k * 2 + 1] * px;
+          if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v;
+        }
+        const ar = (u1 - u0) * (v1 - v0);
+        if (!best || ar < best.ar) best = { ar, px, pz, u0, u1, v0, v1 };
+      }
+      if (best) {
+        ang = Math.atan2(best.px, best.pz);
+        CW = Math.max(9, Math.min(26, (best.u1 - best.u0) * 0.72));
+        CD = Math.max(7, Math.min(16, (best.v1 - best.v0) * 0.50));
+        const cu = (best.u0 + best.u1) / 2, cv = best.v0 + (best.v1 - best.v0) * 0.36;
+        cx0 = cu * best.px - cv * best.pz;
+        cz0 = cu * best.pz + cv * best.px;
+      }
+    } else {
+      // только точка: разворачиваем к ближайшей проезжей улице
+      let bd = 1e9;
+      for (const r of world.roads || []) {
+        if (r.c > 2) continue;
+        const q = r.pts;
+        for (let i = 0; i < q.length - 2; i += 2) {
+          const ax = q[i], az = q[i + 1], bx2 = q[i + 2], bz2 = q[i + 3];
+          const vx = bx2 - ax, vz = bz2 - az;
+          const t = Math.max(0, Math.min(1, ((f.x - ax) * vx + (f.z - az) * vz) / (vx * vx + vz * vz || 1)));
+          const d = Math.hypot(f.x - ax - t * vx, f.z - az - t * vz);
+          if (d < bd) { bd = d; ang = Math.atan2(vx, vz); }
+        }
       }
     }
-    const ux = Math.sin(ang), uz = Math.cos(ang);      // вдоль улицы
-    const nx = -uz, nz = ux;                            // от улицы вглубь
-    const CW = 18, CD = 11, CH = 5.2;                   // навес
-    const cx0 = f.x + nx * 5, cz0 = f.z + nz * 5;
+    const CH = 5.2;
+    const ux = Math.sin(ang), uz = Math.cos(ang);
+    const nx = -uz, nz = ux;
+    // ВСЯ станция стоит на ОДНОЙ отметке — по центру площадки, иначе колонны
+    // навеса режет склоном и он висит углом в воздухе
+    const g0 = H(cx0, cz0);
     const canopy = new THREE.BoxGeometry(CW, 0.75, CD);
     canopy.rotateY(ang); canopy.translate(cx0, g0 + CH, cz0);
     parts.push({ geo: canopy, color: [0.90, 0.90, 0.88] });
@@ -683,7 +745,7 @@ export function buildStructures(world, terrain) {
       }
     }
     // касса-магазин за навесом
-    const sx = cx0 + nx * (CD / 2 + 4.5), sz = cz0 + nz * (CD / 2 + 4.5);
+    const sx = cx0 + nx * (CD / 2 + 4.5), sz = cz0 + nz * (CD / 2 + 4.5);   // касса на той же отметке
     const shop = new THREE.BoxGeometry(9.5, 3.6, 6.0);
     shop.rotateY(ang); shop.translate(sx, g0 + 1.8, sz);
     parts.push({ geo: shop, color: [0.90, 0.89, 0.85] });
