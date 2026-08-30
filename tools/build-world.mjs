@@ -615,10 +615,14 @@ function reverse(p) {
   for (const a of AREAS.parking || [])
     world.areas.push({ k: 'parking', poly: R1p(a.poly), ...(a.n ? { n: a.n } : {}), ...(a.capacity ? { cap: a.capacity } : {}) });
   for (const a of AREAS.sport || []) {
+    // leisure=sports_centre и stadium — это ГРАНИЦА комплекса, внутри которой
+    // и здания, и парковка, и поле. Своей поверхности у неё нет: залитая
+    // покрытием, она превращалась в гигантскую тёмную плиту на полквартала.
+    if (a.k === 'sports_centre' || a.k === 'stadium') continue;
     const k = a.k === 'track' ? 'track'
       : a.k === 'playground' ? 'playground'
       : (a.sport === 'soccer' || a.sport === 'football') ? 'football'
-      : a.k === 'pitch' ? 'pitch' : 'sportsground';
+      : 'pitch';
     world.areas.push({ k, poly: R1p(a.poly), ...(a.n ? { n: a.n } : {}), ...(a.sport ? { sp: a.sport } : {}) });
   }
   for (const a of AREAS.cemetery || [])

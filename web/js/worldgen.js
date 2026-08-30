@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=99780972';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=99780972';
-import { buildCoverage } from './coverage.js?v=99780972';
+import { SEA_FLOOR } from './terrain.js?v=a5ddc254';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=a5ddc254';
+import { buildCoverage } from './coverage.js?v=a5ddc254';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -2036,6 +2036,10 @@ export function buildTrees(world, terrain, limit = 40000) {
 // В атрибут пишем локальные метры от габаритной рамки — по ним шейдер кладёт
 // разметку машиномест, линии поля и дорожки.
 export function buildAreas(world, terrain) {
+  // Растр покрытия построен в buildRoads и лежит в мире: по нему проверяем,
+  // не накрыла ли площадка проезжую часть.
+  const COVA = world.__coverage;
+  const onAsphalt = COVA ? (x, z) => COVA.onRoad(x, z) : () => false;
   // Высоту берём тем же способом, что и дороги: сетка рельефа триангулирована
   // двумя треугольниками на клетку, и билинейная выборка внутри клетки лежит
   // то выше, то ниже настоящей поверхности. При подъёме в 5 см из полотна
@@ -2053,7 +2057,7 @@ export function buildAreas(world, terrain) {
     parking:      [0.168, 0.166, 0.172],
     football:     [0.196, 0.373, 0.161],
     pitch:        [0.376, 0.302, 0.208],
-    track:        [0.494, 0.216, 0.157],
+    track:        [0.435, 0.259, 0.204],
     playground:   [0.400, 0.243, 0.196],
     sportsground: [0.267, 0.286, 0.243],
     cemetery:     [0.318, 0.361, 0.243],
@@ -2072,6 +2076,23 @@ export function buildAreas(world, terrain) {
     const kind = KIND[a.k] ?? 5;
     const col = COL[a.k] || COL.sportsground;
     const LIFT = LIFT0 + (LAYER[a.k] ?? 1) * 0.035;
+    // Стадион, поле, корт, детская площадка и парковка — РОВНЫЕ площадки: их
+    // срезают и подсыпают, а не стелют по склону. Раньше они шли волной вслед
+    // за рельефом, и беговой овал горбился. Считаем одну отметку по медиане
+    // высот контура и кладём всё полотно на неё, а по кромке ставим подпорную
+    // стенку до земли. Кладбище и аллеи оставляем на рельефе — они и в жизни
+    // идут по склону.
+    const LEVELED = a.k !== 'cemetery';
+    // На дороге площадке делать нечего — кроме кладбища, где растр покрытия
+    // и так пуст, и аллей, которые сами по себе тропинки.
+    const skipOnRoad = a.k !== 'cemetery';
+    let flatY = null;
+    if (LEVELED) {
+      const hs = [];
+      for (let i = 0; i < n; i++) hs.push(H(a.poly[i * 2], a.poly[i * 2 + 1]));
+      hs.sort((p, q) => p - q);
+      flatY = hs[hs.length >> 1];
+    }
 
     // Контур way в OSM замкнут: последняя точка совпадает с первой. Оставлять
     // её нельзя — earcut на задвоенной вершине сыпется и оставляет в полотне
@@ -2088,13 +2109,32 @@ export function buildAreas(world, terrain) {
       pts.push(new THREE.Vector2(x, z));
     }
     if (pts.length < 3) continue;
+    // Внутренний контур: у бегового овала середина — это футбольное поле, а не
+    // тартан. Без дыры красное покрытие заливало весь стадион.
+    const holes = [];
+    if (a.hole && a.hole.length >= 6) {
+      const hp = [];
+      const hn = a.hole.length / 2;
+      let hlast = hn;
+      if (Math.abs(a.hole[0] - a.hole[(hn - 1) * 2]) < 1e-6 &&
+          Math.abs(a.hole[1] - a.hole[(hn - 1) * 2 + 1]) < 1e-6) hlast = hn - 1;
+      for (let i = 0; i < hlast; i++) {
+        const x = a.hole[i * 2], z = a.hole[i * 2 + 1];
+        if (hp.length && Math.abs(hp[hp.length - 1].x - x) < 1e-6
+                      && Math.abs(hp[hp.length - 1].y - z) < 1e-6) continue;
+        hp.push(new THREE.Vector2(x, z));
+      }
+      if (hp.length >= 3) holes.push(hp);
+    }
     let tri;
-    try { tri = THREE.ShapeUtils.triangulateShape(pts, []); } catch { tri = []; }
+    try { tri = THREE.ShapeUtils.triangulateShape(pts, holes); } catch { tri = []; }
     if (!tri.length) continue;
+    // с дырой индексы идут по объединённому списку вершин
+    const all = holes.length ? pts.concat(...holes) : pts;
 
     const push = (x, z) => {
       const dx = x - ox, dz = z - oz;
-      P.push(x, H(x, z) + LIFT, z);
+      P.push(x, (flatY !== null ? flatY : H(x, z)) + LIFT, z);
       C.push(enc(col[0]), enc(col[1]), enc(col[2]));
       U.push(dx * ux + dz * uz, -dx * uz + dz * ux, W, L);
       K.push(kind);
@@ -2104,7 +2144,7 @@ export function buildAreas(world, terrain) {
     // висит над землёй серединой
     const emit = (A, B, Cc, depth) => {
       const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
-      if (depth < 5 && Math.max(d(A, B), d(B, Cc), d(Cc, A)) > 5) {
+      if (depth < 5 && Math.max(d(A, B), d(B, Cc), d(Cc, A)) > (flatY === null ? 5 : 8)) {
         const mAB = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
         const mBC = [(B[0] + Cc[0]) / 2, (B[1] + Cc[1]) / 2];
         const mCA = [(Cc[0] + A[0]) / 2, (Cc[1] + A[1]) / 2];
@@ -2112,14 +2152,52 @@ export function buildAreas(world, terrain) {
         emit(mCA, mBC, Cc, depth + 1); emit(mAB, mBC, mCA, depth + 1);
         return;
       }
+      // Кусок площадки, накрывший проезжую часть, не рисуем: на Восставших
+      // парковка из OSM обведена шире асфальта и заезжала прямо на дорогу.
+      if (skipOnRoad) {
+        // Проверяем не только центр, но и вершины со срединами сторон: у
+        // крупного треугольника центр мог висеть на газоне, а половина
+        // площадки уже лежала на асфальте.
+        const pr = [A, B, Cc,
+          [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2],
+          [(B[0] + Cc[0]) / 2, (B[1] + Cc[1]) / 2],
+          [(Cc[0] + A[0]) / 2, (Cc[1] + A[1]) / 2],
+          [(A[0] + B[0] + Cc[0]) / 3, (A[1] + B[1] + Cc[1]) / 3]];
+        for (const q of pr) if (onAsphalt(q[0], q[1])) return;
+      }
       const i0 = push(A[0], A[1]), i1 = push(B[0], B[1]), i2 = push(Cc[0], Cc[1]);
       I.push(i0, i1, i2);
     };
     for (const f of tri) {
-      const A = [pts[f[0]].x, pts[f[0]].y], B = [pts[f[1]].x, pts[f[1]].y], Cc = [pts[f[2]].x, pts[f[2]].y];
+      const A = [all[f[0]].x, all[f[0]].y], B = [all[f[1]].x, all[f[1]].y], Cc = [all[f[2]].x, all[f[2]].y];
       // обход к нормали вверх
       const cross = (B[0] - A[0]) * (Cc[1] - A[1]) - (B[1] - A[1]) * (Cc[0] - A[0]);
       if (cross > 0) emit(A, Cc, B, 0); else emit(A, B, Cc, 0);
+    }
+    // подпорная стенка по кромке: от отметки площадки до земли
+    if (flatY !== null) {
+      const top = flatY + LIFT;
+      const WALL = [0.616, 0.604, 0.573];
+      const rim = [pts, ...holes];
+      for (const ring of rim) {
+        for (let i = 0; i < ring.length; i++) {
+          const A = ring[i], B = ring[(i + 1) % ring.length];
+          const gA = H(A.x, A.y), gB = H(B.x, B.y);
+          if (Math.abs(top - gA) < 0.12 && Math.abs(top - gB) < 0.12) continue;
+          const yA = Math.min(gA, top) - 0.25, yB = Math.min(gB, top) - 0.25;
+          const q0 = P.length / 3;
+          for (const [vx, vz, vy] of [[A.x, A.y, top], [B.x, B.y, top], [B.x, B.y, yB], [A.x, A.y, yA]]) {
+            P.push(vx, vy, vz);
+            C.push(enc(WALL[0]), enc(WALL[1]), enc(WALL[2]));
+            U.push(0, 0, 1, 1);
+            K.push(5);
+            base++;
+          }
+          // наружу — обе стороны, чтобы стенка была видна с любой
+          I.push(q0, q0 + 1, q0 + 2, q0, q0 + 2, q0 + 3);
+          I.push(q0, q0 + 2, q0 + 1, q0, q0 + 3, q0 + 2);
+        }
+      }
     }
     drawn++;
   }

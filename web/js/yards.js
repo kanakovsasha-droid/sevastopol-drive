@@ -220,6 +220,10 @@ function frame(poly) {
 export function buildYards(world, terrain) {
   const group = new THREE.Group();
   group.name = 'yards';
+  // Парковку из OSM обводят щедро: местами она заходит на проезжую часть и
+  // на дома. Машины и качели туда не ставим.
+  const COV = world.__coverage;
+  const onAsphalt = COV ? (x, z) => COV.onRoad(x, z) : () => false;
   const H = (x, z) => terrain.gridHeightAt(x, z);
   const rand = rng(90210);
   const mat = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.08 });
@@ -257,7 +261,7 @@ export function buildYards(world, terrain) {
       for (let u = stepU * 0.5; u < f.W; u += stepU)
         for (let v = stepV * 0.5; v < f.L; v += stepV) {
           const [x, z] = f.at(u, v);
-          if (inPoly(x, z, a.poly)) spots.push({ x, z, a: ang + (rand() - 0.5) * 0.5 });
+          if (inPoly(x, z, a.poly) && !onAsphalt(x, z)) spots.push({ x, z, a: ang + (rand() - 0.5) * 0.5 });
         }
       spots.forEach((s, i) => {
         const k = i % 4;
@@ -276,9 +280,12 @@ export function buildYards(world, terrain) {
           for (let u = 1.25; u < f.W; u += 2.5) {
             if (rand() > 0.42) continue;
             const [x, z] = f.at(u, vv);
-            if (!inPoly(x, z, a.poly)) continue;
+            if (!inPoly(x, z, a.poly) || onAsphalt(x, z)) continue;
             const c = (Math.floor(u * 7 + vv * 3) >>> 0) % PAINTS.length;
-            carsBy[c].push({ x, z, a: ang + (vv > v ? Math.PI : 0) });
+            // Машина стоит НОСОМ вдоль места, то есть поперёк ряда: длина
+            // места 5.3 м идёт по оси v, а ширина 2.5 м по u. Раньше кузов
+            // разворачивался вдоль u и машины лежали поперёк разметки.
+            carsBy[c].push({ x, z, a: ang + Math.PI / 2 + (vv > v ? Math.PI : 0) });
           }
         }
       }
@@ -564,6 +571,90 @@ export function buildStructures(world, terrain) {
       parts.push({ geo: jet, color: [0.78, 0.86, 0.90] });
       bump('фонтанов');
     }
+  }
+
+  // ---- АЗС: навес на колоннах, колонки под ним, касса и стела с ценами
+  // Точки из OSM (amenity=fuel). Навес разворачиваем вдоль ближайшей улицы,
+  // чтобы заезд был с дороги, а не в бок.
+  for (const f of world.fuel || []) {
+    const g0 = H(f.x, f.z);
+    // куда смотрит АЗС: на ближайшую проезжую улицу
+    let ang = 0;
+    let bd = 1e9;
+    for (const r of world.roads || []) {
+      if (r.c > 2) continue;
+      const q = r.pts;
+      for (let i = 0; i < q.length - 2; i += 2) {
+        const ax = q[i], az = q[i + 1], bx2 = q[i + 2], bz2 = q[i + 3];
+        const vx = bx2 - ax, vz = bz2 - az;
+        const t = Math.max(0, Math.min(1, ((f.x - ax) * vx + (f.z - az) * vz) / (vx * vx + vz * vz || 1)));
+        const d = Math.hypot(f.x - ax - t * vx, f.z - az - t * vz);
+        if (d < bd) { bd = d; ang = Math.atan2(vx, vz); }
+      }
+    }
+    const ux = Math.sin(ang), uz = Math.cos(ang);      // вдоль улицы
+    const nx = -uz, nz = ux;                            // от улицы вглубь
+    const CW = 18, CD = 11, CH = 5.2;                   // навес
+    const cx0 = f.x + nx * 5, cz0 = f.z + nz * 5;
+    const canopy = new THREE.BoxGeometry(CW, 0.75, CD);
+    canopy.rotateY(ang); canopy.translate(cx0, g0 + CH, cz0);
+    parts.push({ geo: canopy, color: [0.90, 0.90, 0.88] });
+    const band = new THREE.BoxGeometry(CW + 0.3, 0.45, CD + 0.3);
+    band.rotateY(ang); band.translate(cx0, g0 + CH - 0.42, cz0);
+    parts.push({ geo: band, color: [0.16, 0.36, 0.24] });   // зелёный подзор
+    for (const su of [-1, 1]) for (const sv of [-1, 1]) {
+      const px = cx0 + ux * su * (CW / 2 - 1.6) + nx * sv * (CD / 2 - 1.4);
+      const pz = cz0 + uz * su * (CW / 2 - 1.6) + nz * sv * (CD / 2 - 1.4);
+      const col = new THREE.BoxGeometry(0.55, CH, 0.55);
+      col.rotateY(ang); col.translate(px, g0 + CH / 2, pz);
+      parts.push({ geo: col, color: [0.86, 0.86, 0.84] });
+    }
+    // два островка с колонками
+    for (const su of [-1, 1]) {
+      const ix = cx0 + ux * su * 4.2, iz = cz0 + uz * su * 4.2;
+      const isl = new THREE.BoxGeometry(2.4, 0.22, CD - 3.0);
+      isl.rotateY(ang); isl.translate(ix, g0 + 0.11, iz);
+      parts.push({ geo: isl, color: [0.62, 0.61, 0.58] });
+      for (const sv of [-1, 1]) {
+        const px = ix + nx * sv * 1.9, pz = iz + nz * sv * 1.9;
+        const pump = new THREE.BoxGeometry(0.75, 1.75, 1.15);
+        pump.rotateY(ang); pump.translate(px, g0 + 1.10, pz);
+        parts.push({ geo: pump, color: [0.88, 0.88, 0.86] });
+        const disp = new THREE.BoxGeometry(0.12, 0.55, 0.85);
+        disp.rotateY(ang);
+        disp.translate(px + ux * su * 0.42, g0 + 1.45, pz);
+        parts.push({ geo: disp, color: [0.13, 0.14, 0.16] });
+        const top = new THREE.BoxGeometry(0.80, 0.30, 1.20);
+        top.rotateY(ang); top.translate(px, g0 + 2.10, pz);
+        parts.push({ geo: top, color: [0.16, 0.36, 0.24] });
+      }
+    }
+    // касса-магазин за навесом
+    const sx = cx0 + nx * (CD / 2 + 4.5), sz = cz0 + nz * (CD / 2 + 4.5);
+    const shop = new THREE.BoxGeometry(9.5, 3.6, 6.0);
+    shop.rotateY(ang); shop.translate(sx, g0 + 1.8, sz);
+    parts.push({ geo: shop, color: [0.90, 0.89, 0.85] });
+    const par = new THREE.BoxGeometry(10.1, 0.55, 6.6);
+    par.rotateY(ang); par.translate(sx, g0 + 3.75, sz);
+    parts.push({ geo: par, color: [0.16, 0.36, 0.24] });
+    const win = new THREE.BoxGeometry(7.8, 1.9, 0.12);
+    win.rotateY(ang);
+    win.translate(sx - nx * 3.06, g0 + 1.95, sz - nz * 3.06);
+    parts.push({ geo: win, color: [0.18, 0.28, 0.32] });
+    // стела с ценами у дороги
+    const tx = f.x - nx * 6.5 + ux * (CW / 2 + 1.5), tz = f.z - nz * 6.5 + uz * (CW / 2 + 1.5);
+    const pole = new THREE.BoxGeometry(0.45, 5.4, 0.45);
+    pole.rotateY(ang); pole.translate(tx, g0 + 2.7, tz);
+    parts.push({ geo: pole, color: [0.72, 0.72, 0.70] });
+    const board = new THREE.BoxGeometry(2.5, 3.0, 0.30);
+    board.rotateY(ang); board.translate(tx, g0 + 5.6, tz);
+    parts.push({ geo: board, color: [0.16, 0.36, 0.24] });
+    for (let i = 0; i < 3; i++) {
+      const row = new THREE.BoxGeometry(2.0, 0.5, 0.36);
+      row.rotateY(ang); row.translate(tx, g0 + 6.6 - i * 0.85, tz);
+      parts.push({ geo: row, color: [0.92, 0.92, 0.88] });
+    }
+    bump('АЗС');
   }
 
   if (!parts.length) { group.userData.stats = stats; return group; }
