@@ -59,9 +59,26 @@ export function buildingMaterial() {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.84, metalness: 0.0 });
   return inject(mat, 'sev-building', {
     vertHead: `attribute vec3 aWall; attribute float aKind;
-               varying vec3 vWall; varying float vKind;`,
-    vertBody: `vWall = aWall; vKind = aKind;`,
-    fragHead: `varying vec3 vWall; varying float vKind;`,
+               varying vec3 vWall; varying float vKind; varying float vSun;`,
+    // vSun — с какой стороны стены светит солнце, в системе КООРДИНАТ СТЕНЫ.
+    // Нужно для откосов: тень лежит на том откосе, что отвёрнут от солнца, и
+    // без этого пришлось бы затемнять всегда один и тот же бок — на половине
+    // города это выглядело бы вывернутым наизнанку.
+    // worldgen строит стену так: нормаль n = (dz, -dx)/l, а метры вдоль стены
+    // растут по ребру d = (dx, dz)/l. Отсюда касательная T = (-n.z, n.x).
+    // Направление НА солнце берём из main.js (SUN = -0.48, 0.70, 0.53):
+    // vSun = dot(T.xz, SUN.xz) = 0.53 * n.x + 0.48 * n.z.
+    vertBody: `vWall = aWall; vKind = aKind;
+               {
+                 vec3 wn = mat3(modelMatrix) * objectNormal;
+                 vSun = 0.53 * wn.x + 0.48 * wn.z;
+               }`,
+    fragHead: `varying vec3 vWall; varying float vKind; varying float vSun;
+      // Линейная рампа вместо smoothstep. У откоса, подоконника и трубы край
+      // ГЕОМЕТРИЧЕСКИЙ, кубическое сглаживание там не видно, а фасад — самый
+      // горячий шейдер сцены: полтора десятка smoothstep стоили ~40% кадра
+      // на виде, где стена занимает весь экран.
+      float lr(float x, float k){ return clamp(x * k, 0.0, 1.0); }`,
     fragBody: `
       {
         vec3 c = diffuseColor.rgb;
@@ -88,9 +105,11 @@ export function buildingMaterial() {
           float r = hash21(vec2(bi, fi) + seed * 0.37);
 
           float ground = step(fpos, 1.0);
-          // окна вытянутые по вертикали; на первом этаже — витрины и подъезды
-          float x0 = mix(0.27, 0.12, ground), x1 = mix(0.73, 0.88, ground);
-          float y0 = mix(0.20, 0.09, ground), y1 = mix(0.84, 0.80, ground);
+          float upper = 1.0 - ground;
+          // Последний этаж. Раньше все этажи были одинаковые, и дом читался
+          // как решётка из одинаковых дырок — отсюда и «Роблокс». В жизни
+          // низ, середина и верх разные: витрина, окно, окно поменьше.
+          float topFloor = step(nf - 1.5, fi) * upper;
 
           // Стиль дома. Без него весь город в одну линейку: одинаковые проёмы,
           // одинаковый ритм, одинаковый низ. Стиль постоянен для здания —
@@ -98,9 +117,25 @@ export function buildingMaterial() {
           float style = hash21(vec2(seed, 11.0));
           float arch = max(forceArch, step(0.70, style));   // полуциркульные завершения окон
           float hasBalc = step(style, 0.38);   // балконы на верхних этажах
+          // часть домов получает полуциркульные окна ТОЛЬКО на последнем этаже —
+          // так верх отличается от середины, как в послевоенной застройке.
+          // Раскручиваем уже посчитанные style и r вместо новых hash21:
+          // фасад — самый горячий шейдер, каждый лишний хеш здесь стоит кадров.
+          float archTop = step(0.45, fract(style * 7.31));
+          // примерно каждый пятый пролёт первого этажа — подъезд, а не витрина
+          float door = ground * step(0.82, fract(r * 5.17));
 
+          // окна вытянутые по вертикали; на первом этаже — витрины и подъезды
+          float x0 = mix(0.27, 0.12, ground) + 0.050 * topFloor;
+          float x1 = mix(0.73, 0.88, ground) - 0.050 * topFloor;
+          float y0 = mix(0.20, 0.09, ground) + 0.030 * topFloor;
+          float y1 = mix(0.84, 0.80, ground) - 0.085 * topFloor;
+          x0 = mix(x0, 0.36, door); x1 = mix(x1, 0.64, door);
+          y0 = mix(y0, 0.02, door); y1 = mix(y1, 0.70, door);
+
+          float archAmt = max(arch * upper, archTop * topFloor) * (1.0 - door);
           float ax = clamp((fx - (x0 + x1) * 0.5) / max(0.001, (x1 - x0) * 0.5), -1.0, 1.0);
-          float y1e = y1 - arch * 0.17 * (1.0 - sqrt(max(0.0, 1.0 - ax * ax))) * (1.0 - ground);
+          float y1e = y1 - archAmt * 0.17 * (1.0 - sqrt(max(0.0, 1.0 - ax * ax)));
 
           float win = smoothstep(x0 - 0.03, x0, fx) * (1.0 - smoothstep(x1, x1 + 0.03, fx))
                     * smoothstep(y0 - 0.03, y0, fy) * (1.0 - smoothstep(y1e, y1e + 0.03, fy));
@@ -111,25 +146,65 @@ export function buildingMaterial() {
           float frame = clamp(outer - win, 0.0, 1.0);
 
           float cornice = smoothstep(vWall.z - 0.95, vWall.z - 0.55, vWall.y);
-          win *= 1.0 - cornice; frame *= 1.0 - cornice;
           float low = smoothstep(0.30, 0.70, vWall.y);
-          win *= low; frame *= low;
+          // winOn — «здесь вообще бывает окно»: не карниз и не закопанный низ.
+          // Подоконник и потёки живут НИЖЕ проёма, где сам win уже ноль,
+          // поэтому им нужна отдельная маска колонки.
+          float winOn = (1.0 - cornice) * low;
+          win *= winOn; frame *= winOn;
+
+          // ---------- глубина проёма ----------
+          // Главное, чего не хватало городу: окно было тёмным пятном В ПЛОСКОСТИ
+          // стены. В жизни оно утоплено на 12–18 см, и с улицы видно три вещи —
+          // тень под перемычкой, тень на откосе, отвёрнутом от солнца, и светлую
+          // полку подоконника. Считаем в МЕТРАХ от краёв проёма: доли пролёта
+          // у каждого дома свои, а откос везде одинаковый.
+          float wx  = (fx - x0) * bay;          // метров от левого края проёма
+          float wxr = (x1 - fx) * bay;          // от правого
+          float wy  = (fy - y0) * fh;           // от низа
+          float wyt = (y1e - fy) * fh;          // от верха
+          float sunR = step(0.0, vSun);         // 1 — солнце со стороны +x стены
+          float shJ = mix(wx, wxr, sunR);       // метры до ЗАТЕНЁННОГО откоса
+          // откос ~12.5 см (1/8), теневой чуть у́же (1/9), подоконник 9 см (1/11)
+          float revTop  = 1.0 - lr(wyt, 8.0);
+          float revDark = 1.0 - lr(shJ, 9.0);
+          float revSill = 1.0 - lr(wy, 11.0);
 
           // стекло: небо сверху, тёмная комната снизу; изредка занавеска или рама
           vec3 glass = mix(vec3(0.085, 0.105, 0.125), vec3(0.20, 0.245, 0.275), r);
           glass = mix(glass * 0.55, glass * 1.9, pow(1.0 - fy, 1.6));
           if (r > 0.86) glass = mix(glass, vec3(0.52, 0.49, 0.44), 0.75);
           if (ground > 0.5 && r > 0.5) glass = mix(glass, vec3(0.14, 0.135, 0.13), 0.6);
+          // подъезд: тёмное полотно двери, над ним светлый фрамужный просвет
+          glass = mix(glass, mix(vec3(0.112, 0.094, 0.078), glass * 1.25,
+                                 1.0 - lr(wyt - 0.50, 4.5)), door);
           // переплёт
           float mullion = band(fract((fx - x0) / max(0.001, x1 - x0) * 2.0), 0.5, 0.045);
           glass = mix(glass, vec3(0.55, 0.53, 0.49), mullion * win * 0.65);
+          // тень перемычки и откоса ЛОЖИТСЯ НА СТЕКЛО. Без неё утопленность
+          // видна только по рамке, а само стекло остаётся плоской наклейкой.
+          glass *= 1.0 - 0.42 * (1.0 - lr(wyt, 1.75));
+          glass *= 1.0 - 0.26 * (1.0 - lr(shJ, 2.40));
 
-          float ledge  = 1.0 - 0.24 * (1.0 - smoothstep(0.0, 0.05, fy));    // межэтажная тяга
+          // Межэтажная тяга: тёмная линия под полкой и светлая полка над ней.
+          // Одна тёмная линия читалась как нарисованная, пара «тень + свет»
+          // сразу превращает её в выступающий поясок.
+          float ledge  = 1.0 - 0.24 * (1.0 - lr(fy, 20.0));
+          ledge *= 1.0 + 0.10 * lr(fy - 0.048, 70.0) * (1.0 - lr(fy - 0.078, 45.0));
           float plinth = mix(0.66, 1.0, smoothstep(0.0, 1.40, vWall.y));    // цоколь
           c *= ledge * plinth;
           c *= 1.0 - 0.22 * cornice;
           c = mix(c, c * 1.16 + 0.06, smoothstep(vWall.z - 0.55, vWall.z - 0.30, vWall.y)); // светлая полка карниза
-          c *= 0.95 + 0.09 * hash21(floor(vWall.xy * vec2(0.5, 0.28)));     // разнотон штукатурки
+          // карниз ВЫСТУПАЕТ над стеной, значит под ним всегда тень.
+          // Без этой полосы он читался как нарисованная линия, а не как плита.
+          float ty2 = vWall.z - vWall.y;                                    // метров ниже верха
+          c *= 1.0 - 0.24 * (1.0 - lr(ty2 - 0.98, 2.1)) * (1.0 - cornice);
+          // Разнотон штукатурки: пятна ремонта и выцветания. Масштаб КРУПНЫЙ
+          // (около 10 м), иначе дом рассыпается на конфетти и перестаёт
+          // читаться одним цветом. Одна октава: fbm тут был бы вчетверо дороже.
+          float pat = vnoise(vWall.xy * 0.105);
+          c *= 0.90 + 0.21 * pat;
+          c = mix(c, c * vec3(1.05, 1.00, 0.92), lr(pat - 0.56, 3.1) * 0.6);
           // рустованный цоколь: инкерманский известняк уложен блоками ~0.9 x 0.45 м,
           // на первом этаже швы видно, выше идёт гладкая штукатурка
           float rust = 1.0 - smoothstep(fh * 0.85, fh * 1.15, vWall.y);
@@ -141,7 +216,46 @@ export function buildingMaterial() {
             c *= 1.0 - 0.30 * seam * rust;
             c *= 1.0 + 0.10 * rust * (hash21(floor(blk)) - 0.5);
           }
+
+          // ---------- водосточная труба ----------
+          // Одна на 12–18 м стены, от карниза до земли: длинный фасад без неё
+          // выглядит бесконечной лентой окон. Ось СНАПИМ на простенок между
+          // окнами — труба, режущая стекло, читается как ошибка рендера.
+          float pipeN = max(1.0, floor((12.0 + 6.0 * fract(style * 13.7)) / bay + 0.5));
+          float pdx = (bpos - floor(bpos / pipeN + 0.5) * pipeN) * bay;   // метров от оси
+          float apx = abs(pdx);
+          float pipe = lr(0.070 - apx, 90.0) * (1.0 - cornice);
+          // тень падает на сторону, противоположную солнцу
+          float pipeSh = lr(0.135 - abs(pdx + mix(-0.088, 0.088, sunR)), 12.5)
+                       * (1.0 - pipe) * (1.0 - cornice);
+          c *= 1.0 - 0.32 * pipeSh;
+          float pround = clamp(pdx * 16.0 * mix(-1.0, 1.0, sunR), -1.0, 1.0);
+          c = mix(c, c * (0.44 + 0.44 * (0.5 + 0.5 * pround)), pipe);
+
+          // ---------- потёки и загрязнения ----------
+          // Дождь сносит пыль с подоконников и из-под карниза узкими полосами,
+          // а от тротуара летят брызги. Слабо: сильные потёки превращают
+          // жилой центр в заброшку.
+          float sx = hash21(vec2(floor(vWall.x / 0.17), 7.0));
+          float drip = lr(sx - 0.62, 3.0);
+          c *= 1.0 - 0.085 * drip * lr(ty2 - 0.95, 4.0) * (1.0 - lr(ty2 - 1.5, 0.48));
+          c *= 1.0 - 0.15 * (1.0 - lr(vWall.y - 1.20, 1.33)) * (0.55 + 0.55 * sx);
+
           c = mix(c, vec3(0.90, 0.88, 0.84), frame * 0.85);
+
+          // ---------- подоконник ----------
+          // Светлая полка с выносом 7 см по бокам и тень под ней. Вторая по
+          // силе подсказка объёма после откосов: она даёт фасаду горизонтали,
+          // которых у плоской стены нет.
+          float below = -wy;                                              // метров ниже проёма
+          float sillX = lr(wx + 0.085, 40.0) * lr(wxr + 0.085, 40.0);     // вынос 8.5 см вбок
+          float sillOn = sillX * winOn * (1.0 - door);
+          float sillF = sillOn * lr(below + 0.012, 63.0) * (1.0 - lr(below - 0.065, 50.0));
+          float sillS = sillOn * lr(below - 0.070, 40.0) * (1.0 - lr(below - 0.13, 3.7));
+          c *= 1.0 - 0.40 * sillS;
+          c = mix(c, min(vec3(1.0), c * 1.42 + 0.10), sillF * 0.9);
+          // потёк из-под подоконника
+          c *= 1.0 - 0.11 * drip * sillOn * lr(below - 0.07, 16.0) * (1.0 - lr(below - 0.18, 2.3));
 
           // балкон: плита под окном и решётка перил
           float balcBay = step(0.42, hash21(vec2(bi, floor(fi * 0.5)) + seed * 0.13));
@@ -154,8 +268,14 @@ export function buildingMaterial() {
           win *= 1.0 - balc;
           c = mix(c, balcC, balc);
 
-          c = mix(c, glass, win);
-          rough = mix(0.86, 0.12, win);
+          // Откос — та же штукатурка, что и стена, поэтому берём готовый c со
+          // всем разнотоном и только подсвечиваем/затемняем грани проёма.
+          vec3 revC = c * (1.0 - 0.60 * revTop) * (1.0 - 0.44 * revDark);
+          revC = mix(revC, min(vec3(1.0), c * 1.34 + 0.06), revSill);     // полка подоконника
+          float revMask = max(max(revTop, revDark), revSill);
+
+          c = mix(c, mix(glass, revC, revMask), win);
+          rough = mix(0.86, mix(0.12, 0.90, revMask), win);
         } else if (vKind < 1.5) {
           // ---- черепица: ряды по мировым координатам ----
           float row = fract(vWall.y * 3.2);

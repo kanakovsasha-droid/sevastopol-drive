@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=143db211';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=143db211';
-import { buildCoverage } from './coverage.js?v=143db211';
+import { SEA_FLOOR } from './terrain.js?v=da65c0c6';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=da65c0c6';
+import { buildCoverage } from './coverage.js?v=da65c0c6';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -69,6 +69,10 @@ const WALLS = [
   [0.859, 0.784, 0.659], [0.824, 0.741, 0.604], [0.902, 0.855, 0.765],
   [0.796, 0.706, 0.561], [0.906, 0.863, 0.769], [0.847, 0.808, 0.729],
   [0.871, 0.816, 0.702], [0.839, 0.769, 0.643], [0.788, 0.741, 0.663],
+  [0.839, 0.722, 0.494], [0.800, 0.682, 0.463],   // охра
+  [0.906, 0.851, 0.686], [0.878, 0.831, 0.702],   // палевый
+  [0.812, 0.812, 0.788], [0.757, 0.765, 0.753],   // светло-серый
+  [0.945, 0.937, 0.914], [0.965, 0.949, 0.918],   // белёный
 ];
 const ROOFS_TILE = [[0.545, 0.271, 0.196], [0.494, 0.239, 0.169], [0.612, 0.325, 0.216], [0.463, 0.255, 0.192]];
 const ROOFS_FLAT = [[0.318, 0.310, 0.294], [0.286, 0.310, 0.325], [0.361, 0.349, 0.329], [0.255, 0.267, 0.275]];

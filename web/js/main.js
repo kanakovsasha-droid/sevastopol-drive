@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=143db211';
-import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=143db211';
-import { buildStreetProps } from './props.js?v=143db211';
-import { buildFurniture } from './furniture.js?v=143db211';
-import { buildLandmarks } from './landmarks.js?v=143db211';
-import { buildSigns } from './signs.js?v=143db211';
-import { audit } from './audit.js?v=143db211';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=143db211';
-import { Collider, RoadIndex } from './collision.js?v=143db211';
-import { Car, createCarMesh } from './vehicle.js?v=143db211';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=da65c0c6';
+import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=da65c0c6';
+import { buildStreetProps } from './props.js?v=da65c0c6';
+import { buildFurniture } from './furniture.js?v=da65c0c6';
+import { buildLandmarks } from './landmarks.js?v=da65c0c6';
+import { buildSigns } from './signs.js?v=da65c0c6';
+import { audit } from './audit.js?v=da65c0c6';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=da65c0c6';
+import { Collider, RoadIndex } from './collision.js?v=da65c0c6';
+import { Car, createCarMesh } from './vehicle.js?v=da65c0c6';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -48,8 +48,24 @@ const PLACES = [
 ];
 
 const SPAWN = { x: -398, z: 484 };   // остановка «площадь Лазарева»
-const SUN = new THREE.Vector3(-0.48, 0.70, 0.53).normalize();
-const HORIZON = new THREE.Color(0x9fb4bf);
+
+// Солнце южного дня, но НЕ в зените. Было 44° над горизонтом — при такой высоте
+// тени короткие, прячутся под самими домами и объём улицы не читается. 37°
+// (вторая половина дня) даёт тень длиной с высоту дома: фасады делятся на
+// освещённый и теневой, и коробки перестают быть плоскими наклейками.
+const SUN = new THREE.Vector3(-0.58, 0.61, 0.54).normalize();
+
+// Три уровня неба. Зенит — насыщенная синь, HORIZON — голубая дымка над бухтой,
+// HAZE — тёплая полоса у самой земли: над нагретым камнем воздух всегда желтее,
+// и именно этот тёплый низ отличает южный полдень от «серого купола».
+const ZENITH  = new THREE.Color(0x2a68b4);
+const HORIZON = new THREE.Color(0xa6c3d8);
+const HAZE    = new THREE.Color(0xd3d3c8);
+
+// Цвет тумана = то, во что упирается взгляд у горизонта. Небо над далёким
+// берегом чуть синее самой кромки, поэтому берём смесь, а не чистый HAZE:
+// иначе даль выбеливается в молоко и город пропадает целиком.
+const FOG = HORIZON.clone().lerp(HAZE, 0.45);
 
 let renderer, scene, camera, sun, sky;
 let water = null;
@@ -68,8 +84,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=143db211').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=143db211').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=da65c0c6').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=da65c0c6').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -95,6 +111,13 @@ async function boot() {
     const clearZones = landmarkDefs.filter(d => d.clear).map(d => ({ x: d.x, z: d.z, r: d.clear }));
     const furn = buildFurniture(furniture, terrain, roads, props.userData.onRoad, clearZones);
     scene.add(furn);
+
+    // Деревья, фонари и остановки ставились без castShadow, и улица оставалась
+    // ровным серым полотном — главная причина «роблокса» на уровне глаз.
+    // В карту теней они идут только по глубине, поэтому счёт по треугольникам
+    // растёт на 5–8%, а картинка получает пятнистую тень листвы на асфальте.
+    castShadows(props);
+    castShadows(furn);
 
     await step('черчу карту города…', 94);
     cityMap = buildMap(world, terrain);
@@ -140,46 +163,81 @@ async function boot() {
   }
 }
 
+// Включить отбрасывание тени у пачек InstancedMesh. receiveShadow им не даём:
+// это тысячи мелких предметов, тень НА них почти не видна, а лишний семпл
+// карты теней в их шейдере — уже заметные проценты кадра.
+function castShadows(root) {
+  root.traverse(o => { if (o.isInstancedMesh) o.castShadow = true; });
+}
+
 // ------------------------------------------------------------------ сцена
 function initScene() {
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  // Все материалы считаются в линейном пространстве, на экран уходит sRGB.
+  // Пишем явно: если сюда попадёт LinearSRGB, картинка станет блёклой и «мыльной»,
+  // а искать причину в шейдерах домов можно долго.
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Было ACESFilmic при экспозиции 1.12. ACES обесцвечивает всё, что ярче
+  // середины, и сводит его к белому: небо, штукатурка и тротуар слипались в
+  // одну молочную массу, а тени он же заваливал в чёрное. Neutral (Khronos PBR
+  // Neutral) держит цвет до самых светов и имеет мягкий подъём в тенях —
+  // черепица остаётся терракотовой, а тень под домом синеет от неба, а не
+  // проваливается в дыру. Экспозиция 1.0: с Neutral запаса светов больше.
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFShadowMap;  // PCFSoft выпилен в r185
+  // PCFSoft в r185 на месте (проверено по three.core.js) — берём его вместо
+  // PCFShadowMap: край тени размывается по нескольким отсчётам и не лесенкой.
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   document.body.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(HORIZON.getHex(), 0.000165);
+  // Воздушная перспектива. Было 0.000165 — на 2 км это 10% тумана, то есть
+  // дальний берег оставался таким же насыщенным, как дом в двадцати метрах,
+  // и глубины в кадре не возникало. 0.00031 даёт ~28% на 2 км и ~50% на 3 км:
+  // город на том берегу бухты ещё читается, но уже отодвинут.
+  scene.fog = new THREE.FogExp2(FOG.getHex(), 0.00031);
 
   camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.4, 40000);
   camera.position.set(0, 40, 40);
 
-  // небо: градиент + солнечный ореол; крымский полдень с дымкой над бухтой
+  // Небо: три пояса (зенит — дымка — тёплый низ) плюс солнечный ореол.
+  // Из машины видно в основном нижнюю треть купола, поэтому важна не столько
+  // синь зенита, сколько то, как она сходит к горизонту.
   sky = new THREE.Mesh(
     new THREE.SphereGeometry(18000, 32, 16),
     new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: {
-        zenith:  { value: new THREE.Color(0x1d4f86) },
+        zenith:  { value: ZENITH.clone() },
         horizon: { value: HORIZON.clone() },
+        haze:    { value: HAZE.clone() },
         sunDir:  { value: SUN.clone() },
       },
       vertexShader: `
         varying vec3 vDir;
         void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
       fragmentShader: `
-        uniform vec3 zenith, horizon, sunDir;
+        uniform vec3 zenith, horizon, haze, sunDir;
         varying vec3 vDir;
         void main(){
           vec3 d = normalize(vDir);
           float h = clamp(d.y, 0.0, 1.0);
-          vec3 col = mix(horizon, zenith, pow(h, 0.52));
+          // Показатель < 1 растягивает синеву вниз: было 0.52, при езде синь
+          // начиналась где-то над крышами, а над улицей висел ровный серый лист.
+          vec3 col = mix(horizon, zenith, pow(h, 0.40));
+          // Тёплая полоса дымки в нижних ~8°: у моря на юге низ неба всегда
+          // светлее и желтее, и именно она отделяет дальний берег от воды.
+          col = mix(haze, col, smoothstep(-0.015, 0.145, d.y));
+          // Солнечный диск + широкий ореол вокруг него. Ореол сажаем на
+          // яркость неба, а не поверх дымки, иначе низ выгорает в белое пятно.
           float c = max(dot(d, sunDir), 0.0);
-          col += vec3(1.0, 0.93, 0.80) * (pow(c, 340.0) * 9.0 + pow(c, 7.0) * 0.30);
-          col = mix(horizon * 0.88, col, smoothstep(-0.10, 0.05, d.y));
+          col += vec3(1.0, 0.92, 0.76) * (pow(c, 380.0) * 8.0 + pow(c, 6.0) * 0.26)
+                 * smoothstep(-0.02, 0.10, d.y);
+          // Ниже линии горизонта (видно с высоких точек) — та же дымка, но глуше.
+          col = mix(haze * 0.86, col, smoothstep(-0.09, 0.0, d.y));
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -189,15 +247,30 @@ function initScene() {
   sky.frustumCulled = false;
   scene.add(sky);
 
-  scene.add(new THREE.HemisphereLight(0x9fc4e8, 0x8a7d66, 1.05));
-  sun = new THREE.DirectionalLight(0xfff2dc, 3.2);
+  // Полусферический свет — то, чем «залита» теневая сторона. Сверху небо,
+  // снизу отражение от известняка набережных и от воды бухты.
+  // Было 1.05 ровной заливкой: она перебивала солнце, и разница между
+  // освещённой и теневой стеной почти пропадала — отсюда пластик. 0.85 хватает,
+  // чтобы тени не были чёрными дырами, но солнце снова главнее неба.
+  scene.add(new THREE.HemisphereLight(0x8fb9e6, 0x6d6450, 0.85));
+
+  // Солнце тёплое, но не оранжевое: юг, вторая половина дня, воздух чистый.
+  sun = new THREE.DirectionalLight(0xffeccd, 3.15);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   const c = sun.shadow.camera;
-  c.left = -230; c.right = 230; c.top = 230; c.bottom = -230; c.near = 10; c.far = 1200;
+  // Квадрат 370×370 м на карте 2048² — это 0.18 м на тексель (было 0.22).
+  // Тень фонаря и дерева перестаёт разваливаться на ступеньки, а край
+  // квадрата остаётся достаточно далеко, чтобы обрыв прятался за туманом.
+  c.left = -185; c.right = 185; c.top = 185; c.bottom = -185;
+  // Диапазон глубины режем по делу: солнце стоит в 420 м от игрока, дальше
+  // ±290 м даёт рельеф и высота домов. Было near 10 / far 1200 — на такой
+  // диапазон shadow.bias 0.0008 превращался почти в метр смещения, и тени
+  // отрывались от предметов.
+  c.near = 80; c.far = 820;
   c.updateProjectionMatrix();   // без этого камера остаётся 10×10 м и вся сцена в тени
-  sun.shadow.bias = -0.0008;
-  sun.shadow.normalBias = 0.6;
+  sun.shadow.bias = -0.00012;   // ≈ 9 см при диапазоне 740 м
+  sun.shadow.normalBias = 0.22; // около полутора текселей — снимает акне на склонах
   scene.add(sun, sun.target);
 
   water = buildWater();
