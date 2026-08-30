@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=7463a26d';
-import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=7463a26d';
-import { buildStreetProps } from './props.js?v=7463a26d';
-import { buildFurniture } from './furniture.js?v=7463a26d';
-import { buildLandmarks } from './landmarks.js?v=7463a26d';
-import { buildSigns } from './signs.js?v=7463a26d';
-import { audit } from './audit.js?v=7463a26d';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=7463a26d';
-import { Collider, RoadIndex } from './collision.js?v=7463a26d';
-import { Car, createCarMesh } from './vehicle.js?v=7463a26d';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=d7b1de1d';
+import { buildTerrain, buildRoads, buildBuildings, buildWater } from './worldgen.js?v=d7b1de1d';
+import { buildStreetProps } from './props.js?v=d7b1de1d';
+import { buildFurniture } from './furniture.js?v=d7b1de1d';
+import { buildLandmarks } from './landmarks.js?v=d7b1de1d';
+import { buildSigns } from './signs.js?v=d7b1de1d';
+import { audit } from './audit.js?v=d7b1de1d';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=d7b1de1d';
+import { Collider, RoadIndex } from './collision.js?v=d7b1de1d';
+import { Car, createCarMesh } from './vehicle.js?v=d7b1de1d';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -68,8 +68,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=7463a26d').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=7463a26d').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=d7b1de1d').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=d7b1de1d').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -262,7 +262,7 @@ function bindInput() {
     } else {
       // как в GTA: обзор остаётся там, куда его отвели, сам не отскакивает
       cam.yaw -= e.movementX * 0.0030;
-      cam.pitch = clamp(cam.pitch - e.movementY * 0.0024, -0.75, 1.05);
+      cam.pitch = clamp(cam.pitch - e.movementY * 0.0021, -0.30, 0.62);
     }
   });
 }
@@ -384,41 +384,59 @@ function updateCamera(dt) {
     camera.rotateX(-walk.pitch);
     return;
   }
-  const yaw = car.yaw + cam.yaw;
-  const fx = Math.sin(yaw), fz = Math.cos(yaw);
+  // ------------------------------------------------------- камера как в GTA
+  // Классическая follow-камера: жёсткая сфера вокруг машины. Мышь по X ведёт
+  // камеру вокруг, по Y — поднимает и опускает ПО ДУГЕ, а не лифтом; прицел
+  // всегда на машине, поэтому горизонт не пляшет. Камера сама возвращается
+  // за корму на ходу и подтягивается ближе, если между ней и машиной стена.
   const conf = [
-    { back: 7.4, up: 3.0, ahead: 7 },
-    { back: 4.6, up: 2.0, ahead: 6 },
-    { back: -0.6, up: 1.55, ahead: 12 },
-    { back: 13, up: 9.5, ahead: 6 },
+    { back: 7.6, up: 2.7, aim: 1.05 },
+    { back: 5.0, up: 2.0, aim: 1.00 },
+    { back: -0.35, up: 1.45, aim: 1.20 },   // из салона
+    { back: 13.5, up: 6.0, aim: 1.30 },
   ][cam.mode];
 
-  const speedPull = clamp(Math.abs(car.vLong) / 55, 0, 1);
-  const back = conf.back * (1 + speedPull * 0.22) * cam.dist;
-  // Мышь по вертикали ПОДНИМАЛА камеру, а не вращала обзор: она просто
-  // прибавлялась к высоте. Теперь камера ходит по сфере вокруг машины —
-  // вверх уводит её выше и назад, вниз прижимает к дороге, как в GTA.
-  // Камера держится на ОДНОЙ высоте за машиной. Мышь по вертикали не двигает
-  // её вверх-вниз (от этого обзор ездил лифтом), а только наклоняет взгляд.
-  let want = new THREE.Vector3(
-    car.pos.x - fx * back,
-    car.pos.y + conf.up,
-    car.pos.z - fz * back,
-  );
-  const ground = terrain.gridHeightAt(want.x, want.z) + 1.4;
-  if (want.y < ground) want.y = ground;
+  // автовозврат за корму: чем быстрее едем, тем настойчивее
+  if (cam.mode !== 2 && Math.abs(car.vLong) > 3) {
+    const pull = Math.min(1, dt * (0.6 + Math.abs(car.vLong) * 0.06));
+    cam.yaw -= cam.yaw * pull;
+  }
+  const yaw = car.yaw + cam.yaw;
+  const fx = Math.sin(yaw), fz = Math.cos(yaw);
 
-  const k = cam.mode === 2 ? 1 : 1 - Math.exp(-dt * 7.5);
+  const pit = clamp(cam.pitch, -0.30, 0.62);         // вниз меньше, вверх больше
+  const speedPull = clamp(Math.abs(car.vLong) / 55, 0, 1);
+  const dist = conf.back * (1 + speedPull * 0.20) * cam.dist;
+  const cp = Math.cos(pit), sp2 = Math.sin(pit);
+
+  const aim = new THREE.Vector3(car.pos.x, car.pos.y + conf.aim, car.pos.z);
+  let want;
+  if (cam.mode === 2) {
+    want = new THREE.Vector3(car.pos.x - fx * conf.back, car.pos.y + conf.up, car.pos.z - fz * conf.back);
+  } else {
+    // точка на сфере вокруг цели: расстояние постоянно, меняется только угол
+    want = new THREE.Vector3(
+      aim.x - fx * dist * cp,
+      aim.y + conf.up * cp + dist * sp2,
+      aim.z - fz * dist * cp,
+    );
+    // не проваливаемся сквозь землю и не влезаем в стену
+    const ground = terrain.gridHeightAt(want.x, want.z) + 0.9;
+    if (want.y < ground) want.y = ground;
+    const dx = want.x - aim.x, dz = want.z - aim.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const probe = new THREE.Vector3(want.x, 0, want.z);
+    if (collider.resolve(probe, 0.6)) {          // между камерой и машиной стена
+      const shrink = 0.55;
+      want.x = aim.x + dx * shrink;
+      want.z = aim.z + dz * shrink;
+      want.y = aim.y + (want.y - aim.y) * shrink + 0.5;
+    }
+  }
+
+  const k = cam.mode === 2 ? 1 : 1 - Math.exp(-dt * 9);
   cam.pos.lerp(want, k);
-  // Цель взгляда держим на машине: наклон уже увёл саму камеру по сфере,
-  // а раньше он вдобавок задирал и точку взгляда — обзор уезжал вдвойне.
-  const pit = clamp(cam.pitch, -0.55, 0.85);
-  const look = new THREE.Vector3(
-    car.pos.x + fx * conf.ahead,
-    car.pos.y + 1.2 + pit * conf.ahead * 1.6,   // наклон уводит только прицел
-    car.pos.z + fz * conf.ahead,
-  );
-  cam.look.lerp(look, 1 - Math.exp(-dt * 9));
+  cam.look.lerp(aim, cam.mode === 2 ? 1 : 1 - Math.exp(-dt * 14));
 
   camera.position.copy(cam.pos);
   if (car.crash > 0.02) {                    // тряска от удара
@@ -427,9 +445,9 @@ function updateCamera(dt) {
     camera.position.y += (Math.random() - 0.5) * s;
   }
   camera.lookAt(cam.look);
-  camera.rotateZ(-car.roll * 0.25);
-  // руль не крутит камеру, но лёгкий крен в повороте оживляет езду
-  if (cam.mode !== 3) camera.rotateZ(-car.steerVis * clamp(car.vLong / 30, -1, 1) * 0.10);
+  // Кренов у камеры больше нет. Она заваливалась вместе с кузовом и вдобавок
+  // от поворота руля — горизонт болтало, и понять, где верх, было нельзя.
+  // В GTA горизонт стоит ровно, что бы ни делала машина.
 }
 
 // ------------------------------------------------------------------ HUD

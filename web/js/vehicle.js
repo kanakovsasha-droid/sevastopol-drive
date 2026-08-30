@@ -26,6 +26,11 @@ const ROLL   = 215;       // сопротивление качению, Н
 const MAX_STEER = 0.58;
 const STEER_RATE = 3.4;   // как быстро доворачивается руль, рад/с
 const SUB    = 1 / 240;   // шаг интегрирования
+// Полотно дороги рисуется на 0.14 м ВЫШЕ рельефа (ROAD_Y в worldgen), а колёса
+// опрашивали голый рельеф — машина проваливалась в асфальт, а на переломах
+// профиля кузов не совпадал с дорогой и повисал.
+const ROAD_LIFT = 0.145;
+const WHEEL_R = 0.34;
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
@@ -49,7 +54,7 @@ export class Car {
   }
 
   reset(x, z, yaw = 0) {
-    this.pos.set(x, this.terrain.driveHeightAt(x, z), z);
+    this.pos.set(x, this.terrain.driveHeightAt(x, z) + ROAD_LIFT, z);
     this.yaw = yaw;
     this.vLong = 0; this.vLat = 0; this.yawRate = 0;
     this.steer = 0; this.crash = 0;
@@ -67,7 +72,7 @@ export class Car {
     // уклон под колёсами — продольная составляющая тяжести
     const fx0 = Math.sin(this.yaw), fz0 = Math.cos(this.yaw);
     const hF = t.driveHeightAt(this.pos.x + fx0 * 1.35, this.pos.z + fz0 * 1.35);
-    const hR = t.driveHeightAt(this.pos.x - fx0 * 1.35, this.pos.z - fz0 * 1.35);
+    const hR = t.driveHeightAt(this.pos.x - fx0 * 1.35, this.pos.z - fz0 * 1.35);   // разница, подъём не важен
     const slopeAcc = -9.81 * clamp((hF - hR) / 2.7, -0.8, 0.8);
 
     // руль доворачивается за конечное время и на скорости зажимается
@@ -196,19 +201,23 @@ export class Car {
     let sum = 0; const wh = [];
     for (const [a, b] of [[WB, TR], [WB, -TR], [-WB, TR], [-WB, -TR]]) {
       const wx = this.pos.x + fx * a + lx * b, wz = this.pos.z + fz * a + lz * b;
-      const hh = t.driveHeightAt(wx, wz);
+      const hh = t.driveHeightAt(wx, wz) + ROAD_LIFT;
       wh.push(hh); sum += hh;
     }
-    // подвеска: кузов идёт к опоре не мгновенно, иначе на бордюрах трясёт
-    const want = sum / 4;
-    this.pos.y += (want - this.pos.y) * Math.min(1, dt * 14);
+    // Колёса стоят на земле ЖЁСТКО. Плавный подход к опоре я добавил как
+    // «подвеску» — и на спусках кузов не успевал за землёй и повисал в воздухе.
+    // Плавность оставляем только наклонам, положение по высоте — точное.
+    this.pos.y = sum / 4;
     const tp = Math.atan2((wh[0] + wh[1]) / 2 - (wh[2] + wh[3]) / 2, WB * 2);
     const tr = Math.atan2((wh[0] + wh[2]) / 2 - (wh[1] + wh[3]) / 2, TR * 2);
-    // клевок и крен от собственных ускорений — машина «живая» в поворотах
-    const dyn = clamp((this._ax || 0) * 0.006, -0.06, 0.06);
-    const rollDyn = clamp(this.yawRate * this.vLong * 0.0042, -0.09, 0.09);
-    this.pitch += (tp + dyn - this.pitch) * Math.min(1, dt * 9);
-    this.roll += (tr + rollDyn - this.roll) * Math.min(1, dt * 9);
+    // лёгкий клевок и крен от собственных ускорений, но так, чтобы кузов
+    // не заваливало: ограничение в пару градусов
+    const dyn = clamp((this._ax || 0) * 0.0035, -0.030, 0.030);
+    const rollDyn = clamp(this.yawRate * this.vLong * 0.0022, -0.045, 0.045);
+    // Наклон должен догонять землю почти мгновенно: при медленном сглаживании
+    // кузов не успевал за переломом профиля, и колёса отрывались на треть метра.
+    this.pitch += (clamp(tp, -0.45, 0.45) + dyn - this.pitch) * Math.min(1, dt * 26);
+    this.roll += (clamp(tr, -0.35, 0.35) + rollDyn - this.roll) * Math.min(1, dt * 26);
   }
 }
 
