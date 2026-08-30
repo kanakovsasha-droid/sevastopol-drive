@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=fcd256a8';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=fcd256a8';
-import { buildCoverage } from './coverage.js?v=fcd256a8';
+import { SEA_FLOOR } from './terrain.js?v=668a4f38';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=668a4f38';
+import { buildCoverage } from './coverage.js?v=668a4f38';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -793,9 +793,11 @@ export function buildRoads(world, terrain, chunk = 500) {
         // Дробные 0.4 в классе — «до перекрёстка меньше 14 м». По ПДД пунктир
         // 1.5 перед перекрёстком сменяется сплошной 1.1: перестраиваться там
         // нельзя. Все пороги классов стоят на .5, поэтому добавка безопасна.
-        // И только на многополосной: на обычной двухполосной улице осевая идёт
-        // к перекрёстку пунктиром, сплошную там по ПДД не рисуют.
-        ch.K.push(Math.abs(lanes) >= 3 && nearBigJunction(x, z, 9) ? cls + 0.4 : cls);
+        // Признак «у перекрёстка» лежал в дробной части класса. Атрибут
+        // ИНТЕРПОЛИРУЕТСЯ вдоль пролёта: если хоть один конец помечен, порог
+        // срабатывал почти на всей длине — и разделители по всему городу
+        // становились сплошными, пунктира не оставалось вовсе. Убрано.
+        ch.K.push(cls);
         ch.O.push(own); ch.S.push(surf);
       }
     }

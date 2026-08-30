@@ -437,9 +437,35 @@ function reverse(p) {
       const samp = [];
       for (const j of g) {
         sx += j.x; sz += j.z;
-        for (let k = 0; k < 14; k++) {
-          const a = k / 14 * Math.PI * 2;
-          samp.push([j.x + Math.cos(a) * j.r, j.z + Math.sin(a) * j.r]);
+        // Пятно перекрёстка формой повторяет ЛУЧИ, а не круг: раньше одиночный
+        // узел выкладывался четырнадцатиугольником по радиусу, и на асфальте
+        // читался ровный круг посреди перекрёстка.
+        let rays = 0;
+        for (const wo of j.ways || []) {
+          const w = wo.w, i = wo.i;
+          const half = wo.width / 2 + 0.6;
+          for (const step of [-1, 1]) {
+            const a = nodes.get(w.nodes[i]), bnd = w.nodes[i + step];
+            const bq = bnd !== undefined ? nodes.get(bnd) : null;
+            if (!a || !bq) continue;
+            const pa = project(a.lat, a.lon), pb = project(bq.lat, bq.lon);
+            const dx = pb.x - pa.x, dz = pb.z - pa.z;
+            const l = Math.hypot(dx, dz);
+            if (l < 0.4) continue;
+            const ux = dx / l, uz = dz / l, nx = -uz, nz = ux;
+            const reach = Math.min(half * 1.25, l * 0.9);
+            for (const sg of [-1, 1]) {
+              samp.push([j.x + nx * sg * half, j.z + nz * sg * half]);
+              samp.push([j.x + ux * reach + nx * sg * half, j.z + uz * reach + nz * sg * half]);
+            }
+            rays++;
+          }
+        }
+        if (!rays) {                       // лучей нет — оставляем круг
+          for (let k = 0; k < 12; k++) {
+            const a = k / 12 * Math.PI * 2;
+            samp.push([j.x + Math.cos(a) * j.r, j.z + Math.sin(a) * j.r]);
+          }
         }
       }
       const cx = sx / g.length, cz = sz / g.length;
@@ -451,7 +477,7 @@ function reverse(p) {
       let mw = 0;
       for (const j of g) mw = Math.max(mw, (j.r - 1.2) * 2);
       const rec = { x: R1(cx), z: R1(cz), r: R1(R), mw: R1(mw) };
-      if (g.length > 1) {
+      if (samp.length >= 3) {
         // Обход приводим к положительной площади: worldgen считает «наружу» по
         // левой нормали ребра и без единого обхода вывернул бы пятно наизнанку.
         const h = hull(samp);

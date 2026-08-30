@@ -622,13 +622,13 @@ export function roadMaterial() {
           bool hasBus  = flags == 1.0 || flags == 3.0;   // выделенная справа
           bool hasPark = flags == 2.0 || flags == 3.0;   // парковочная слева
           bool twoWay  = vRoad.w < 0.0;
-          float nearJ  = step(0.2, fract(vCls));         // 14 м до перекрёстка
           if (nLane > 1.5 && vCls < 2.9) {
             float edge = halfW - 0.55;                   // краевые сплошные 1.2
             float lw = edge * 2.0 / nLane;               // ширина полосы
             float line = band(am, edge, 0.06);
             // ПДД 1.5: штрих 3 м, промежуток 9 м. Перед перекрёстком — 1.1.
-            float dash = max(step(fract(v / 12.0), 0.25), nearJ);
+            // ПДД 1.5: штрих 3 м, промежуток 9 м
+            float dash = step(fract(v / 12.0), 0.25);
             for (int k = 1; k < 8; k++) {
               if (float(k) > nLane - 1.0) break;
               float mid = -edge + float(k) * lw;
