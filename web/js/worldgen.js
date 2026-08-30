@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=a5ddc254';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=a5ddc254';
-import { buildCoverage } from './coverage.js?v=a5ddc254';
+import { SEA_FLOOR } from './terrain.js?v=1418f982';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=1418f982';
+import { buildCoverage } from './coverage.js?v=1418f982';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -772,7 +772,7 @@ export function buildRoads(world, terrain, chunk = 500) {
 
   // offA/offB — либо число (постоянная полуширина), либо массив на вершину:
   // проезжая часть ужимается там, где под неё лезет соседняя улица.
-  const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1, lanes = 0, surf = 0) => {
+  const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1, lanes = 0, surf = 0, hFn = H) => {
     const col = ROAD_COLORS[cls];
     const start = ch.base;
     const aArr = typeof offA === 'number' ? null : offA;
@@ -783,7 +783,7 @@ export function buildRoads(world, terrain, chunk = 500) {
         const off = s === 0 ? (aArr ? aArr[i] : offA) : (bArr ? bArr[i] : offB);
         const x = pts[i * 2] + mt.NX[i] * off * mt.S[i];
         const z = pts[i * 2 + 1] + mt.NZ[i] * off * mt.S[i];
-        ch.P.push(x, H(x, z) + lift, z);
+        ch.P.push(x, hFn(x, z) + lift, z);
         ch.C.push(enc(col[0] * t), enc(col[1] * t), enc(col[2] * t));
         // Разметку шейдер кладёт по aRoad.x·ширина/2 = метры от осевой. У
         // ужатого полотна кромка уже не на ±полуширине, и постоянные ∓1
@@ -991,6 +991,84 @@ export function buildRoads(world, terrain, chunk = 500) {
     return touched ? { offL, offR } : null;
   };
 
+  // МОСТЫ. Полотно с тегом bridge рисовалось прямо по рельефу, и путепровод
+  // у вокзала лежал на дне выемки, а моя надстройка висела над ним отдельно —
+  // «мост не соединён с дорогой». Собираем связные цепочки мостовых участков
+  // (в OSM один путепровод разбит на семь кусков), берём отметки земли на
+  // ДВУХ КРАЯХ всей цепочки и натягиваем полотно между ними прямой. Тогда
+  // середина висит над выемкой, а концы садятся на обычную улицу.
+  const bridgeH = new Map();          // индекс дороги -> функция высоты
+  const bridgeDecks = [];             // для опор и перил
+  {
+    const key = (x, z) => Math.round(x * 4) + ',' + Math.round(z * 4);
+    const idxs = [];
+    world.roads.forEach((r, i) => { if (r.br && r.c <= 3 && r.pts.length >= 4) idxs.push(i); });
+    const node = new Map();
+    for (const i of idxs) {
+      const p = world.roads[i].pts;
+      for (const k of [key(p[0], p[1]), key(p[p.length - 2], p[p.length - 1])])
+        (node.get(k) || node.set(k, []).get(k)).push(i);
+    }
+    const seen = new Set();
+    for (const start of idxs) {
+      if (seen.has(start)) continue;
+      const chain = [], stack = [start];
+      seen.add(start);
+      while (stack.length) {
+        const i = stack.pop(); chain.push(i);
+        const p = world.roads[i].pts;
+        for (const k of [key(p[0], p[1]), key(p[p.length - 2], p[p.length - 1])])
+          for (const j of node.get(k) || []) if (!seen.has(j)) { seen.add(j); stack.push(j); }
+      }
+      // концы цепочки — узлы, куда приходит ровно один участок
+      const deg = new Map();
+      for (const i of chain) {
+        const p = world.roads[i].pts;
+        for (const k of [key(p[0], p[1]), key(p[p.length - 2], p[p.length - 1])])
+          deg.set(k, (deg.get(k) || 0) + 1);
+      }
+      const ends = [];
+      for (const i of chain) {
+        const p = world.roads[i].pts;
+        for (const [k, x, z] of [[key(p[0], p[1]), p[0], p[1]],
+                                 [key(p[p.length - 2], p[p.length - 1]), p[p.length - 2], p[p.length - 1]]])
+          if (deg.get(k) === 1) ends.push([x, z]);
+      }
+      // если концов не нашлось (кольцо) — берём самые далёкие вершины
+      let A = ends[0], B = ends[ends.length - 1];
+      if (!A || !B || ends.length < 2) {
+        const all = [];
+        for (const i of chain) { const p = world.roads[i].pts;
+          for (let k = 0; k < p.length; k += 2) all.push([p[k], p[k + 1]]); }
+        let bd = -1;
+        for (let a = 0; a < all.length; a++) for (let b = a + 1; b < all.length; b++) {
+          const d = Math.hypot(all[a][0] - all[b][0], all[a][1] - all[b][1]);
+          if (d > bd) { bd = d; A = all[a]; B = all[b]; }
+        }
+      }
+      if (!A || !B) continue;
+      const yA = H(A[0], A[1]), yB = H(B[0], B[1]);
+      const vx = B[0] - A[0], vz = B[1] - A[1];
+      const vv = vx * vx + vz * vz || 1;
+      const fn = (x, z) => {
+        const t = Math.max(0, Math.min(1, ((x - A[0]) * vx + (z - A[1]) * vz) / vv));
+        return yA + (yB - yA) * t;
+      };
+      for (const i of chain) bridgeH.set(i, fn);
+      // полотно для опор и перил
+      for (const i of chain) {
+        const r = world.roads[i];
+        bridgeDecks.push({ pts: r.pts, w: r.w, hFn: fn });
+      }
+    }
+  }
+  // отдаём наружу: опоры и перила строит модуль сооружений
+  world.__bridges = bridgeDecks.map(d => {
+    const p = d.pts, out = [];
+    for (let i = 0; i < p.length; i += 2) out.push(p[i], p[i + 1], d.hFn(p[i], p[i + 1]), H(p[i], p[i + 1]));
+    return { w: d.w, pts: out };
+  });
+
   const clipOffsets = (pts, mt, hw, rank) => {
     const offL = new Float64Array(mt.n), offR = new Float64Array(mt.n);
     for (let i = 0; i < mt.n; i++) {
@@ -1095,7 +1173,7 @@ export function buildRoads(world, terrain, chunk = 500) {
       // рисовались обе внахлёст. Растр уже решил, чья это земля, — этого хватает.
       for (const [bx, bz] of pts3) if (!onOtherRoad(bx, bz, ri)) return false;
       return true;      // кусок целиком на чужой проезжей части
-    }, ri, laneEnc(r), r.sf || 0);
+    }, ri, laneEnc(r), r.sf || 0, bridgeH.get(ri) || H);
     if (r.c === 4) {
       // Дорожка метит свою полосу, чтобы параллельная соседка не легла сверху.
       // Метим ТОЛЬКО нарисованное: раньше снятый пролёт всё равно занимал

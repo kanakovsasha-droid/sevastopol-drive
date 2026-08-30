@@ -152,24 +152,76 @@ function carouselGeo() {
   return merge(parts);
 }
 
-// ---- машина: кузов, крыша, стёкла, колёса
+// ---- машина: тот же лофт-кузов, что у игрока, только упрощённый.
+// Коробкой припаркованные машины выглядели хуже всего на парковке.
 function carGeo(paint) {
   const parts = [];
-  const body = new THREE.BoxGeometry(1.78, 0.62, 4.15);
-  body.translate(0, 0.72, 0);
-  const skirt = new THREE.BoxGeometry(1.70, 0.26, 3.95);
-  skirt.translate(0, 0.44, 0);
-  const cabin = new THREE.BoxGeometry(1.58, 0.54, 2.05);
-  cabin.translate(0, 1.28, -0.14);
-  const roof = new THREE.BoxGeometry(1.46, 0.09, 1.80);
-  roof.translate(0, 1.58, -0.16);
-  parts.push({ geo: body, color: paint }, { geo: skirt, color: [0.11, 0.12, 0.13] },
-              { geo: cabin, color: [0.17, 0.23, 0.27] }, { geo: roof, color: paint });
-  const wheel = new THREE.CylinderGeometry(0.33, 0.33, 0.24, 10);
+  const DARKC = [0.09, 0.10, 0.11];
+  const S = [
+    [ 2.30, 0.60, 0.78, 0.42, 0.84],
+    [ 2.10, 0.72, 0.88, 0.30, 0.92],
+    [ 1.45, 0.84, 0.93, 0.24, 1.00],
+    [ 0.20, 0.86, 0.94, 0.23, 1.03],
+    [-1.20, 0.85, 0.93, 0.24, 1.02],
+    [-2.05, 0.72, 0.86, 0.31, 0.96],
+    [-2.28, 0.58, 0.76, 0.43, 0.88],
+  ];
+  const P = [], I = [];
+  const rings = S.map(([z, wl, ws, y0, y1]) => {
+    const ym = y0 + (y1 - y0) * 0.62;
+    return [[0, y0, z], [-wl, y0 + 0.05, z], [-ws, ym, z], [-ws * 0.93, y1, z],
+            [0, y1 + 0.02, z], [ws * 0.93, y1, z], [ws, ym, z], [wl, y0 + 0.05, z]];
+  });
+  for (const r of rings) for (const v of r) P.push(v[0], v[1], v[2]);
+  for (let i = 0; i < rings.length - 1; i++) {
+    const a = i * 8, b = (i + 1) * 8;
+    for (let k = 0; k < 8; k++) {
+      const k2 = (k + 1) % 8;
+      I.push(a + k, b + k, a + k2, a + k2, b + k, b + k2);
+    }
+  }
+  const cap = (idx, flip) => {
+    const o = idx * 8;
+    for (let k = 1; k < 7; k++) { if (flip) I.push(o, o + k + 1, o + k); else I.push(o, o + k, o + k + 1); }
+  };
+  cap(0, false); cap(rings.length - 1, true);
+  const bodyGeo = new THREE.BufferGeometry();
+  bodyGeo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  bodyGeo.setIndex(I);
+  bodyGeo.computeVertexNormals();
+  parts.push({ geo: bodyGeo, color: paint });
+
+  // теплица
+  const C = [[1.00, 0.58, 1.04], [0.45, 0.74, 1.34], [-0.75, 0.78, 1.40], [-1.65, 0.60, 1.10]];
+  const CP = [], CI = [];
+  for (const [z, w, y] of C) CP.push(-w, 1.00, z, -w * 0.97, y, z, w * 0.97, y, z, w, 1.00, z);
+  for (let i = 0; i < C.length - 1; i++) {
+    const a = i * 4, b = (i + 1) * 4;
+    for (let k = 0; k < 3; k++) CI.push(a + k, b + k, a + k + 1, a + k + 1, b + k, b + k + 1);
+  }
+  const cg = new THREE.BufferGeometry();
+  cg.setAttribute('position', new THREE.Float32BufferAttribute(CP, 3));
+  cg.setIndex(CI); cg.computeVertexNormals();
+  parts.push({ geo: cg, color: [0.15, 0.19, 0.23] });
+  const roof = new THREE.BoxGeometry(1.40, 0.06, 1.25);
+  roof.translate(0, 1.41, -0.20);
+  parts.push({ geo: roof, color: paint });
+
+  const wheel = new THREE.CylinderGeometry(0.33, 0.33, 0.25, 10);
   wheel.rotateZ(Math.PI / 2);
-  for (const [x, z] of [[0.82, 1.32], [-0.82, 1.32], [0.82, -1.28], [-0.82, -1.28]]) {
+  for (const [x, z] of [[0.80, 1.38], [-0.80, 1.38], [0.80, -1.36], [-0.80, -1.36]]) {
     const w = wheel.clone(); w.translate(x, 0.33, z);
-    parts.push({ geo: w, color: [0.10, 0.10, 0.11] });
+    parts.push({ geo: w, color: DARKC });
+  }
+  const gr = new THREE.BoxGeometry(1.05, 0.28, 0.08);
+  gr.translate(0, 0.62, 2.28); parts.push({ geo: gr, color: DARKC });
+  for (const sx of [-1, 1]) {
+    const hl = new THREE.BoxGeometry(0.38, 0.13, 0.08);
+    hl.translate(sx * 0.52, 0.76, 2.24);
+    parts.push({ geo: hl, color: [0.82, 0.86, 0.90] });
+    const tl = new THREE.BoxGeometry(0.42, 0.12, 0.08);
+    tl.translate(sx * 0.50, 0.82, -2.24);
+    parts.push({ geo: tl, color: [0.55, 0.10, 0.09] });
   }
   return merge(parts);
 }
@@ -340,86 +392,73 @@ export function buildStructures(world, terrain) {
 
   const P = world.places || {};
 
-  // ---- мост-путепровод: плита на опорах, тумбы и решётчатые перила
-  for (const s of P.structures || []) {
-    if (s.k !== 'bridge') continue;
-    const [x0, z0] = s.from, [x1, z1] = s.to;
-    const L = Math.hypot(x1 - x0, z1 - z0) || 1;
-    const ux = (x1 - x0) / L, uz = (z1 - z0) / L;
-    const ang = Math.atan2(ux, uz);
-    const w = s.w, deck = s.deck;
-    const col = hexTo(s.color);
-    const gy = Math.min(H(x0, z0), H(x1, z1));
-    const yDeck = gy + deck;
-    const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
-    // плита пролётного строения с балками снизу
-    const slab = new THREE.BoxGeometry(w, 0.55, L);
-    slab.rotateY(ang); slab.translate(mx, yDeck, mz);
-    parts.push({ geo: slab, color: col });
-    for (let i = 0; i < 5; i++) {
-      const off = (i / 4 - 0.5) * (w - 2.2);
-      const beam = new THREE.BoxGeometry(0.55, 1.15, L);
-      beam.rotateY(ang);
-      beam.translate(mx - uz * off, yDeck - 0.85, mz + ux * off);
-      parts.push({ geo: beam, color: CONCRETE_D });
-    }
-    // устои по краям и промежуточные опоры по числу пролётов
-    const spans = Math.max(1, s.spans | 0);
-    for (let i = 0; i <= spans; i++) {
-      const t = i / spans;
-      const px = x0 + (x1 - x0) * t, pz = z0 + (z1 - z0) * t;
-      const g0 = H(px, pz);
-      const hgt = Math.max(1.0, yDeck - 1.4 - g0);
-      const isEnd = i === 0 || i === spans;
-      const pw = isEnd ? w + 1.2 : w * 0.9;
-      const pd = isEnd ? 3.0 : Math.max(1.2, s.pier);
-      const pier = new THREE.BoxGeometry(pw, hgt, pd);
-      pier.rotateY(ang);
-      pier.translate(px, g0 + hgt / 2, pz);
-      parts.push({ geo: pier, color: isEnd ? CONCRETE_D : CONCRETE });
-      if (!isEnd) {                       // ригель поверх промежуточной опоры
-        const cap = new THREE.BoxGeometry(w * 0.95, 0.8, pd + 1.4);
-        cap.rotateY(ang);
-        cap.translate(px, g0 + hgt + 0.4, pz);
+  // ---- мосты: опоры, балки и перила под ПОДНЯТЫМ полотном
+  // Полотно поднимает worldgen (по цепочке участков с тегом bridge), а сюда
+  // приходит готовая линия: x, z, отметка полотна и отметка земли под ним.
+  // Опоры ставим там, где просвет больше метра, — на насыпи они не нужны.
+  for (const d of world.__bridges || []) {
+    const p = d.pts, m = p.length / 4;
+    if (m < 2) continue;
+    const w = d.w;
+    let any = false;
+    for (let i = 0; i < m - 1; i++) {
+      const ax = p[i * 4], az = p[i * 4 + 1], ay = p[i * 4 + 2], ag = p[i * 4 + 3];
+      const bx = p[i * 4 + 4], bz = p[i * 4 + 5], by = p[i * 4 + 6], bg = p[i * 4 + 7];
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L < 0.5) continue;
+      const ux = (bx - ax) / L, uz = (bz - az) / L;
+      const ang = Math.atan2(ux, uz);
+      const mx = (ax + bx) / 2, mz = (az + bz) / 2, my = (ay + by) / 2, mg = (ag + bg) / 2;
+      const clear = my - mg;
+      // плита снизу — она же прячет землю, просвечивающую сквозь полотно
+      const slab = new THREE.BoxGeometry(w + 0.7, 0.55, L + 0.15);
+      slab.rotateY(ang); slab.translate(mx, my - 0.12, mz);
+      parts.push({ geo: slab, color: CONCRETE });
+      if (clear > 1.0) {
+        any = true;
+        // продольные балки
+        for (const off of [-w * 0.3, 0, w * 0.3]) {
+          const beam = new THREE.BoxGeometry(0.5, Math.min(1.1, clear * 0.5), L + 0.1);
+          beam.rotateY(ang);
+          beam.translate(mx + uz * off, my - 0.9, mz - ux * off);
+          parts.push({ geo: beam, color: CONCRETE_D });
+        }
+        // перила по кромкам
+        for (const sg of [-1, 1]) {
+          const off = sg * (w / 2 + 0.2);
+          const nPost = Math.max(2, Math.round(L / 2.2));
+          for (let k = 0; k <= nPost; k++) {
+            const t = k / nPost;
+            const px = ax + (bx - ax) * t + uz * off, pz = az + (bz - az) * t - ux * off;
+            const py = ay + (by - ay) * t;
+            const post = new THREE.BoxGeometry(0.08, 1.05, 0.08);
+            post.rotateY(ang); post.translate(px, py + 0.66, pz);
+            parts.push({ geo: post, color: RAIL_STEEL });
+          }
+          for (const yy of [0.28, 1.05]) {
+            const rail = new THREE.BoxGeometry(0.07, 0.08, L + 0.1);
+            rail.rotateY(ang);
+            rail.translate(mx + uz * off, my + 0.14 + yy, mz - ux * off);
+            parts.push({ geo: rail, color: RAIL_STEEL });
+          }
+          const kerb = new THREE.BoxGeometry(0.35, 0.36, L + 0.1);
+          kerb.rotateY(ang);
+          kerb.translate(mx + uz * (sg * (w / 2 - 0.1)), my + 0.32, mz - ux * (sg * (w / 2 - 0.1)));
+          parts.push({ geo: kerb, color: CONCRETE_D });
+        }
+      }
+      // опора: раз в четыре пролёта и только там, где высоко
+      if (clear > 2.5 && i % 4 === 2) {
+        const hgt = clear - 1.5;
+        const pier = new THREE.BoxGeometry(w * 0.55, hgt, 1.6);
+        pier.rotateY(ang); pier.translate(mx, mg + hgt / 2, mz);
+        parts.push({ geo: pier, color: CONCRETE });
+        const cap = new THREE.BoxGeometry(w * 0.9, 0.7, 2.6);
+        cap.rotateY(ang); cap.translate(mx, mg + hgt + 0.35, mz);
         parts.push({ geo: cap, color: CONCRETE_D });
       }
     }
-    // бортик и решётчатое ограждение по обеим кромкам
-    for (const sg of [-1, 1]) {
-      const off = sg * (w / 2 - 0.25);
-      const kerb = new THREE.BoxGeometry(0.5, 0.42, L);
-      kerb.rotateY(ang);
-      kerb.translate(mx - uz * off, yDeck + 0.48, mz + ux * off);
-      parts.push({ geo: kerb, color: CONCRETE_D });
-      const nPost = Math.max(2, Math.round(L / 2.4));
-      for (let i = 0; i <= nPost; i++) {
-        const t = i / nPost;
-        const px = x0 + (x1 - x0) * t - uz * off, pz = z0 + (z1 - z0) * t + ux * off;
-        const post = new THREE.BoxGeometry(0.09, s.railH, 0.09);
-        post.rotateY(ang); post.translate(px, yDeck + 0.69 + s.railH / 2, pz);
-        parts.push({ geo: post, color: RAIL_STEEL });
-      }
-      for (const yy of [0.2, s.railH - 0.06]) {       // верхний и нижний пояс
-        const rail = new THREE.BoxGeometry(0.07, 0.09, L);
-        rail.rotateY(ang);
-        rail.translate(mx - uz * off, yDeck + 0.69 + yy, mz + ux * off);
-        parts.push({ geo: rail, color: RAIL_STEEL });
-      }
-      // редкая решётка между поясами
-      const nBar = Math.max(2, Math.round(L / 0.9));
-      for (let i = 0; i <= nBar; i++) {
-        const t = i / nBar;
-        const px = x0 + (x1 - x0) * t - uz * off, pz = z0 + (z1 - z0) * t + ux * off;
-        const bar = new THREE.BoxGeometry(0.04, s.railH - 0.3, 0.04);
-        bar.rotateY(ang); bar.translate(px, yDeck + 0.84 + (s.railH - 0.3) / 2, pz);
-        parts.push({ geo: bar, color: RAIL_STEEL });
-      }
-    }
-    // разделительный барьер посередине
-    const barr = new THREE.BoxGeometry(0.35, 0.75, L);
-    barr.rotateY(ang); barr.translate(mx, yDeck + 0.65, mz);
-    parts.push({ geo: barr, color: RAIL_STEEL });
-    bump('мостов');
+    if (any) bump('мостов');
   }
 
   // ---- платформы с навесами

@@ -59,7 +59,9 @@ for (const key of ['cemetery', 'cemeteryKaraim']) {
 }
 
 // ---- вокзал: мост, платформы с навесами, составы
-if (V.bridge && V.bridge.from && V.bridge.to) {
+// Мост больше не строится вручную: полотно поднимает worldgen по всем
+// участкам с тегом bridge, а опоры и перила ставятся под ним автоматически.
+if (false && V.bridge && V.bridge.from && V.bridge.to) {
   const b = V.bridge;
   out.structures.push({ k: 'bridge', from: b.from.map(R1), to: b.to.map(R1),
     w: b.width || 20, deck: b.deckHeight || 8, spans: b.spans || 2,
@@ -76,6 +78,17 @@ for (const t of V.trains || []) {
   out.trains.push({ from: t.from.map(R1), to: t.to.map(R1), cars: t.cars || 1,
     len: t.carLen || 24, w: t.carW || 3.1, h: t.carH || 4.2,
     body: t.bodyColor || '#8a8f96', roof: t.roofColor || '#6a6a66', n: t.type });
+}
+
+// ---- перрон автовокзала: буферная площадка и автобусы на местах
+// Навеса над перронами нет (проверено по панораме), автобусы стоят веером
+// на открытой площадке к западу от здания — координаты из отчёта агента.
+out.areas.push({ k: 'parking', poly: [435, 2440, 470, 2440, 470, 2495, 435, 2495], n: 'Перрон автовокзала' });
+for (let i = 0; i < 6; i++) {
+  const z = 2447 + i * 8;
+  out.trains.push({ from: [438, z], to: [456, z], cars: 1, len: 12, w: 2.55, h: 3.2,
+    body: i % 3 === 0 ? '#c8452c' : i % 3 === 1 ? '#2f5f9e' : '#e2e3df',
+    roof: '#d8d8d4', n: 'автобус на перроне' });
 }
 
 writeFileSync(DIR + 'places.json', JSON.stringify(out));
