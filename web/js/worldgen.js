@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=b5c48cbc';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=b5c48cbc';
-import { buildCoverage } from './coverage.js?v=b5c48cbc';
+import { SEA_FLOOR } from './terrain.js?v=a8899780';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial } from './materials.js?v=a8899780';
+import { buildCoverage } from './coverage.js?v=a8899780';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -956,6 +956,41 @@ export function buildRoads(world, terrain, chunk = 500) {
     return false;
   };
   // Полуширины на каждую вершину: слева (отрицательные) и справа.
+  // Контуры домов. В OSM 0.51% проб по проезжей части попадают ВНУТРЬ здания:
+  // гаражи и частные дома вплотную к проезду, а кое-где просто неточный обвод.
+  // Полотно там резать обязательно — иначе асфальт въезжает в стену и дом
+  // выглядит «съехавшим на дорогу».
+  const bldGrid = new PolyGrid(world.buildings.map(b => ({ poly: b.poly, holes: b.holes })), 70);
+  const inBuilding = (x, z) => !!bldGrid.find(x, z);
+
+  // Полуширина, ужатая контуром дома. Мосты и тоннели не трогаем: там дорога
+  // законно проходит сквозь габарит.
+  const clipByBuildings = (pts, mt, hw) => {
+    const offL = new Float64Array(mt.n), offR = new Float64Array(mt.n);
+    let touched = false;
+    for (let i = 0; i < mt.n; i++) {
+      const bx = pts[i * 2], bz = pts[i * 2 + 1];
+      const nx = mt.NX[i] * mt.S[i], nz = mt.NZ[i] * mt.S[i];
+      for (const sg of [1, -1]) {
+        let v = hw;
+        if (inBuilding(bx + nx * sg * hw, bz + nz * sg * hw)) {
+          touched = true;
+          if (inBuilding(bx, bz)) v = hw;        // ось внутри дома — обвод врёт, не режем
+          else {
+            let lo = 0, hi = hw;
+            for (let k = 0; k < 8; k++) {
+              const m = (lo + hi) / 2;
+              if (inBuilding(bx + nx * sg * m, bz + nz * sg * m)) hi = m; else lo = m;
+            }
+            v = Math.max(0.6, lo - 0.15);        // 15 см зазора до стены
+          }
+        }
+        if (sg > 0) offR[i] = v; else offL[i] = -v;
+      }
+    }
+    return touched ? { offL, offR } : null;
+  };
+
   const clipOffsets = (pts, mt, hw, rank) => {
     const offL = new Float64Array(mt.n), offR = new Float64Array(mt.n);
     for (let i = 0; i < mt.n; i++) {
@@ -1009,7 +1044,19 @@ export function buildRoads(world, terrain, chunk = 500) {
     const mtR = lane ? lane.mt : miters(ext);
     // Проезжей части режем полуширину по вершинам; пешеходной дорожке — нет,
     // она в приоритетах не участвует и уступает целыми пролётами.
-    const cut = lane ? clipOffsets(ext, mtR, hw, lane.rank) : null;
+    let cut = lane ? clipOffsets(ext, mtR, hw, lane.rank) : null;
+    // Поверх приоритета улиц режем ещё и по домам: берём наименьшую из двух
+    // полуширин на каждой вершине.
+    if (r.c <= 3 && !r.br && !r.tn) {
+      const bc = clipByBuildings(ext, mtR, hw);
+      if (bc) {
+        if (!cut) cut = bc;
+        else for (let i = 0; i < mtR.n; i++) {
+          if (bc.offR[i] < cut.offR[i]) cut.offR[i] = bc.offR[i];
+          if (bc.offL[i] > cut.offL[i]) cut.offL[i] = bc.offL[i];
+        }
+      }
+    }
     // Пешеходная дорожка декоративна: под ней и так либо асфальт улицы, либо
     // плитка тротуара. Проверять одну середину пролёта было мало — шестиметровая
     // pedestrian ложилась на тротуар боками. Смотрим весь квад, и если задета

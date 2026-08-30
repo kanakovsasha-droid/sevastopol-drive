@@ -516,6 +516,168 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
     // Владимирский собор — неовизантийский крестово-купольный, 32.5 м с крестом.
     // Корпус даёт контур OSM (он крестообразный), сверху ставим четверик,
     // барабан с арочными окнами, приплюснутый купол и восьмиконечный крест.
+    // ---- русский пятиглавый храм: шатры, луковичные маковки, колокольня ----
+    // Покровский собор — не византийский купол, а стрельчатый шатёр в окружении
+    // четырёх двенадцатигранных башенок, и всё это золочёное. Рисуется по
+    // списку глав из отчёта: у каждой свои координаты, радиус и высота барабана.
+    if (d.style === 'cathedral' && Array.isArray(d.domes) && d.domes.length) {
+      const parts = [];
+      const STONE_W = [0.918, 0.898, 0.851];
+      const hexRGB = h => {
+        const v = parseInt((h || '#d3a92f').slice(1), 16);
+        return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255].map(c =>
+          c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) ** (1 / 2.4));
+      };
+      const GOLD_D = hexRGB(d.domeColor || '#d3a92f');
+
+      let gmaxL = -Infinity;
+      for (let i = 0; i < b.poly.length / 2; i++)
+        gmaxL = Math.max(gmaxL, terrain.gridHeightAt(b.poly[i * 2], b.poly[i * 2 + 1]));
+      const yBody = gmaxL + b.h;
+
+      // карниз по всему контуру и ряд кокошников под ним
+      {
+        const p = b.poly, n = p.length / 2;
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n;
+          const ax = p[i * 2], az = p[i * 2 + 1], bx2 = p[j * 2], bz2 = p[j * 2 + 1];
+          const l = Math.hypot(bx2 - ax, bz2 - az);
+          if (l < 0.4) continue;
+          const ang = Math.atan2(bx2 - ax, bz2 - az);
+          const cor = new THREE.BoxGeometry(1.0, 0.5, l + 0.6);
+          cor.rotateY(ang);
+          cor.translate((ax + bx2) / 2, yBody + 0.25, (az + bz2) / 2);
+          parts.push({ geo: cor, color: STONE_D });
+          // кокошники: полукруглые закомары по стене, шаг 2.6 м
+          const nk = Math.max(1, Math.floor(l / 2.6));
+          const ux2 = (bx2 - ax) / l, uz2 = (bz2 - az) / l;
+          for (let k = 0; k < nk; k++) {
+            const t = (k + 0.5) / nk;
+            const kx = ax + (bx2 - ax) * t, kz = az + (bz2 - az) * t;
+            const koko = new THREE.CylinderGeometry(1.05, 1.05, 0.45, 10, 1, false, 0, Math.PI);
+            koko.rotateZ(Math.PI / 2);
+            koko.rotateY(-Math.atan2(uz2, ux2));
+            koko.translate(kx, yBody + 0.5, kz);
+            parts.push({ geo: koko, color: STONE_W });
+          }
+        }
+      }
+
+      // одна глава: восьмерик-барабан, шатёр, шейка, луковица, крест
+      const glava = (g) => {
+        const R = g.radius ?? 2.0;
+        const dh = g.drumHeight ?? 6.0;
+        const col = g.color ? hexRGB(g.color) : GOLD_D;
+        const y0 = yBody + 0.5;
+        // двенадцатигранный барабан белого камня
+        const drum = new THREE.CylinderGeometry(R, R * 1.04, dh, 12);
+        drum.translate(g.x, y0 + dh / 2, g.z);
+        parts.push({ geo: drum, color: STONE_W });
+        // лопатки и узкие арочные окна по граням
+        const nw = R > 3.5 ? 8 : 6;
+        for (let i = 0; i < nw; i++) {
+          const a = i / nw * Math.PI * 2;
+          const wx = g.x + Math.cos(a) * (R - 0.06), wz = g.z + Math.sin(a) * (R - 0.06);
+          const win = new THREE.BoxGeometry(0.22, dh * 0.46, Math.min(0.9, R * 0.3));
+          win.rotateY(-a);
+          win.translate(wx, y0 + dh * 0.55, wz);
+          parts.push({ geo: win, color: [0.08, 0.09, 0.10] });
+        }
+        // карниз барабана
+        const dc = new THREE.CylinderGeometry(R + 0.38, R + 0.20, 0.42, 12);
+        dc.translate(g.x, y0 + dh + 0.21, g.z);
+        parts.push({ geo: dc, color: STONE_D });
+        // ШАТЁР: двенадцатигранный конус, у главной главы стрельчатый и выше
+        const tentH = R * (g.radius >= 4 ? 2.3 : 2.9);
+        const yT = y0 + dh + 0.42;
+        const tent = new THREE.ConeGeometry(R + 0.42, tentH, 12);
+        tent.translate(g.x, yT + tentH / 2, g.z);
+        parts.push({ geo: tent, color: col });
+        // шейка и луковица
+        const neckR = R * 0.26, neckH = R * 0.42;
+        const neck = new THREE.CylinderGeometry(neckR, neckR * 1.1, neckH, 10);
+        neck.translate(g.x, yT + tentH + neckH / 2, g.z);
+        parts.push({ geo: neck, color: col });
+        // луковица телом вращения: пузо шире шейки, кверху сходится в острие
+        const R2 = R * 0.52;
+        const prof = [];
+        for (let i = 0; i <= 12; i++) {
+          const t = i / 12;                                    // 0 низ, 1 верх
+          const rr = Math.sin(Math.PI * (0.12 + t * 0.86)) * (1 - t * 0.55) * R2 * 1.55;
+          prof.push(new THREE.Vector2(Math.max(0.02, rr), t * R2 * 2.0));
+        }
+        const onion = new THREE.LatheGeometry(prof, 12);
+        onion.translate(g.x, yT + tentH + neckH, g.z);
+        parts.push({ geo: onion, color: col });
+        // крест: стойка, перекладина, косая и полумесяц в основании
+        if (g.cross !== false) {
+          const yc = yT + tentH + neckH + R2 * 2.0;
+          const hC = R * 0.9;
+          const st = new THREE.BoxGeometry(0.1, hC, 0.1);
+          st.translate(g.x, yc + hC / 2, g.z);
+          parts.push({ geo: st, color: GOLD });
+          const cb = new THREE.BoxGeometry(hC * 0.5, 0.1, 0.1);
+          cb.translate(g.x, yc + hC * 0.66, g.z);
+          parts.push({ geo: cb, color: GOLD });
+          const cb2 = new THREE.BoxGeometry(hC * 0.3, 0.09, 0.09);
+          cb2.translate(g.x, yc + hC * 0.86, g.z);
+          parts.push({ geo: cb2, color: GOLD });
+          const sl = new THREE.BoxGeometry(hC * 0.34, 0.09, 0.09);
+          sl.rotateZ(0.42);
+          sl.translate(g.x, yc + hC * 0.30, g.z);
+          parts.push({ geo: sl, color: GOLD });
+          const cres = new THREE.TorusGeometry(hC * 0.18, 0.05, 6, 12, Math.PI);
+          cres.rotateZ(Math.PI);
+          cres.translate(g.x, yc + hC * 0.12, g.z);
+          parts.push({ geo: cres, color: GOLD });
+        }
+      };
+      for (const g of d.domes) glava(g);
+
+      // крыльцо у главного фасада: ступени и двускатный навес на столбах
+      if (d.stairs && d.wall) {
+        const [wx0, wz0, wx1, wz1] = d.wall;
+        const wl = Math.hypot(wx1 - wx0, wz1 - wz0) || 1;
+        const wux = (wx1 - wx0) / wl, wuz = (wz1 - wz0) / wl;
+        let wnx = -wuz, wnz = wux;
+        const cp = b.poly, cn = cp.length / 2;
+        let ccx = 0, ccz = 0;
+        for (let k = 0; k < cn; k++) { ccx += cp[k * 2]; ccz += cp[k * 2 + 1]; }
+        ccx /= cn; ccz /= cn;
+        const mx = (wx0 + wx1) / 2, mz = (wz0 + wz1) / 2;
+        if (wnx * (ccx - mx) + wnz * (ccz - mz) > 0) { wnx = -wnx; wnz = -wnz; }
+        const g0 = terrain.gridHeightAt(mx + wnx * 2, mz + wnz * 2);
+        const W = Math.min(7.0, wl * 0.55);
+        for (let i = 0; i < 5; i++) {
+          const off = 2.6 - i * 0.5;
+          const st = new THREE.BoxGeometry(W + i * 0.4, 0.19, 1.05);
+          st.rotateY(Math.atan2(wux, wuz));
+          st.translate(mx + wnx * off, g0 + 0.10 + i * 0.19, mz + wnz * off);
+          parts.push({ geo: st, color: STONE_D });
+        }
+        for (const sgn of [-1, 1]) {
+          const px = mx + wux * W * 0.42 * sgn + wnx * 0.9;
+          const pz = mz + wuz * W * 0.42 * sgn + wnz * 0.9;
+          const col2 = new THREE.CylinderGeometry(0.24, 0.28, 4.2, 10);
+          col2.translate(px, g0 + 1.05 + 2.1, pz);
+          parts.push({ geo: col2, color: STONE_W });
+        }
+        const cano = new THREE.BoxGeometry(W + 1.4, 0.35, 2.6);
+        cano.rotateY(Math.atan2(wux, wuz));
+        cano.translate(mx + wnx * 1.0, g0 + 5.3, mz + wnz * 1.0);
+        parts.push({ geo: cano, color: STONE_D });
+      }
+
+      const mesh = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.55, metalness: 0.22, flatShading: false,
+      }));
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      group.add(mesh);
+      skip.add(bi);
+      stats.push({ name: d.name, ok: true, kontur: bi, glav: d.domes.length, stil: 'русский пятиглавый' });
+      continue;
+    }
+
     if (d.style === 'cathedral') {
       const parts = [];
       const STONE_W = [0.871, 0.824, 0.722];     // инкерманский камень
@@ -613,8 +775,9 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
         parts.push({ geo: bar, color: GOLD2 });
       }
 
-      // звонница над западным входом: три арочных проёма с колоколами
-      if (d.belfry) {
+      // звонница над западным входом: три арочных проёма с колоколами.
+      // Отрезок, а не флаг: в отчётах агентов belfry иногда просто true.
+      if (Array.isArray(d.belfry) && d.belfry.length === 4) {
         const [bx0, bz0, bx1, bz1] = d.belfry;
         const bl = Math.hypot(bx1 - bx0, bz1 - bz0) || 1;
         const bux = (bx1 - bx0) / bl, buz = (bz1 - bz0) / bl;

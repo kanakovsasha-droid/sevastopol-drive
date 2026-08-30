@@ -647,7 +647,10 @@ function reverse(p) {
   };
   let fixed = 0, sumDelta = 0;
   for (const b of world.buildings) {
-    if (b.lv) continue;                       // высота из тегов — не трогаем
+    // Высота из тегов OSM, из ручной зоны (ряды ларьков рынка «Чайка»)
+    // и из описания дома — не трогаем. Без проверки зоны соседская медиана
+    // подняла одноэтажные ларьки до окрестных пяти этажей.
+    if (b.lv || b.zone || b.hand) continue;
     const p = b.poly, n = p.length / 2;
     let cx = 0, cz = 0;
     for (let k = 0; k < n; k++) { cx += p[k * 2]; cz += p[k * 2 + 1]; }

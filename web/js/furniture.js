@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=b5c48cbc';
+import { PolyGrid } from './worldgen.js?v=a8899780';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
@@ -285,12 +285,15 @@ function signGeo(cellIndex) {
       U.push(cu, cv);
     }
   };
-  const pole = new THREE.CylinderGeometry(0.045, 0.058, 2.55, 8);
-  pole.translate(0, 1.27, 0);
+  // Стойка кончается ТАМ, где начинается щиток, а щиток вынесен вперёд на
+  // 7.5 см: раньше труба радиусом 4.5 см стояла перед табличкой, вынесенной
+  // всего на 2.5 см, и загораживала знак.
+  const pole = new THREE.CylinderGeometry(0.045, 0.058, 2.22, 8);
+  pole.translate(0, 1.11, 0);
   pushGeo(pole.toNonIndexed(), CELL_GREY);
 
   // щиток 0.7 м — малый типоразмер; лицо смотрит в локальный +z
-  const S = 0.45, Y = 2.25, T = 0.025;
+  const S = 0.45, Y = 2.62, T = 0.075;
   const quad = [[-S, -S], [S, -S], [S, S], [-S, -S], [S, S], [-S, S]];
   const uvs = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]];
   for (let i = 0; i < 6; i++) {                 // лицо

@@ -10,7 +10,7 @@ const marks  = JSON.parse(readFileSync(DIR + 'landmarks.json', 'utf8'));
 const haveH = new Set(houses.map(h => h.addr));
 const haveL = new Set(marks.map(m => m.name));
 
-const COLONNADE = new Set(['portico', 'colonnade', 'rotunda']);
+const COLONNADE = new Set(['portico', 'colonnade', 'rotunda', 'cathedral', 'order']);
 let addedH = 0, addedL = 0, skipped = 0;
 
 for (const f of readdirSync(REF).filter(n => n.endsWith('.json') && n !== 'review.json')) {
@@ -19,6 +19,9 @@ for (const f of readdirSync(REF).filter(n => n.endsWith('.json') && n !== 'revie
   for (const b of list) {
     if (!b.name || !isFinite(b.x) || !isFinite(b.z)) { skipped++; continue; }
     if (b.confidence === 'низкая') { skipped++; continue; }
+    // Памятники, фонтаны и мостики — не дома: контура здания у них нет,
+    // и в houses.json они только сорят «не нашёл контур».
+    if (['column', 'obelisk', 'fountain', 'bridge', 'bandstand', 'wall', 'rotunda-free'].includes(b.style || b.kind)) { skipped++; continue; }
     if (!haveH.has(b.name)) {
       const h = { addr: b.name, x: b.x, z: b.z };
       if (b.height) h.height = b.height; else if (b.floors) h.floors = b.floors;
@@ -35,6 +38,11 @@ for (const f of readdirSync(REF).filter(n => n.endsWith('.json') && n !== 'revie
     }
     if (COLONNADE.has(b.style) && !haveL.has(b.name)) {
       const m = { name: b.name, style: b.style === 'rotunda' ? 'colonnade' : b.style, x: b.x, z: b.z };
+      if (b.domes) m.domes = b.domes;                 // храм: главы поимённо
+      if (b.domeColor) m.domeColor = b.domeColor;
+      if (Array.isArray(b.belfry)) m.belfry = b.belfry;   // отрезок стены звонницы
+      if (b.belfryH) m.belfryH = b.belfryH;
+      if (b.round) m.round = b.round;                 // ротонда: центр и радиус
       if (b.columns) m.columns = b.columns;
       if (b.wall) m.wall = b.wall;
       if (b.stairs) m.stairs = true;
