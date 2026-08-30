@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=1418f982';
+import { PolyGrid } from './worldgen.js?v=8f130476';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,
@@ -462,6 +462,15 @@ export function buildStreetProps(world, terrain, roadIndex) {
   }
   // счётчик отдадим в userData ниже
 
+  // Где посадки СНЯТЫ по спутнику, сыпать сверху ещё и по плотности нельзя:
+  // Комсомольский парк зарастал вдвое и переставал просматриваться, а кадр
+  // проседал. Считаем обмеренные деревья по клеткам 40 м и в занятых клетках
+  // плотность отключаем.
+  const measuredCell = new Set();
+  for (const t of (world.places && world.places.trees) || [])
+    measuredCell.add(Math.floor(t.x / 40) * 100003 + Math.floor(t.z / 40));
+  const hasMeasured = (x, z) => measuredCell.has(Math.floor(x / 40) * 100003 + Math.floor(z / 40));
+
   // деревья в парках и на склонах — там, где OSM отметил зелень
   for (const g of world.green) {
     const dens = { wood: 105, park: 130, scrub: 260, grass: 620 }[g.kind];
@@ -508,7 +517,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
     let placed = 0, tries = 0;
     while (placed < want && tries++ < want * 12) {
       const x = x0 + rand() * (x1 - x0), z = z0 + rand() * (z1 - z0);
-      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z)) continue;
+      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z) || hasMeasured(x, z)) continue;
       // В роще деревья одной породы стоят куртинами, а не вперемешку: породу
       // задаёт крупная ячейка 90 м, внутри неё лес однородный.
       const cellSeed = hash2(Math.floor(x / 90) * 90, Math.floor(z / 90) * 90);
@@ -523,7 +532,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
     let pb = 0; tries = 0;
     while (pb < wantB && tries++ < wantB * 12) {
       const x = x0 + rand() * (x1 - x0), z = z0 + rand() * (z1 - z0);
-      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z)) continue;
+      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z) || hasMeasured(x, z)) continue;
       pushBush(x, H(x, z) - 0.1, z);
       pb++;
     }

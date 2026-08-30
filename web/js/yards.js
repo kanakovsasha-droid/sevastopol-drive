@@ -185,6 +185,15 @@ function carGeo(paint) {
     for (let k = 1; k < 7; k++) { if (flip) I.push(o, o + k + 1, o + k); else I.push(o, o + k, o + k + 1); }
   };
   cap(0, false); cap(rings.length - 1, true);
+  // знаковый объём: отрицательный — обход вывернут, кузов виден насквозь
+  let vol = 0;
+  for (let i = 0; i < I.length; i += 3) {
+    const a = I[i] * 3, b = I[i + 1] * 3, c = I[i + 2] * 3;
+    vol += (P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1])
+          - P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c])
+          + P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c])) / 6;
+  }
+  if (vol < 0) for (let i = 0; i < I.length; i += 3) { const t = I[i + 1]; I[i + 1] = I[i + 2]; I[i + 2] = t; }
   const bodyGeo = new THREE.BufferGeometry();
   bodyGeo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
   bodyGeo.setIndex(I);
@@ -199,6 +208,7 @@ function carGeo(paint) {
     const a = i * 4, b = (i + 1) * 4;
     for (let k = 0; k < 3; k++) CI.push(a + k, b + k, a + k + 1, a + k + 1, b + k, b + k + 1);
   }
+  for (let i = CI.length - 3; i >= 0; i -= 3) CI.push(CI[i], CI[i + 2], CI[i + 1]);
   const cg = new THREE.BufferGeometry();
   cg.setAttribute('position', new THREE.Float32BufferAttribute(CP, 3));
   cg.setIndex(CI); cg.computeVertexNormals();
@@ -276,7 +286,10 @@ export function buildYards(world, terrain) {
   // на дома. Машины и качели туда не ставим.
   const COV = world.__coverage;
   const onAsphalt = COV ? (x, z) => COV.onRoad(x, z) : () => false;
-  const H = (x, z) => terrain.gridHeightAt(x, z);
+  // Машины и качели должны стоять НА полотне площадки, а не по рельефу:
+  // полотно лежит на 13–38 см выше земли, и машины тонули под парковкой.
+  const AL = world.__areaLift || (() => 0);
+  const H = (x, z) => terrain.gridHeightAt(x, z) + AL(x, z);
   const rand = rng(90210);
   const mat = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.08 });
   const stats = { качелей: 0, горок: 0, песочниц: 0, каруселей: 0, машин: 0 };
@@ -288,7 +301,7 @@ export function buildYards(world, terrain) {
     const mx = new THREE.Matrix4(), q = new THREE.Quaternion(),
           up = new THREE.Vector3(0, 1, 0), pv = new THREE.Vector3(), sv = new THREE.Vector3(1, 1, 1);
     list.forEach((p, i) => {
-      pv.set(p.x, H(p.x, p.z) + 0.20, p.z);
+      pv.set(p.x, H(p.x, p.z) + 0.02, p.z);
       q.setFromAxisAngle(up, p.a);
       m.setMatrixAt(i, mx.compose(pv, q, sv));
     });
@@ -357,7 +370,7 @@ export function buildYards(world, terrain) {
     const mx = new THREE.Matrix4(), q = new THREE.Quaternion(),
           up = new THREE.Vector3(0, 1, 0), pv = new THREE.Vector3(), sv = new THREE.Vector3(1, 1, 1);
     list.forEach((p, k) => {
-      pv.set(p.x, H(p.x, p.z) + 0.22, p.z);
+      pv.set(p.x, H(p.x, p.z) + 0.02, p.z);
       q.setFromAxisAngle(up, p.a);
       m.setMatrixAt(k, mx.compose(pv, q, sv));
     });
@@ -385,7 +398,8 @@ const hexTo = h => {
 export function buildStructures(world, terrain) {
   const group = new THREE.Group();
   group.name = 'structures';
-  const H = (x, z) => terrain.gridHeightAt(x, z);
+  const AL2 = world.__areaLift || (() => 0);
+  const H = (x, z) => terrain.gridHeightAt(x, z) + AL2(x, z);
   const parts = [];
   const stats = {};
   const bump = k => { stats[k] = (stats[k] || 0) + 1; };

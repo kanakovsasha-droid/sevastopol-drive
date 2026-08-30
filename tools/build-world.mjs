@@ -523,6 +523,9 @@ function reverse(p) {
         }
         // 1.7 м — половина глубины зебры: полоса не должна лизать край пятна
         if (px === null || run < 5) continue;
+        // На путепроводе пешеходных переходов не бывает: полотно там поднято
+        // над путями, и зебра висела прямо на мосту.
+        if (e.w.tags && (e.w.tags.bridge || e.w.tags.tunnel)) continue;
         crossings.push({
           x: R1(px + ax * 1.7), z: R1(pz + az * 1.7),
           a: Math.round(Math.atan2(ax, az) * 1000) / 1000,

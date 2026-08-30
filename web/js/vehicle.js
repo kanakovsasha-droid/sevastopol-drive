@@ -215,6 +215,25 @@ export function createCarMesh() {
   const lampW = new THREE.MeshStandardMaterial({ color: 0xdfe8f2, emissive: 0x9fb6d8, emissiveIntensity: 0.55, roughness: 0.25 });
   const lampR = new THREE.MeshStandardMaterial({ color: 0x8e1616, emissive: 0x6a0d0d, emissiveIntensity: 0.5, roughness: 0.3 });
 
+  // Замкнутую оболочку легко сшить изнанкой наружу — тогда кузов виден
+  // насквозь. Считаем ЗНАКОВЫЙ ОБЪЁМ: если он отрицательный, обход вывернут,
+  // и все треугольники разворачиваются. Проверка не на глаз, а по числу.
+  const finish = (P, I) => {
+    let vol = 0;
+    for (let i = 0; i < I.length; i += 3) {
+      const a = I[i] * 3, b = I[i + 1] * 3, c = I[i + 2] * 3;
+      vol += (P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1])
+            - P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c])
+            + P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c])) / 6;
+    }
+    if (vol < 0) for (let i = 0; i < I.length; i += 3) { const t = I[i + 1]; I[i + 1] = I[i + 2]; I[i + 2] = t; }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    geo.setIndex(I);
+    geo.computeVertexNormals();
+    return geo;
+  };
+
   // ---- сечения кузова: [z, полуширина порога, полуширина плеча, низ, верх]
   // z: +2.50 нос, −2.49 корма. Низ борта поднят у бамперов — там подрез.
   const S = [
@@ -259,11 +278,7 @@ export function createCarMesh() {
       }
     };
     cap(0, false); cap(rings.length - 1, true);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
-    geo.setIndex(I);
-    geo.computeVertexNormals();
-    return geo;
+    return finish(P, I);
   };
   const body = new THREE.Mesh(bodyGeo(), paint);
   body.castShadow = true; body.receiveShadow = true;
@@ -294,6 +309,9 @@ export function createCarMesh() {
     geo.computeVertexNormals();
     return geo;
   };
+  // теплица — не замкнутая оболочка, знаковый объём тут не работает: рисуем
+  // её с обеих сторон, иначе половина стёкол пропадает
+  glass.side = THREE.DoubleSide;
   const cabin = new THREE.Mesh(cabinGeo(), glass);
   cabin.castShadow = true;
   g.add(cabin);

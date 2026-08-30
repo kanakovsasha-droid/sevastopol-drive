@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=1418f982';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=1418f982';
-import { buildCoverage } from './coverage.js?v=1418f982';
+import { SEA_FLOOR } from './terrain.js?v=8f130476';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=8f130476';
+import { buildCoverage } from './coverage.js?v=8f130476';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -2130,6 +2130,9 @@ export function buildAreas(world, terrain) {
   // чем мельче и «главнее» площадка, тем выше она лежит.
   const LAYER = { cemetery: 0, sportsground: 1, pitch: 2, football: 3, track: 4, parking: 5, playground: 6, path: 7 };
   const LIFT0 = 0.13;
+  // Подъём каждой площадки отдаём наружу: машины и качели ставились по
+  // рельефу, а полотно лежит выше — машины оказывались ПОД парковкой.
+  const liftOf = new Map();
   const KIND = { parking: 0, football: 1, pitch: 2, track: 3, playground: 4, sportsground: 5, cemetery: 6, path: 7 };
   const COL = {
     parking:      [0.168, 0.166, 0.172],
@@ -2154,22 +2157,28 @@ export function buildAreas(world, terrain) {
     const kind = KIND[a.k] ?? 5;
     const col = COL[a.k] || COL.sportsground;
     const LIFT = LIFT0 + (LAYER[a.k] ?? 1) * 0.035;
+    liftOf.set(a, { lift: LIFT, flat: null });
     // Стадион, поле, корт, детская площадка и парковка — РОВНЫЕ площадки: их
     // срезают и подсыпают, а не стелют по склону. Раньше они шли волной вслед
     // за рельефом, и беговой овал горбился. Считаем одну отметку по медиане
     // высот контура и кладём всё полотно на неё, а по кромке ставим подпорную
     // стенку до земли. Кладбище и аллеи оставляем на рельефе — они и в жизни
     // идут по склону.
-    const LEVELED = a.k !== 'cemetery';
+    // РОВНОЙ платформой кладём только беговой овал: он реально срезан в
+    // горизонт, и по рельефу горбился. Поле, корты, детские площадки и
+    // парковки оставляем на земле — выровненные, они задирались над склоном
+    // и вырастала подпорная стенка там, где её нет.
+    const LEVELED = a.k === 'track';
     // На дороге площадке делать нечего — кроме кладбища, где растр покрытия
     // и так пуст, и аллей, которые сами по себе тропинки.
-    const skipOnRoad = a.k !== 'cemetery';
+    const skipOnRoad = a.k !== 'cemetery';   // на дороге площадке делать нечего
     let flatY = null;
     if (LEVELED) {
       const hs = [];
       for (let i = 0; i < n; i++) hs.push(H(a.poly[i * 2], a.poly[i * 2 + 1]));
       hs.sort((p, q) => p - q);
       flatY = hs[hs.length >> 1];
+      liftOf.get(a).flat = flatY;
     }
 
     // Контур way в OSM замкнут: последняя точка совпадает с первой. Оставлять
@@ -2210,11 +2219,28 @@ export function buildAreas(world, terrain) {
     // с дырой индексы идут по объединённому списку вершин
     const all = holes.length ? pts.concat(...holes) : pts;
 
+    // Для кольца (беговой овал) поперечную координату считаем как расстояние
+    // до ВНУТРЕННЕГО контура: тогда линии дорожек идут вдоль овала, а не
+    // прямыми полосами поперёк него.
+    const ringDist = holes.length ? (x, z) => {
+      let best = Infinity;
+      for (const hp of holes) {
+        for (let i = 0; i < hp.length; i++) {
+          const A2 = hp[i], B2 = hp[(i + 1) % hp.length];
+          const vx = B2.x - A2.x, vz = B2.y - A2.y;
+          const t = Math.max(0, Math.min(1, ((x - A2.x) * vx + (z - A2.y) * vz) / (vx * vx + vz * vz || 1)));
+          const d = Math.hypot(x - A2.x - t * vx, z - A2.y - t * vz);
+          if (d < best) best = d;
+        }
+      }
+      return best;
+    } : null;
+
     const push = (x, z) => {
       const dx = x - ox, dz = z - oz;
       P.push(x, (flatY !== null ? flatY : H(x, z)) + LIFT, z);
       C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-      U.push(dx * ux + dz * uz, -dx * uz + dz * ux, W, L);
+      U.push(dx * ux + dz * uz, ringDist ? ringDist(x, z) : -dx * uz + dz * ux, W, L);
       K.push(kind);
       return base++;
     };
@@ -2332,6 +2358,15 @@ export function buildAreas(world, terrain) {
   geo.setAttribute('aAKind', new THREE.Float32BufferAttribute(K, 1));
   geo.setIndex(I);
   geo.computeVertexNormals();
+  // Кому ставить объекты НА площадку, а не под неё
+  world.__areaLift = (x, z) => {
+    for (const [a, v] of liftOf) {
+      if (!pointInPoly(x, z, a.poly)) continue;
+      return v.flat !== null ? v.flat + v.lift - terrain.gridHeightAt(x, z) : v.lift;
+    }
+    return 0;
+  };
+
   const mesh = new THREE.Mesh(geo, areaMaterial());
   mesh.name = 'areas';
   mesh.receiveShadow = true;
