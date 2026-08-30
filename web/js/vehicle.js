@@ -12,10 +12,15 @@ const IZ     = 1950;      // момент инерции по рысканью
 const A_AX   = 1.22;      // от центра тяжести до передней оси
 const B_AX   = 1.43;      // до задней
 const WHEELBASE = A_AX + B_AX;
-const CF     = 84000;     // жёсткость увода передней оси, Н/рад
-const CR     = 112000;     // задней — больше, иначе машина вечно в заносе
-const MU     = 1.46;      // сцепление сухого асфальта
+const CF     = 132000;   // жёстче: нос идёт за рулём, а не плывёт     // жёсткость увода передней оси, Н/рад
+const CR     = 118000;     // задней — больше, иначе машина вечно в заносе
+const MU     = 1.72;     // аркадное сцепление: держит, пока сам не сорвёшь      // сцепление сухого асфальта
 const MU_HB  = 0.42;      // задняя ось на ручнике
+// Центр тяжести смещён вперёд, значит на заднюю ось приходится меньше веса,
+// и при равном сцеплении она срывается ПЕРВОЙ — машина уходила в вращение
+// от обычного поворота. Даём задней оси запас: снос передка лечится сбросом
+// газа, занос задка на скорости уже не поймать.
+const MU_REAR = 1.20;     // множитель сцепления задней оси
 const P_MAX  = 215000;    // мощность, Вт
 const F_MAX  = 17000;     // тяга на низах, Н
 const F_BRK  = 16500;     // тормоза
@@ -80,7 +85,7 @@ export class Car {
 
     // руль доворачивается за конечное время и на скорости зажимается
     const vAbs = Math.abs(this.vLong);
-    const lock = MAX_STEER * (0.24 + 0.76 / (1 + vAbs * vAbs / 260));
+    const lock = MAX_STEER * (0.34 + 0.66 / (1 + vAbs * vAbs / 420));
     const want = clamp(input.steer, -1, 1) * lock;
     const dSteer = clamp(want - this.steer, -STEER_RATE * dt, STEER_RATE * dt);
     this.steer += dSteer;
@@ -121,7 +126,7 @@ export class Car {
 
     const air = this.airborne ? 0.10 : 1;    // в воздухе колёса ничего не держат
     const muF = (this.inWater ? 0.35 : MU) * air;
-    const muR = (input.handbrake ? MU_HB : MU) * (this.inWater ? 0.28 : 1) * air;
+    const muR = (input.handbrake ? MU_HB : MU * MU_REAR) * (this.inWater ? 0.28 : 1) * air;
     const capF = muF * Nf, capR = muR * Nr;
     let Fyf = clamp(-CF * af, -capF, capF);
     let Fyr = clamp(-CR * ar, -capR, capR);
@@ -149,14 +154,25 @@ export class Car {
 
     this._ax = ax;
     this.vLong = vx + ax * h;
-    this.vLat = clamp(vy + ay * h, -18, 18);
+    // Боковая инерция — то, из-за чего машина ехала не туда, куда смотрит нос:
+    // после поворота её продолжало нести вбок. Пока задние шины НЕ сорваны,
+    // гасим этот занос дополнительно — на руле машина едет по рулю. С ручником
+    // и на пределе сцепления гашение отпускается, и занос остаётся настоящим.
+    let vyN = vy + ay * h;
+    if (!input.handbrake) vyN *= Math.exp(-h * 3.2 * (1 - this.slip));
+    this.vLat = clamp(vyN, -18, 18);
     // Гаситель рыскания: без него машина на пределе уходила в бесконечную
     // карусель и вернуть её было нечем. Пока вращение близко к тому, что
     // задаёт руль, не вмешиваемся — занос остаётся управляемым.
     let rn = r + ar2 * h;
     const rWant = (vx / WHEELBASE) * Math.tan(d);
-    const over = Math.abs(rn) - (Math.abs(rWant) * 1.35 + 0.30);
-    if (over > 0) rn -= Math.sign(rn) * Math.min(Math.abs(rn), over * 6.5 * h);
+    // Ниже 6 м/с углы увода вырождаются (знаменатель зажат), и на парковочной
+    // скорости руль почти не действует. Подмешиваем кинематику велосипеда —
+    // ровно ту модель, что была раньше и на месте вела себя понятно.
+    const kin = clamp(1 - Math.abs(vx) / 6, 0, 1);
+    if (kin > 0) rn = rn * (1 - kin) + rWant * kin;
+    const over = Math.abs(rn) - (Math.abs(rWant) * 1.18 + 0.16);
+    if (over > 0) rn -= Math.sign(rn) * Math.min(Math.abs(rn), over * 14 * h);
     this.yawRate = clamp(rn, -2.6, 2.6);
     this.yaw += this.yawRate * h;
 
