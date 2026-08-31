@@ -641,8 +641,39 @@ function reverse(p) {
   // площадки и кладбища. Всё по тегам, ничего не выдумано.
   world.areas = [];
   const R1p = a => a.map(v => Math.round(v * 10) / 10);
-  for (const a of AREAS.parking || [])
-    world.areas.push({ k: 'parking', poly: R1p(a.poly), ...(a.n ? { n: a.n } : {}), ...(a.capacity ? { cap: a.capacity } : {}) });
+  // Две парковки на Стрелецком спуске в OSM обведены дважды и лежат друг на
+  // друге: два полотна на одной отметке, две разметки и 265 машин в куче,
+  // 107 поперёк чужих мест. Оставляем большую из пары.
+  {
+    const pk = (AREAS.parking || []).map(a => {
+      const q = a.poly; let A = 0, cx = 0, cz = 0, n = q.length / 2;
+      for (let i = 0; i < n; i++) { const j = (i + 1) % n; A += q[i * 2] * q[j * 2 + 1] - q[j * 2] * q[i * 2 + 1]; cx += q[i * 2]; cz += q[i * 2 + 1]; }
+      return { a, area: Math.abs(A) / 2, cx: cx / n, cz: cz / n };
+    }).sort((p1, p2) => p2.area - p1.area);
+    const inside = (x, z, q) => {
+      let c = false;
+      for (let i = 0, j = q.length / 2 - 1; i < q.length / 2; j = i++) {
+        const xi = q[i * 2], zi = q[i * 2 + 1], xj = q[j * 2], zj = q[j * 2 + 1];
+        if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c;
+      }
+      return c;
+    };
+    const kept = [];
+    let dropped = 0;
+    for (const o of pk) {
+      let dup = false;
+      for (const k of kept) {
+        // считаем долю вершин внутри уже принятой парковки
+        let hit = 0, tot = o.a.poly.length / 2;
+        for (let i = 0; i < tot; i++) if (inside(o.a.poly[i * 2], o.a.poly[i * 2 + 1], k.a.poly)) hit++;
+        if (hit / tot > 0.35 || inside(o.cx, o.cz, k.a.poly)) { dup = true; break; }
+      }
+      if (dup) { dropped++; continue; }
+      kept.push(o);
+      world.areas.push({ k: 'parking', poly: R1p(o.a.poly), ...(o.a.n ? { n: o.a.n } : {}), ...(o.a.capacity ? { cap: o.a.capacity } : {}) });
+    }
+    if (dropped) console.log(`парковок-дублей отброшено ${dropped}`);
+  }
   for (const a of AREAS.sport || []) {
     // leisure=sports_centre и stadium — это ГРАНИЦА комплекса, внутри которой
     // и здания, и парковка, и поле. Своей поверхности у неё нет: залитая
@@ -669,6 +700,39 @@ function reverse(p) {
   // лестницы, беговой овал, мост-путепровод, платформы и составы.
   if (PLACES) {
     for (const a of PLACES.areas || []) world.areas.push(a);
+    // Дубли ищем ПОСЛЕ того, как собраны оба источника: парковка у Терм
+    // Наутико пришла и из OSM, и из обмера агента — два полотна на одной
+    // отметке, две разметки и 265 машин в куче, 107 поперёк чужих мест.
+    {
+      const inside = (x, z, q) => {
+        let c = false;
+        for (let i = 0, j = q.length / 2 - 1; i < q.length / 2; j = i++) {
+          const xi = q[i * 2], zi = q[i * 2 + 1], xj = q[j * 2], zj = q[j * 2 + 1];
+          if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c;
+        }
+        return c;
+      };
+      const areaOf = q => {
+        let A = 0; const n = q.length / 2;
+        for (let i = 0; i < n; i++) { const j = (i + 1) % n; A += q[i * 2] * q[j * 2 + 1] - q[j * 2] * q[i * 2 + 1]; }
+        return Math.abs(A) / 2;
+      };
+      const pk = world.areas.filter(a => a.k === 'parking').sort((a, b) => areaOf(b.poly) - areaOf(a.poly));
+      const keep = new Set(), drop = new Set();
+      for (const o of pk) {
+        let dup = false;
+        for (const k of keep) {
+          let hit = 0; const tot = o.poly.length / 2;
+          for (let i = 0; i < tot; i++) if (inside(o.poly[i * 2], o.poly[i * 2 + 1], k.poly)) hit++;
+          if (hit / tot > 0.3) { dup = true; break; }
+        }
+        if (dup) drop.add(o); else keep.add(o);
+      }
+      if (drop.size) {
+        world.areas = world.areas.filter(a => !drop.has(a));
+        console.log(`парковок-дублей отброшено ${drop.size}`);
+      }
+    }
     world.places = {
       paths: PLACES.paths || [], trees: PLACES.trees || [],
       features: PLACES.features || [], fences: PLACES.fences || [],

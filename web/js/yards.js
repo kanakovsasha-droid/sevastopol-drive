@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { PolyGrid } from './worldgen.js?v=da9b50ae';
 
 // Оборудование детских площадок и машины на парковках. Места берутся из OSM
 // (data/areas.json -> world.areas): качели и горки ставим только там, где в
@@ -415,6 +416,9 @@ const hexTo = h => {
 export function buildStructures(world, terrain) {
   const group = new THREE.Group();
   group.name = 'structures';
+  // контуры домов: сооружения не должны въезжать в жилые дома
+  let BUILD = null;
+  try { BUILD = new PolyGrid(world.buildings.map(b => ({ poly: b.poly, holes: b.holes })), 80); } catch { BUILD = null; }
   const AL2 = world.__areaLift || (() => 0);
   const H = (x, z) => terrain.gridHeightAt(x, z) + AL2(x, z);
   const parts = [];
@@ -702,20 +706,34 @@ export function buildStructures(world, terrain) {
       if (l > bl) { bl = l; bx = dx / l; bz = dz / l; }
     }
     const ang = Math.atan2(bx, bz);
-    const g0 = H(cx, cz);
+    // Трибуна строилась на ОДНОЙ отметке центра: на склоне вся полоса
+    // повисала — с воздуха она читалась как кусок дороги, летящий над полем.
+    // Режем на звенья по 10 м вдоль трибуны, каждое на своей земле, и
+    // пропускаем звенья, попавшие внутрь дома: контур трибуны из отчёта
+    // наложен на жилую пятиэтажку.
     const rows = 8, depth = 13.1;
-    for (let i = 0; i < rows; i++) {
-      const d = depth * (i / rows) - depth / 2;
-      const step = new THREE.BoxGeometry(bl, 0.45, depth / rows + 0.05);
-      step.rotateY(ang);
-      step.translate(cx - bz * d, g0 + 0.3 + i * 0.42, cz + bx * d);
-      parts.push({ geo: step, color: i % 2 ? CONCRETE : CONCRETE_D });
-      const seat = new THREE.BoxGeometry(bl - 0.6, 0.10, 0.42);
-      seat.rotateY(ang);
-      seat.translate(cx - bz * (d + 0.25), g0 + 0.55 + i * 0.42, cz + bx * (d + 0.25));
-      parts.push({ geo: seat, color: [0.15, 0.33, 0.55] });
+    const nS = Math.max(1, Math.round(bl / 10));
+    const segL = bl / nS;
+    let drawnS = 0;
+    for (let k = 0; k < nS; k++) {
+      const t = (k + 0.5) / nS - 0.5;
+      const sxc = cx + bx * bl * t, szc = cz + bz * bl * t;
+      if (BUILD && BUILD.find(sxc, szc)) continue;      // тут стоит дом
+      const g0 = H(sxc, szc);
+      for (let i = 0; i < rows; i++) {
+        const d = depth * (i / rows) - depth / 2;
+        const step = new THREE.BoxGeometry(segL + 0.05, 0.45, depth / rows + 0.05);
+        step.rotateY(ang);
+        step.translate(sxc - bz * d, g0 + 0.3 + i * 0.42, szc + bx * d);
+        parts.push({ geo: step, color: i % 2 ? CONCRETE : CONCRETE_D });
+        const seat = new THREE.BoxGeometry(segL - 0.5, 0.10, 0.42);
+        seat.rotateY(ang);
+        seat.translate(sxc - bz * (d + 0.25), g0 + 0.55 + i * 0.42, szc + bx * (d + 0.25));
+        parts.push({ geo: seat, color: [0.15, 0.33, 0.55] });
+      }
+      drawnS++;
     }
-    bump('трибун');
+    if (drawnS) bump('трибун');
   }
 
   // ---- часовня на кладбище
