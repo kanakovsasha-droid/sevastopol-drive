@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=47d72543';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=47d72543';
-import { buildCoverage } from './coverage.js?v=47d72543';
+import { SEA_FLOOR } from './terrain.js?v=09a3fdad';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=09a3fdad';
+import { buildCoverage } from './coverage.js?v=09a3fdad';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -2387,19 +2387,21 @@ export function buildAreas(world, terrain) {
       const cross = (B[0] - A[0]) * (Cc[1] - A[1]) - (B[1] - A[1]) * (Cc[0] - A[0]);
       if (cross > 0) emit(A, Cc, B, 0); else emit(A, B, Cc, 0);
     }
-    // подпорная стенка по кромке: от отметки площадки до земли
-    if (flatY !== null) {
-      const top = flatY + LIFT;
+    // Кромка ЛЮБОЙ площадки: полотно лежит на 30–38 см выше земли, и без юбки
+    // с уровня глаз это парящая плита, под краем видно траву. Раньше юбка
+    // строилась только у выровненных — то есть почти нигде.
+    {
+      const top = (flatY !== null ? flatY : null);
       const WALL = [0.616, 0.604, 0.573];
       const rim = [pts, ...holes];
       for (const ring of rim) {
         for (let i = 0; i < ring.length; i++) {
           const A = ring[i], B = ring[(i + 1) % ring.length];
           const gA = H(A.x, A.y), gB = H(B.x, B.y);
-          if (Math.abs(top - gA) < 0.12 && Math.abs(top - gB) < 0.12) continue;
-          const yA = Math.min(gA, top) - 0.25, yB = Math.min(gB, top) - 0.25;
+          const tA = (top !== null ? top : gA + LIFT), tB = (top !== null ? top : gB + LIFT);
+          const yA = Math.min(gA, tA) - 0.22, yB = Math.min(gB, tB) - 0.22;
           const q0 = P.length / 3;
-          for (const [vx, vz, vy] of [[A.x, A.y, top], [B.x, B.y, top], [B.x, B.y, yB], [A.x, A.y, yA]]) {
+          for (const [vx, vz, vy] of [[A.x, A.y, tA], [B.x, B.y, tB], [B.x, B.y, yB], [A.x, A.y, yA]]) {
             P.push(vx, vy, vz);
             C.push(enc(WALL[0]), enc(WALL[1]), enc(WALL[2]));
             U.push(0, 0, 1, 1);

@@ -585,16 +585,6 @@ export function roadMaterial() {
           c *= 1.0 - 0.10 * rut;
           rough = mix(0.88, 0.70, rut) - 0.10 * (1.0 - joint);
           diffuseColor.rgb = c; procRough = rough; 
-        } else if (vSurf > 1.5 && vSurf < 2.5) {
-          // ---- бетонные плиты: surface=concrete ----
-          vec2 g2 = vec2(m / 2.9, v / 5.8);
-          vec2 f2 = abs(fract(g2) - 0.5);
-          float seam = smoothstep(0.43, 0.492, max(f2.x, f2.y));
-          vec3 slab = vec3(0.412, 0.408, 0.396) * (0.93 + 0.12 * hash21(floor(g2)));
-          slab *= 0.97 + 0.06 * fbm(vec2(m, v) * 0.7);
-          c = mix(slab, slab * 0.72, seam);
-          rough = 0.90;
-          diffuseColor.rgb = c; procRough = rough;
         } else if (vSurf > 2.5) {
           // ---- грунт и щебень: surface=ground/gravel/unpaved ----
           vec3 soil = mix(vec3(0.263, 0.216, 0.161), vec3(0.400, 0.345, 0.263), fbm(vec2(m, v) * 1.3));
@@ -606,7 +596,16 @@ export function roadMaterial() {
           c = soil; rough = 0.98;
           diffuseColor.rgb = c; procRough = rough;
         } else {
-          // ---- асфальт ----
+          // ---- асфальт, а при surface=concrete — бетонные плиты ----
+          // Бетон раньше был отдельной веткой и уходил из-под разметки: спуск
+          // Котовского оставался без единой линии и не отличался от тротуара.
+          if (vSurf > 1.5 && vSurf < 2.5) {
+            vec2 g2 = vec2(m / 2.9, v / 5.8);
+            vec2 f2 = abs(fract(g2) - 0.5);
+            float seam = smoothstep(0.43, 0.492, max(f2.x, f2.y));
+            vec3 slab = vec3(0.372, 0.369, 0.357) * (0.94 + 0.11 * hash21(floor(g2)));
+            c = mix(slab, slab * 0.74, seam);
+          }
           c *= 0.89 + 0.16 * hash21(floor(vec2(m * 1.6, v * 1.6)));
           c *= 0.96 + 0.07 * hash21(floor(vec2(m * 0.3, v * 0.22)));
           // накат от колёс

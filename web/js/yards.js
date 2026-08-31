@@ -339,13 +339,30 @@ export function buildYards(world, terrain) {
     if (a.k === 'parking') {
       // Ряды те же, что рисует шейдер: полоса 5.3 м, проезд 6 м, место 2.5 м.
       // Занимаем примерно каждое третье место — пустая парковка выглядит мёртво.
+      // Ряды: шейдер кладёт места в полосах v 0..5.3 и 10.6..15.9 при периоде
+      // 16.6. Центры этих полос — 2.65 и 13.25. Я брал v + 7.95, и весь второй
+      // ряд (461 машина) вставал на кромку и наполовину торчал в проезд.
       for (let v = 2.65; v < f.L; v += 16.6) {
-        for (const vv of [v, v + 7.95]) {
+        for (const vv of [v, v + 10.6]) {
           if (vv > f.L - 1.5) continue;
-          for (let u = 1.25; u < f.W; u += 2.5) {
+          // Штрих между местами шейдер рисует при fract(u/2.5) == 0.5, то есть
+          // на u = 1.25 + 2.5k. Я ставил машины ровно туда же — 1102 из 1172
+          // стояли центром НА разделительной линии, занимая по половине двух
+          // соседних мест. Центр места — на 2.5k.
+          for (let u = 2.5; u < f.W; u += 2.5) {
             if (rand() > 0.42) continue;
             const [x, z] = f.at(u, vv);
-            if (!inPoly(x, z, a.poly) || onAsphalt(x, z)) continue;
+            // Треугольник полотна выбрасывается, если ХОТЬ ОДНА из семи проб
+            // попала на дорогу, а машина проверяла только свой центр — и 158
+            // машин зависали на 32 см над голой землёй в дырах полотна.
+            // Проверяем те же семь точек вокруг машины.
+            if (!inPoly(x, z, a.poly)) continue;
+            let hole = false;
+            for (const [ox2, oz2] of [[0, 0], [-1.2, 0], [1.2, 0], [0, -2.4], [0, 2.4], [-1.2, -2.4], [1.2, 2.4]]) {
+              const qx = x + f.ux * ox2 - f.uz * oz2, qz = z + f.uz * ox2 + f.ux * oz2;
+              if (onAsphalt(qx, qz) || !inPoly(qx, qz, a.poly)) { hole = true; break; }
+            }
+            if (hole) continue;
             const c = (Math.floor(u * 7 + vv * 3) >>> 0) % PAINTS.length;
             // Машина стоит НОСОМ вдоль места, то есть поперёк ряда: длина
             // места 5.3 м идёт по оси v, а ширина 2.5 м по u. Раньше кузов
@@ -424,16 +441,24 @@ export function buildStructures(world, terrain) {
       const ang = Math.atan2(ux, uz);
       const mx = (ax + bx) / 2, mz = (az + bz) / 2, my = (ay + by) / 2, mg = (ag + bg) / 2;
       const clear = my - mg;
-      // плита снизу — она же прячет землю, просвечивающую сквозь полотно
-      const slab = new THREE.BoxGeometry(w + 0.7, 0.55, L + 0.15);
-      slab.rotateY(ang); slab.translate(mx, my - 0.12, mz);
-      parts.push({ geo: slab, color: CONCRETE });
+      // Плита, бортики и перила строились ГОРИЗОНТАЛЬНЫМИ коробками на средней
+      // отметке участка: на подъёме плита вылезала поверх асфальта клиньями,
+      // на спуске уходила под него, и мост читался лоскутным одеялом. Наклон
+      // считаем по самому полотну и поворачиваем всё вдоль него.
+      const pitch = Math.atan2(by - ay, L);
+      const Ls = Math.hypot(L, by - ay) + 0.6;      // длина по скату, с нахлёстом
+      const tilt = (geo, dy) => {
+        geo.rotateX(-pitch); geo.rotateY(ang);
+        geo.translate(mx, my + dy, mz);
+        return geo;
+      };
+      parts.push({ geo: tilt(new THREE.BoxGeometry(w + 0.7, 0.55, Ls), -0.12), color: CONCRETE });
       if (clear > 1.0) {
         any = true;
         // продольные балки
         for (const off of [-w * 0.3, 0, w * 0.3]) {
-          const beam = new THREE.BoxGeometry(0.5, Math.min(1.1, clear * 0.5), L + 0.1);
-          beam.rotateY(ang);
+          const beam = new THREE.BoxGeometry(0.5, Math.min(1.1, clear * 0.5), Ls);
+          beam.rotateX(-pitch); beam.rotateY(ang);
           beam.translate(mx + uz * off, my - 0.9, mz - ux * off);
           parts.push({ geo: beam, color: CONCRETE_D });
         }
@@ -450,19 +475,19 @@ export function buildStructures(world, terrain) {
             parts.push({ geo: post, color: RAIL_STEEL });
           }
           for (const yy of [0.28, 1.05]) {
-            const rail = new THREE.BoxGeometry(0.07, 0.08, L + 0.1);
-            rail.rotateY(ang);
+            const rail = new THREE.BoxGeometry(0.07, 0.08, Ls);
+            rail.rotateX(-pitch); rail.rotateY(ang);
             rail.translate(mx + uz * off, my + 0.14 + yy, mz - ux * off);
             parts.push({ geo: rail, color: RAIL_STEEL });
           }
-          const kerb = new THREE.BoxGeometry(0.35, 0.36, L + 0.1);
-          kerb.rotateY(ang);
+          const kerb = new THREE.BoxGeometry(0.35, 0.36, Ls);
+          kerb.rotateX(-pitch); kerb.rotateY(ang);
           kerb.translate(mx + uz * (sg * (w / 2 - 0.1)), my + 0.32, mz - ux * (sg * (w / 2 - 0.1)));
           parts.push({ geo: kerb, color: CONCRETE_D });
         }
       }
       // опора: раз в четыре пролёта и только там, где высоко
-      if (clear > 2.5 && i % 4 === 2) {
+      if (clear > 2.0 && (i % 2 === 1 || m <= 3)) {
         const hgt = clear - 1.5;
         const pier = new THREE.BoxGeometry(w * 0.55, hgt, 1.6);
         pier.rotateY(ang); pier.translate(mx, mg + hgt / 2, mz);
