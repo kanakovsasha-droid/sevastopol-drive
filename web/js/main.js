@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=8dc1e010';
-import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=8dc1e010';
-import { buildStreetProps } from './props.js?v=8dc1e010';
-import { buildYards, buildStructures } from './yards.js?v=8dc1e010';
-import { buildFurniture } from './furniture.js?v=8dc1e010';
-import { buildLandmarks } from './landmarks.js?v=8dc1e010';
-import { buildSigns } from './signs.js?v=8dc1e010';
-import { audit } from './audit.js?v=8dc1e010';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=8dc1e010';
-import { Collider, RoadIndex } from './collision.js?v=8dc1e010';
-import { Car, createCarMesh } from './vehicle.js?v=8dc1e010';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=47d72543';
+import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=47d72543';
+import { buildStreetProps } from './props.js?v=47d72543';
+import { buildYards, buildStructures } from './yards.js?v=47d72543';
+import { buildFurniture } from './furniture.js?v=47d72543';
+import { buildLandmarks } from './landmarks.js?v=47d72543';
+import { buildSigns } from './signs.js?v=47d72543';
+import { audit } from './audit.js?v=47d72543';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=47d72543';
+import { Collider, RoadIndex } from './collision.js?v=47d72543';
+import { Car, createCarMesh } from './vehicle.js?v=47d72543';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -101,8 +101,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=8dc1e010').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=8dc1e010').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=47d72543').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=47d72543').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -142,7 +142,9 @@ async function boot() {
     // ровным серым полотном — главная причина «роблокса» на уровне глаз.
     // В карту теней они идут только по глубине, поэтому счёт по треугольникам
     // растёт на 5–8%, а картинка получает пятнистую тень листвы на асфальте.
-    castShadows(props);
+    // Деревья и фонари в карту теней НЕ идут: замер показал, что тени стоят
+    // половину кадра, а основную массу треугольников в них дают именно они.
+    // Тень от кроны на асфальте — приятно, но не за половину кадра.
     castShadows(furn);
 
     await step('черчу карту города…', 94);
@@ -200,7 +202,24 @@ function castShadows(root) {
 // ------------------------------------------------------------------ сцена
 function initScene() {
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  // АДАПТИВНОЕ РАЗРЕШЕНИЕ. На ретине devicePixelRatio = 2, и полноэкранный
+  // холст выходит примерно в 12 мегапикселей против двух на обычном мониторе
+  // 1920x1080 — вшестеро больше работы на пиксель. На десктопе с дискретной
+  // видеокартой это незаметно (144 кадра), на встроенной графике ноутбука
+  // превращается в 22. Стартуем с половины и поднимаемся сами, если кадр
+  // укладывается; проседает — опускаемся. Ниже 1.0 не уходим: буквы HUD и
+  // разметка на асфальте расплываются.
+  const PR_MAX = Math.min(devicePixelRatio, 2);
+  let prNow = Math.min(PR_MAX, 1.25);
+  renderer.setPixelRatio(prNow);
+  window.__setPR = v => {
+    const nv = Math.max(0.85, Math.min(PR_MAX, v));
+    if (Math.abs(nv - prNow) < 0.02) return;
+    prNow = nv;
+    renderer.setPixelRatio(prNow);
+    renderer.setSize(innerWidth, innerHeight);
+  };
+  window.__getPR = () => prNow;
   renderer.setSize(innerWidth, innerHeight);
   // Все материалы считаются в линейном пространстве, на экран уходит sRGB.
   // Пишем явно: если сюда попадёт LinearSRGB, картинка станет блёклой и «мыльной»,
@@ -217,7 +236,9 @@ function initScene() {
   renderer.shadowMap.enabled = true;
   // PCFSoft в r185 на месте (проверено по three.core.js) — берём его вместо
   // PCFShadowMap: край тени размывается по нескольким отсчётам и не лесенкой.
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // PCFSoft берёт девять выборок на пиксель вместо четырёх. На этой сцене
+  // разница видна только под лупой, а кадр дешевеет заметно.
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   document.body.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
@@ -284,7 +305,7 @@ function initScene() {
   // Солнце тёплое, но не оранжевое: юг, вторая половина дня, воздух чистый.
   sun = new THREE.DirectionalLight(0xffeccd, 3.15);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1536, 1536);   // 370 м / 1536 = 0.24 м на тексель
   const c = sun.shadow.camera;
   // Квадрат 370×370 м на карте 2048² — это 0.18 м на тексель (было 0.22).
   // Тень фонаря и дерева перестаёт разваливаться на ступеньки, а край
@@ -570,7 +591,30 @@ function updateCamera(dt) {
 
 // ------------------------------------------------------------------ HUD
 let fpsAcc = 0, fpsN = 0, hudT = 0, lastStreet = null;
+// Регулятор разрешения: держим кадр около 60. Считаем по среднему за секунду,
+// чтобы одиночная просадка на загрузке чанка не дёргала картинку.
+let prAcc = 0, prN = 0, prCool = 0, prBest = 0;
+function tunePixelRatio(dt) {
+  if (!window.__setPR) return;
+  prAcc += dt; prN++;
+  prCool -= dt;
+  if (prAcc < 1.0) return;
+  const fps = prN / prAcc;
+  prAcc = 0; prN = 0;
+  if (prCool > 0) return;
+  const pr = window.__getPR();
+  // Порог «поднимать» нельзя ставить по абсолютному числу кадров: на мониторе
+  // 60 Гц кадр упирается в развёртку и выше 60 не поднимется никогда, даже
+  // если видеокарта простаивает. Смотрим на ЗАПАС: если держим почти столько
+  // же, сколько лучший результат за сеанс, значит упёрлись в развёртку и можно
+  // рисовать честнее.
+  if (fps > prBest) prBest = fps;
+  if (fps < prBest * 0.72 && pr > 0.86) { window.__setPR(pr - 0.2); prCool = 2.5; }
+  else if (fps > prBest * 0.96 && pr < 2) { window.__setPR(pr + 0.15); prCool = 3; }
+}
+
 function updateHUD(dt) {
+  tunePixelRatio(dt);
   fpsAcc += dt; fpsN++;
   hudT += dt;
   if (hudT < 0.12) return;
