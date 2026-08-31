@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=df9b2d3e';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=df9b2d3e';
-import { buildCoverage } from './coverage.js?v=df9b2d3e';
+import { SEA_FLOOR } from './terrain.js?v=8dc1e010';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=8dc1e010';
+import { buildCoverage } from './coverage.js?v=8dc1e010';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -1064,6 +1064,56 @@ export function buildRoads(world, terrain, chunk = 500) {
       }
     }
   }
+  // ПОЛОТНО МОСТА В ПРОФИЛЬ ВОЖДЕНИЯ. Коридор строится только по дорогам,
+  // лежащим на грунте (мосты там явно пропущены), поэтому машина ехала по дну
+  // выемки в трёх метрах ПОД мостом — «проваливаюсь под него». Отдаём в
+  // terrain отдельное поле: где есть мостовое полотно, колёса опираются на
+  // него, а у самых торцов вес плавно уходит к обычной улице.
+  {
+    const CELL = 8;
+    const grid = new Map();
+    const segs = [];
+    for (const d of bridgeDecks) {
+      const p2 = d.pts;
+      for (let i = 0; i < p2.length - 2; i += 2) {
+        const ax = p2[i], az = p2[i + 1], bx = p2[i + 2], bz = p2[i + 3];
+        const vx = bx - ax, vz = bz - az;
+        const vv = vx * vx + vz * vz;
+        if (vv < 0.04) continue;
+        const seg = { ax, az, vx, vz, vv, hw: d.w / 2 + 1.0, hFn: d.hFn };
+        const id = segs.push(seg) - 1;
+        const r = seg.hw + CELL;
+        const x0 = Math.min(ax, bx) - r, x1 = Math.max(ax, bx) + r;
+        const z0 = Math.min(az, bz) - r, z1 = Math.max(az, bz) + r;
+        for (let cx = Math.floor(x0 / CELL); cx <= Math.floor(x1 / CELL); cx++)
+          for (let cz = Math.floor(z0 / CELL); cz <= Math.floor(z1 / CELL); cz++) {
+            const k = cx * 100003 + cz;
+            (grid.get(k) || grid.set(k, []).get(k)).push(id);
+          }
+      }
+    }
+    terrain.setDeck(segs.length ? (x, z) => {
+      const a = grid.get(Math.floor(x / CELL) * 100003 + Math.floor(z / CELL));
+      if (!a) return null;
+      // Берём САМОЕ ВЫСОКОЕ полотно, но вес — лучший среди тех, что на этой же
+      // высоте. Иначе точка посреди широкого моста получала вес от соседнего
+      // узкого пролёта, попавшего на неё краем, и колёса проваливались.
+      let bestH = -Infinity, bestW = 0;
+      for (const id of a) {
+        const sg = segs[id];
+        const t = Math.max(0, Math.min(1, ((x - sg.ax) * sg.vx + (z - sg.az) * sg.vz) / sg.vv));
+        const px = sg.ax + sg.vx * t, pz = sg.az + sg.vz * t;
+        const d = Math.hypot(x - px, z - pz);
+        if (d > sg.hw) continue;
+        const w = Math.min(1, (sg.hw - d) / 1.2);
+        const h = sg.hFn(px, pz);
+        if (h > bestH + 0.5) { bestH = h; bestW = w; }
+        else if (h > bestH - 0.5) { if (h > bestH) bestH = h; if (w > bestW) bestW = w; }
+      }
+      return bestH === -Infinity ? null : { h: bestH, w: bestW };
+    } : null);
+  }
+
   // отдаём наружу: опоры и перила строит модуль сооружений
   world.__bridges = bridgeDecks.map(d => {
     const p = d.pts, out = [];
