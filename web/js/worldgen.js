@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=4920fe70';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=4920fe70';
-import { buildCoverage } from './coverage.js?v=4920fe70';
+import { SEA_FLOOR } from './terrain.js?v=32918821';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=32918821';
+import { buildCoverage } from './coverage.js?v=32918821';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -430,6 +430,39 @@ function seaMask(world, terrain, x0, z0, x1, z1, res = 8) {
         if (a >= 0 && b >= 0 && a < W && b < H) wall[idx(a, b)] = 1;
       }
   };
+  // ВТОРОЙ БАРЬЕР: дома и проезжие улицы. Они по определению стоят на СУШЕ,
+  // и заливка не имеет права через них проходить. Без этого второй проход с
+  // высоким потолком съедал землю между домами на Корабельной стороне, и
+  // кварталы оставались на тонких косах посреди воды.
+  let landCells = 0;
+  for (const b of world.buildings || []) {
+    const p2 = b.poly;
+    let bx0 = Infinity, bz0 = Infinity, bx1 = -Infinity, bz1 = -Infinity;
+    for (let k = 0; k < p2.length; k += 2) {
+      bx0 = Math.min(bx0, p2[k]); bx1 = Math.max(bx1, p2[k]);
+      bz0 = Math.min(bz0, p2[k + 1]); bz1 = Math.max(bz1, p2[k + 1]);
+    }
+    for (let x = bx0 - res; x <= bx1 + res; x += res)
+      for (let z = bz0 - res; z <= bz1 + res; z += res) {
+        const i = Math.round((x - x0) / res), j = Math.round((z - z0) / res);
+        if (i >= 0 && j >= 0 && i < W && j < H && !wall[idx(i, j)]) { wall[idx(i, j)] = 1; landCells++; }
+      }
+  }
+  for (const r of world.roads || []) {
+    if (r.c > 3 || r.br || r.tn) continue;
+    const p2 = r.pts;
+    for (let k = 0; k + 3 < p2.length; k += 2) {
+      const L = Math.hypot(p2[k + 2] - p2[k], p2[k + 3] - p2[k + 1]);
+      const n = Math.max(1, Math.ceil(L / (res * 0.6)));
+      for (let t = 0; t <= n; t++) {
+        const x = p2[k] + (p2[k + 2] - p2[k]) * t / n;
+        const z = p2[k + 1] + (p2[k + 3] - p2[k + 1]) * t / n;
+        const i = Math.round((x - x0) / res), j = Math.round((z - z0) / res);
+        if (i >= 0 && j >= 0 && i < W && j < H && !wall[idx(i, j)]) { wall[idx(i, j)] = 1; landCells++; }
+      }
+    }
+  }
+
   let segs = 0;
   for (const ln of lines) {
     const p = ln.pts;
