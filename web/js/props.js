@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=da9b50ae';
+import { PolyGrid } from './worldgen.js?v=783d74c1';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,

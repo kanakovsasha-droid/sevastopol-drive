@@ -63,6 +63,11 @@ const BRONZE_L = [0.38, 0.31, 0.19];
 const GOLD = [0.98, 0.76, 0.08];
 const RED = [0.72, 0.11, 0.11];
 const STONE = [0.918, 0.898, 0.851];
+// #rrggbb -> линейный цвет для vertexColors
+function hexToLin(h) {
+  const v = parseInt(String(h || '#ffffff').slice(1), 16);
+  return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
+}
 const STONE_D = [0.831, 0.808, 0.757];
 
 function signTexture(text) {
@@ -510,6 +515,127 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       S = { a0: 0, a1: ql, len: ql, roadName: d.facade || null,
             Q: (t, o) => [qx0 + qdx * t + qnX * o, qz0 + qdz * t + qnZ * o] };
       atWall = (t, out) => S.Q(t, out);
+    }
+
+    // ---- ротонда с круглым ордером: колонны по ДУГЕ, а не по стене ----
+    // Корпус СевГУ на Гоголя: полукруглый ризалит главного входа, шесть
+    // тосканских колонн тремя спаренными парами. Раньше тут стоял пристенный
+    // ордер квадратными пилонами — «колонны вообще не соответствуют
+    // реальности, они круглые». Стволы точим телом вращения с сужением
+    // кверху, антаблемент и балюстрада гнутся по той же дуге.
+    if (d.style === 'rotundaOrder' && d.rotunda) {
+      const parts = [];
+      const R = d.rotunda;
+      const col = hexToLin(d.columnColor || '#eeebe4');
+      const colD = col.map(v => v * 0.86);
+      const a0 = R.fromDeg * Math.PI / 180, a1 = R.toDeg * Math.PI / 180;
+      const at = a => [R.cx + Math.cos(a) * R.radius, R.cz + Math.sin(a) * R.radius];
+      let gmin2 = Infinity;
+      for (let k = 0; k <= 12; k++) {
+        const [px, pz] = at(a0 + (a1 - a0) * k / 12);
+        gmin2 = Math.min(gmin2, terrain.gridHeightAt(px, pz));
+      }
+      const cInfo = d.columns || {};
+      const nPair = 3, dB = cInfo.diameterBottom ?? 0.55, dT = cInfo.diameterTop ?? 0.45;
+      const hCol = cInfo.heightM ?? 4.1, baseH = cInfo.baseH ?? 0.35;
+      const steps = d.stylobateSteps ?? 5, stepH = 0.16;
+      const yFloor = gmin2 + steps * stepH;
+
+      // полукруглое крыльцо ступенями
+      for (let i = 0; i < steps; i++) {
+        const rr = R.radius + 2.2 - i * 0.40;
+        const ring = new THREE.CylinderGeometry(rr, rr, stepH, 40, 1, false,
+          a0 - 0.22, (a1 - a0) + 0.44);
+        ring.translate(R.cx, gmin2 + stepH / 2 + i * stepH, R.cz);
+        parts.push({ geo: ring, color: STONE_D });
+      }
+
+      // колонны: три пары, внутри пары просвет по дуге
+      const half = (cInfo.spacingM ?? 0.95) / R.radius / 2;
+      for (let p2 = 0; p2 < nPair; p2++) {
+        const ac = a0 + (a1 - a0) * (p2 + 0.5) / nPair;
+        for (const sg of [-1, 1]) {
+          const a = ac + sg * half;
+          const [px, pz] = at(a);
+          const g0 = terrain.gridHeightAt(px, pz);
+          const plinth = new THREE.BoxGeometry(dB * 1.5, 0.14, dB * 1.5);
+          plinth.rotateY(-a); plinth.translate(px, yFloor + 0.07, pz);
+          parts.push({ geo: plinth, color: colD });
+          const torus = new THREE.CylinderGeometry(dB * 0.72, dB * 0.80, baseH - 0.14, 14);
+          torus.translate(px, yFloor + 0.14 + (baseH - 0.14) / 2, pz);
+          parts.push({ geo: torus, color: col });
+          // ствол телом вращения: лёгкий энтазис, а не конус
+          const prof = [];
+          for (let i = 0; i <= 8; i++) {
+            const t = i / 8;
+            const rr = (dB / 2) * (1 - t * (1 - dT / dB)) * (1 + 0.012 * Math.sin(Math.PI * t));
+            prof.push(new THREE.Vector2(rr, t * hCol));
+          }
+          const shaft = new THREE.LatheGeometry(prof, 14);
+          shaft.translate(px, yFloor + baseH, pz);
+          parts.push({ geo: shaft, color: col });
+          // тосканская капитель: астрагал, круглый эхин, квадратная абака
+          const astr = new THREE.CylinderGeometry(dT * 0.56, dT * 0.52, 0.07, 14);
+          astr.translate(px, yFloor + baseH + hCol + 0.035, pz);
+          parts.push({ geo: astr, color: col });
+          const ech = new THREE.CylinderGeometry(dT * 0.80, dT * 0.55, 0.20, 14);
+          ech.translate(px, yFloor + baseH + hCol + 0.17, pz);
+          parts.push({ geo: ech, color: col });
+          const ab = new THREE.BoxGeometry(dT * 1.75, 0.12, dT * 1.75);
+          ab.rotateY(-a); ab.translate(px, yFloor + baseH + hCol + 0.33, pz);
+          parts.push({ geo: ab, color: col });
+          if (g0 > gmin2 + 0.02) {          // подсыпка, если земля под колонной ниже
+            const fill = new THREE.CylinderGeometry(dB * 0.85, dB * 0.85, yFloor - g0 + 0.1, 12);
+            fill.translate(px, (yFloor + g0) / 2, pz);
+            parts.push({ geo: fill, color: STONE_D });
+          }
+        }
+      }
+
+      // Антаблемент кончается там, где кончается колоннада, плюс небольшой
+      // вынос. По всему заданному сектору он уезжал за ротонду и повисал
+      // балкой перед соседним крылом.
+      const halfSpan = (a1 - a0) / (nPair * 2);
+      const e0 = a0 + (a1 - a0) * 0.5 / nPair - halfSpan - 0.05;
+      const e1 = a0 + (a1 - a0) * (nPair - 0.5) / nPair + halfSpan + 0.05;
+      // антаблемент и балюстрада по дуге
+      const yEnt = yFloor + baseH + hCol + 0.39;
+      const entH = d.entablatureH ?? 1.0;
+      const arch = new THREE.CylinderGeometry(R.radius + 0.75, R.radius + 0.75, entH, 44, 1, false,
+        e0, e1 - e0);
+      arch.translate(R.cx, yEnt + entH / 2, R.cz);
+      parts.push({ geo: arch, color: col });
+      const inner = new THREE.CylinderGeometry(R.radius - 0.75, R.radius - 0.75, entH + 0.1, 44, 1, false,
+        e0, e1 - e0);
+      inner.translate(R.cx, yEnt + entH / 2, R.cz);
+      parts.push({ geo: inner, color: [0.08, 0.09, 0.10] });
+      const corn = new THREE.CylinderGeometry(R.radius + 1.05, R.radius + 0.85, 0.24, 44, 1, false,
+        e0 - 0.02, (e1 - e0) + 0.04);
+      corn.translate(R.cx, yEnt + entH + 0.12, R.cz);
+      parts.push({ geo: corn, color: colD });
+      if (d.balustrade) {
+        const bh = 0.95;
+        const nBal = Math.max(6, Math.round((e1 - e0) * R.radius / 0.52));
+        for (let i = 0; i <= nBal; i++) {
+          const a = e0 + (e1 - e0) * i / nBal;
+          const [px, pz] = at(a);
+          const b2 = new THREE.CylinderGeometry(0.075, 0.095, bh - 0.16, 8);
+          b2.translate(px, yEnt + entH + 0.24 + (bh - 0.16) / 2, pz);
+          parts.push({ geo: b2, color: col });
+        }
+        const cap2 = new THREE.CylinderGeometry(R.radius + 0.30, R.radius + 0.30, 0.16, 44, 1, false,
+          e0, e1 - e0);
+        cap2.translate(R.cx, yEnt + entH + 0.24 + bh - 0.08, R.cz);
+        parts.push({ geo: cap2, color: colD });
+      }
+
+      const mesh = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.74, metalness: 0.03,
+      }));
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      group.add(mesh);
+      stats.push({ name: d.name, ok: true, kontur: bi, colonn: nPair * 2, stil: 'круглый тосканский по дуге' });
+      continue;
     }
 
     // ---- храм: барабан, купол, крест и порталы с диоритовыми колоннами ----
