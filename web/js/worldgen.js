@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=32918821';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=32918821';
-import { buildCoverage } from './coverage.js?v=32918821';
+import { SEA_FLOOR } from './terrain.js?v=85214ac5';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=85214ac5';
+import { buildCoverage } from './coverage.js?v=85214ac5';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -1382,7 +1382,7 @@ export function buildRoads(world, terrain, chunk = 500) {
   // глубину и читались ступенями. Один контур — одно ровное пятно.
   for (const j of world.junctions || []) {
     const ch = bucket(j.x, j.z);
-    const col = ROAD_COLORS[1];
+    const col = ROAD_COLORS[j.c ?? 1];   // цвет самой широкой улицы узла
     const start = ch.base;
     const ring = [];
     if (j.poly) {
@@ -1401,13 +1401,22 @@ export function buildRoads(world, terrain, chunk = 500) {
         ring.push([j.x + Math.cos(a) * r, j.z + Math.sin(a) * r]);
       }
     }
+    // Ширину в атрибут даём НАСТОЯЩУЮ: по ней шейдер кладёт крошку асфальта и
+    // накат от колёс. С фиктивными 0.5 м пятно выходило гладким и читалось
+    // тёмной заплатой другого материала посреди фактурной улицы.
+    // Крошку асфальта шейдер считает по (m, v) — метрам поперёк и вдоль. У
+    // пятна они были нулевыми у ВСЕХ вершин: шум брался один раз на всё пятно
+    // и, попав в тёмный край диапазона, красил перекрёсток равномерно тёмным
+    // пятном другого материала. Даём вершинам настоящие координаты от центра.
+    const jw = Math.max(6, j.r * 2);
     ch.P.push(j.x, H(j.x, j.z) + ROAD_Y + 0.045, j.z);
     ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-    ch.R.push(0, 0, 0.5, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);   // без этого aOwn съезжал на вершину
+    ch.R.push(0, 0, jw, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);   // без этого aOwn съезжал на вершину
     for (const [x, z] of ring) {
       ch.P.push(x, H(x, z) + ROAD_Y + 0.045, z);
       ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-      ch.R.push(0, 0, 0.5, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);
+      ch.R.push((x - j.x) / (jw * 0.5), z - j.z, jw, 0);
+      ch.K.push(1); ch.O.push(-1); ch.S.push(0);
     }
     for (let k = 0; k < ring.length; k++)
       ch.I.push(start, start + 1 + (k + 1) % ring.length, start + 1 + k);

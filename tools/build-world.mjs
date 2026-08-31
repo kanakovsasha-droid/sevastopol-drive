@@ -453,7 +453,10 @@ function reverse(p) {
             const l = Math.hypot(dx, dz);
             if (l < 0.4) continue;
             const ux = dx / l, uz = dz / l, nx = -uz, nz = ux;
-            const reach = Math.min(half * 1.25, l * 0.9);
+            // Луч должен ПЕРЕКРЫВАТЬ конец улицы, а не заканчиваться раньше:
+            // с коротким вылетом между пятном и полотном оставался разрыв до
+            // земли, и перекрёсток разваливался на куски.
+            const reach = Math.min(Math.max(half * 1.8, j.r * 0.9), l * 0.92);
             for (const sg of [-1, 1]) {
               samp.push([j.x + nx * sg * half, j.z + nz * sg * half]);
               samp.push([j.x + ux * reach + nx * sg * half, j.z + uz * reach + nz * sg * half]);
@@ -461,11 +464,12 @@ function reverse(p) {
             rays++;
           }
         }
-        if (!rays) {                       // лучей нет — оставляем круг
-          for (let k = 0; k < 12; k++) {
-            const a = k / 12 * Math.PI * 2;
-            samp.push([j.x + Math.cos(a) * j.r, j.z + Math.sin(a) * j.r]);
-          }
+        // Ядро: круг радиусом чуть меньше габарита узла. Без него оболочка по
+        // одним лучам получалась тощей и не закрывала середину перекрёстка.
+        const core = rays ? j.r * 0.72 : j.r;
+        for (let k = 0; k < 12; k++) {
+          const a = k / 12 * Math.PI * 2;
+          samp.push([j.x + Math.cos(a) * core, j.z + Math.sin(a) * core]);
         }
       }
       const cx = sx / g.length, cz = sz / g.length;
@@ -474,9 +478,23 @@ function reverse(p) {
       // mw — ширина самой широкой улицы узла. По ней отличаем настоящий
       // перекрёсток от выезда со двора: сплошную перед перекрёстком по ПДД
       // рисуют не у каждого заезда, а у пересечения проезжих улиц.
-      let mw = 0;
-      for (const j of g) mw = Math.max(mw, (j.r - 1.2) * 2);
-      const rec = { x: R1(cx), z: R1(cz), r: R1(R), mw: R1(mw) };
+      let mw = 0, mwCls = 1;
+      for (const j of g) {
+        const w2 = (j.r - 1.2) * 2;
+        if (w2 > mw) {
+          mw = w2;
+          // класс берём у самой широкой улицы узла: пятно цвета «главной»
+          // посреди обычных улиц читалось тёмной заплатой другого оттенка
+          let bw = 0;
+          for (const wo of j.ways || []) {
+            if (wo.width < bw) continue;
+            bw = wo.width;
+            const sp = ROADS[(wo.w.tags || {}).highway];
+            if (sp) mwCls = sp.cls;
+          }
+        }
+      }
+      const rec = { x: R1(cx), z: R1(cz), r: R1(R), mw: R1(mw), c: mwCls };
       if (samp.length >= 3) {
         // Обход приводим к положительной площади: worldgen считает «наружу» по
         // левой нормали ребра и без единого обхода вывернул бы пятно наизнанку.
