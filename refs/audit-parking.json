@@ -1,0 +1,2152 @@
+{
+ "parkings": [
+  {
+   "x": -844.7,
+   "z": 1539.5,
+   "name": "6-я Бастионная улица (~3.7 м)",
+   "carsTotal": 68,
+   "carsOutside": 10,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 68,
+   "carsInAisle": 28,
+   "carsInRowCentre": 40,
+   "carsOffPavement": 10,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    95.4,
+    65.7
+   ],
+   "what": "68 из 68 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 28 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 10 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-00-top.png",
+    "fly-shots/park-00-side.png",
+    "fly-shots/park-00-edge.png"
+   ]
+  },
+  {
+   "x": 529.4,
+   "z": 2460.4,
+   "name": "Вокзальная улица (~15.8 м)",
+   "carsTotal": 2,
+   "carsOutside": 1,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 2,
+   "carsInAisle": 0,
+   "carsInRowCentre": 2,
+   "carsOffPavement": 1,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    59.4,
+    10.2
+   ],
+   "what": "2 из 2 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 1 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-01-top.png",
+    "fly-shots/park-01-side.png",
+    "fly-shots/park-01-edge.png"
+   ]
+  },
+  {
+   "x": 336,
+   "z": 2391.1,
+   "name": "площадь Привокзальная (~14.1 м)",
+   "carsTotal": 3,
+   "carsOutside": 3,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 3,
+   "carsInAisle": 2,
+   "carsInRowCentre": 1,
+   "carsOffPavement": 3,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    69.4,
+    51
+   ],
+   "what": "3 из 3 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 2 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 3 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-02-top.png",
+    "fly-shots/park-02-side.png",
+    "fly-shots/park-02-edge.png"
+   ]
+  },
+  {
+   "x": -340.5,
+   "z": 2343.9,
+   "name": "4-я Бастионная улица (~1.6 м)",
+   "carsTotal": 23,
+   "carsOutside": 4,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 23,
+   "carsInAisle": 23,
+   "carsInRowCentre": 0,
+   "carsOffPavement": 4,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    73.5,
+    40.5
+   ],
+   "what": "23 из 23 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 23 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 4 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-03-top.png",
+    "fly-shots/park-03-side.png",
+    "fly-shots/park-03-edge.png"
+   ]
+  },
+  {
+   "x": -792.7,
+   "z": 706.3,
+   "name": "улица Щербака (~32.9 м)",
+   "carsTotal": 11,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 11,
+   "carsInAisle": 0,
+   "carsInRowCentre": 11,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    60.4,
+    5.6
+   ],
+   "what": "11 из 11 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-04-top.png",
+    "fly-shots/park-04-side.png",
+    "fly-shots/park-04-edge.png"
+   ]
+  },
+  {
+   "x": -711.5,
+   "z": 168.5,
+   "name": "Капитанская улица (~63.3 м)",
+   "carsTotal": 32,
+   "carsOutside": 2,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 32,
+   "carsInAisle": 17,
+   "carsInRowCentre": 15,
+   "carsOffPavement": 2,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    61.2,
+    51.1
+   ],
+   "what": "32 из 32 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 17 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 2 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 3 машин приподняты над полотном до 7 см (склон, крупные треугольники); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-05-top.png",
+    "fly-shots/park-05-side.png",
+    "fly-shots/park-05-edge.png"
+   ]
+  },
+  {
+   "x": -405.8,
+   "z": 1131.4,
+   "name": "Одесская улица (~14.4 м)",
+   "carsTotal": 20,
+   "carsOutside": 3,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 20,
+   "carsInAisle": 11,
+   "carsInRowCentre": 9,
+   "carsOffPavement": 3,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    67.7,
+    18.7
+   ],
+   "what": "20 из 20 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 11 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 3 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 1 машин приподняты над полотном до 6 см (склон, крупные треугольники); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-06-top.png",
+    "fly-shots/park-06-side.png",
+    "fly-shots/park-06-edge.png"
+   ]
+  },
+  {
+   "x": -394.3,
+   "z": 1196.8,
+   "name": "Одесская улица (~20.6 м)",
+   "carsTotal": 21,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 21,
+   "carsInAisle": 7,
+   "carsInRowCentre": 14,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    40.2,
+    21.9
+   ],
+   "what": "21 из 21 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 7 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-07-top.png",
+    "fly-shots/park-07-side.png",
+    "fly-shots/park-07-edge.png"
+   ]
+  },
+  {
+   "x": 2286.3,
+   "z": 2691.5,
+   "name": "Прутовцев улица (~25.9 м)",
+   "carsTotal": 53,
+   "carsOutside": 7,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 53,
+   "carsInAisle": 23,
+   "carsInRowCentre": 30,
+   "carsOffPavement": 7,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    59.6,
+    62.6
+   ],
+   "what": "53 из 53 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 23 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 7 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-08-top.png",
+    "fly-shots/park-08-side.png",
+    "fly-shots/park-08-edge.png"
+   ]
+  },
+  {
+   "x": 2518.8,
+   "z": 2178.3,
+   "name": "Семипалатинская улица (~35.1 м)",
+   "carsTotal": 34,
+   "carsOutside": 3,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 6,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 34,
+   "carsInAisle": 11,
+   "carsInRowCentre": 23,
+   "carsOffPavement": 3,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    112,
+    37
+   ],
+   "what": "34 из 34 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 11 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 3 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 2 машин утоплены в полотно до 6 см; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-09-top.png",
+    "fly-shots/park-09-side.png",
+    "fly-shots/park-09-edge.png"
+   ]
+  },
+  {
+   "x": 188.5,
+   "z": 371.5,
+   "name": "улица Алексея Мокроусова (~30.2 м)",
+   "carsTotal": 15,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 7,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 15,
+   "carsInAisle": 10,
+   "carsInRowCentre": 5,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    45.8,
+    16.9
+   ],
+   "what": "15 из 15 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 10 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 2 машин приподняты над полотном до 7 см (склон, крупные треугольники); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-10-top.png",
+    "fly-shots/park-10-side.png",
+    "fly-shots/park-10-edge.png"
+   ]
+  },
+  {
+   "x": -65.1,
+   "z": 1779.5,
+   "name": "площадь Ушакова (~46.7 м)",
+   "carsTotal": 5,
+   "carsOutside": 1,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 5,
+   "carsInAisle": 0,
+   "carsInRowCentre": 5,
+   "carsOffPavement": 1,
+   "padOverTerrainM": 0.306,
+   "sizeM": [
+    32,
+    10.8
+   ],
+   "what": "5 из 5 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 1 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-11-top.png",
+    "fly-shots/park-11-side.png",
+    "fly-shots/park-11-edge.png"
+   ]
+  },
+  {
+   "x": -173.3,
+   "z": 1763,
+   "name": "улица Гоголя (~37.2 м)",
+   "carsTotal": 11,
+   "carsOutside": 2,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 11,
+   "carsInAisle": 10,
+   "carsInRowCentre": 1,
+   "carsOffPavement": 2,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    111.3,
+    13.3
+   ],
+   "what": "11 из 11 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 10 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 2 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-12-top.png",
+    "fly-shots/park-12-side.png",
+    "fly-shots/park-12-edge.png"
+   ]
+  },
+  {
+   "x": 693.7,
+   "z": -1206.1,
+   "name": "Старосеверная Балка улица (~13 м)",
+   "carsTotal": 17,
+   "carsOutside": 4,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 17,
+   "carsInAisle": 5,
+   "carsInRowCentre": 12,
+   "carsOffPavement": 4,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    41.8,
+    25.9
+   ],
+   "what": "17 из 17 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 5 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 4 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-13-top.png",
+    "fly-shots/park-13-side.png",
+    "fly-shots/park-13-edge.png"
+   ]
+  },
+  {
+   "x": -1953.6,
+   "z": 1615.5,
+   "name": "улица Жени Дерюгиной (~9.3 м)",
+   "carsTotal": 16,
+   "carsOutside": 3,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 16,
+   "carsInAisle": 1,
+   "carsInRowCentre": 15,
+   "carsOffPavement": 3,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    106.7,
+    27.4
+   ],
+   "what": "16 из 16 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 1 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 3 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-14-top.png",
+    "fly-shots/park-14-side.png",
+    "fly-shots/park-14-edge.png"
+   ]
+  },
+  {
+   "x": 1249.7,
+   "z": 1512.4,
+   "name": "3-я Бастионная улица (~2.1 м)",
+   "carsTotal": 2,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 2,
+   "carsInAisle": 0,
+   "carsInRowCentre": 2,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    112.8,
+    28.1
+   ],
+   "what": "2 из 2 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-15-top.png",
+    "fly-shots/park-15-side.png",
+    "fly-shots/park-15-edge.png"
+   ]
+  },
+  {
+   "x": 1232.9,
+   "z": 1574.1,
+   "name": "Брестская улица (~33.4 м)",
+   "carsTotal": 30,
+   "carsOutside": 3,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 5,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 30,
+   "carsInAisle": 14,
+   "carsInRowCentre": 16,
+   "carsOffPavement": 3,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    48.1,
+    47.9
+   ],
+   "what": "30 из 30 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 14 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 3 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 1 машин утоплены в полотно до 5 см; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-16-top.png",
+    "fly-shots/park-16-side.png",
+    "fly-shots/park-16-edge.png"
+   ]
+  },
+  {
+   "x": 1344.8,
+   "z": 1441.9,
+   "name": "Комсомольская улица (~26.7 м)",
+   "carsTotal": 27,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 7,
+   "carsSunkCm": 12,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 27,
+   "carsInAisle": 11,
+   "carsInRowCentre": 16,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    49.2,
+    26.9
+   ],
+   "what": "27 из 27 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 11 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 2 машин приподняты над полотном до 7 см (склон, крупные треугольники); 1 машин утоплены в полотно до 12 см; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-17-top.png",
+    "fly-shots/park-17-side.png",
+    "fly-shots/park-17-edge.png"
+   ]
+  },
+  {
+   "x": 2668.5,
+   "z": 640.2,
+   "name": "Абрикосовая улица (~44.3 м)",
+   "carsTotal": 33,
+   "carsOutside": 4,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 2,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 33,
+   "carsInAisle": 19,
+   "carsInRowCentre": 14,
+   "carsOffPavement": 4,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    81.6,
+    37
+   ],
+   "what": "33 из 33 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 19 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 4 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 1 машин приподняты над полотном до 9 см (склон, крупные треугольники); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-18-top.png",
+    "fly-shots/park-18-side.png",
+    "fly-shots/park-18-edge.png"
+   ]
+  },
+  {
+   "x": -1133.4,
+   "z": 167.6,
+   "name": "Амурская улица (~1.2 м)",
+   "carsTotal": 2,
+   "carsOutside": 2,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 2,
+   "carsInAisle": 0,
+   "carsInRowCentre": 2,
+   "carsOffPavement": 2,
+   "padOverTerrainM": 0.302,
+   "sizeM": [
+    31.7,
+    11.9
+   ],
+   "what": "2 из 2 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 2 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-19-top.png",
+    "fly-shots/park-19-side.png",
+    "fly-shots/park-19-edge.png"
+   ]
+  },
+  {
+   "x": -1687,
+   "z": 1466.4,
+   "name": "улица Пожарова (~28.5 м)",
+   "carsTotal": 52,
+   "carsOutside": 8,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 52,
+   "carsInAisle": 12,
+   "carsInRowCentre": 40,
+   "carsOffPavement": 8,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    137.2,
+    32.2
+   ],
+   "what": "52 из 52 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 12 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 8 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-20-top.png",
+    "fly-shots/park-20-side.png",
+    "fly-shots/park-20-edge.png"
+   ]
+  },
+  {
+   "x": -626.1,
+   "z": 127.7,
+   "name": "Капитанская улица (~69 м)",
+   "carsTotal": 24,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 7,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 24,
+   "carsInAisle": 9,
+   "carsInRowCentre": 15,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    85.1,
+    19.8
+   ],
+   "what": "24 из 24 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 9 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 1 машин приподняты над полотном до 7 см (склон, крупные треугольники); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-21-top.png",
+    "fly-shots/park-21-side.png",
+    "fly-shots/park-21-edge.png"
+   ]
+  },
+  {
+   "x": -823.1,
+   "z": 1729.1,
+   "name": "5-я Бастионная улица (~64.4 м)",
+   "carsTotal": 72,
+   "carsOutside": 18,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 2,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 72,
+   "carsInAisle": 31,
+   "carsInRowCentre": 41,
+   "carsOffPavement": 18,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    57.5,
+    87.7
+   ],
+   "what": "72 из 72 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 31 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 18 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 1 машин приподняты над полотном до 6 см (склон, крупные треугольники); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-22-top.png",
+    "fly-shots/park-22-side.png",
+    "fly-shots/park-22-edge.png"
+   ]
+  },
+  {
+   "x": -936.2,
+   "z": 1695.5,
+   "name": "5-я Бастионная улица (~7.2 м)",
+   "carsTotal": 7,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 5,
+   "carsSunkCm": 3,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 7,
+   "carsInAisle": 0,
+   "carsInRowCentre": 7,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.306,
+   "sizeM": [
+    35.7,
+    7.4
+   ],
+   "what": "7 из 7 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 1 машин утоплены в полотно до 3 см; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-23-top.png",
+    "fly-shots/park-23-side.png",
+    "fly-shots/park-23-edge.png"
+   ]
+  },
+  {
+   "x": -754.6,
+   "z": 1141.6,
+   "name": "улица Демидова (~11.8 м)",
+   "carsTotal": 7,
+   "carsOutside": 1,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 32,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 7,
+   "carsInAisle": 0,
+   "carsInRowCentre": 7,
+   "carsOffPavement": 1,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    54.9,
+    8.5
+   ],
+   "what": "7 из 7 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 1 машин стоят там, где полотна нет вовсе, и висят на 32 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-24-top.png",
+    "fly-shots/park-24-side.png",
+    "fly-shots/park-24-edge.png"
+   ]
+  },
+  {
+   "x": -360.2,
+   "z": 2412.8,
+   "name": "4-я Бастионная улица (~24.6 м)",
+   "carsTotal": 28,
+   "carsOutside": 5,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 28,
+   "carsInAisle": 11,
+   "carsInRowCentre": 17,
+   "carsOffPavement": 5,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    76,
+    32.4
+   ],
+   "what": "28 из 28 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 11 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 5 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 1 машин приподняты над полотном до 6 см (склон, крупные треугольники); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-25-top.png",
+    "fly-shots/park-25-side.png",
+    "fly-shots/park-25-edge.png"
+   ]
+  },
+  {
+   "x": 2818.3,
+   "z": 116.9,
+   "name": "Мореходная улица (~15.8 м)",
+   "carsTotal": 8,
+   "carsOutside": 1,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 32,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 8,
+   "carsInAisle": 1,
+   "carsInRowCentre": 7,
+   "carsOffPavement": 1,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    28.3,
+    21.8
+   ],
+   "what": "8 из 8 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 1 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 1 машин стоят там, где полотна нет вовсе, и висят на 32 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-26-top.png",
+    "fly-shots/park-26-side.png",
+    "fly-shots/park-26-edge.png"
+   ]
+  },
+  {
+   "x": 2401.8,
+   "z": 536.7,
+   "name": "Абрикосовая улица (~18.6 м)",
+   "carsTotal": 15,
+   "carsOutside": 5,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 4,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 15,
+   "carsInAisle": 5,
+   "carsInRowCentre": 10,
+   "carsOffPavement": 5,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    61.3,
+    36.7
+   ],
+   "what": "15 из 15 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 5 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 5 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 2 машин приподняты над полотном до 20 см (склон, крупные треугольники); 1 машин утоплены в полотно до 4 см; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-27-top.png",
+    "fly-shots/park-27-side.png",
+    "fly-shots/park-27-edge.png"
+   ]
+  },
+  {
+   "x": -529.7,
+   "z": 340,
+   "name": "площадь 300-летия Российского Флота (~9.5 м)",
+   "carsTotal": 3,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 3,
+   "carsInAisle": 3,
+   "carsInRowCentre": 0,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    46.8,
+    18.1
+   ],
+   "what": "3 из 3 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 3 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-28-top.png",
+    "fly-shots/park-28-side.png",
+    "fly-shots/park-28-edge.png"
+   ]
+  },
+  {
+   "x": 1069.4,
+   "z": 379.8,
+   "name": "улица Михаила Дзигунского (~27.2 м)",
+   "carsTotal": 9,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 9,
+   "carsInAisle": 5,
+   "carsInRowCentre": 4,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    28.3,
+    28.3
+   ],
+   "what": "9 из 9 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 5 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-29-top.png",
+    "fly-shots/park-29-side.png",
+    "fly-shots/park-29-edge.png"
+   ]
+  },
+  {
+   "x": 1289.9,
+   "z": 837.3,
+   "name": "улица Дзержинского (~16.7 м)",
+   "carsTotal": 3,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 3,
+   "carsInAisle": 2,
+   "carsInRowCentre": 1,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    17.6,
+    17.6
+   ],
+   "what": "3 из 3 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 2 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-30-top.png",
+    "fly-shots/park-30-side.png",
+    "fly-shots/park-30-edge.png"
+   ]
+  },
+  {
+   "x": 2093.9,
+   "z": 829.5,
+   "name": "улица Героев Севастополя (~11.7 м)",
+   "carsTotal": 1,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 1,
+   "carsInAisle": 0,
+   "carsInRowCentre": 1,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    17.7,
+    11.5
+   ],
+   "what": "1 из 1 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-31-top.png",
+    "fly-shots/park-31-side.png",
+    "fly-shots/park-31-edge.png"
+   ]
+  },
+  {
+   "x": 1914.7,
+   "z": -1634.4,
+   "name": "Приморская улица (~17.5 м)",
+   "carsTotal": 5,
+   "carsOutside": 5,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 5,
+   "carsInAisle": 0,
+   "carsInRowCentre": 5,
+   "carsOffPavement": 5,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    29.9,
+    7.4
+   ],
+   "what": "5 из 5 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 5 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-32-top.png",
+    "fly-shots/park-32-side.png",
+    "fly-shots/park-32-edge.png"
+   ]
+  },
+  {
+   "x": -1775.3,
+   "z": 2853,
+   "name": "улица Руднева (~10.3 м)",
+   "carsTotal": 7,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 7,
+   "carsInAisle": 0,
+   "carsInRowCentre": 7,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    51.4,
+    5.6
+   ],
+   "what": "7 из 7 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-33-top.png",
+    "fly-shots/park-33-side.png",
+    "fly-shots/park-33-edge.png"
+   ]
+  },
+  {
+   "x": -1743.4,
+   "z": 2919.5,
+   "name": "улица Руднева (~24.8 м)",
+   "carsTotal": 9,
+   "carsOutside": 8,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 9,
+   "carsInAisle": 5,
+   "carsInRowCentre": 4,
+   "carsOffPavement": 8,
+   "padOverTerrainM": 0.312,
+   "sizeM": [
+    40.6,
+    13
+   ],
+   "what": "9 из 9 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 5 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 8 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-34-top.png",
+    "fly-shots/park-34-side.png",
+    "fly-shots/park-34-edge.png"
+   ]
+  },
+  {
+   "x": 17.1,
+   "z": 22.2,
+   "name": "проспект Нахимова (~39.7 м)",
+   "carsTotal": 28,
+   "carsOutside": 8,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 2,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 28,
+   "carsInAisle": 15,
+   "carsInRowCentre": 13,
+   "carsOffPavement": 8,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    66.2,
+    48.1
+   ],
+   "what": "28 из 28 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 15 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 8 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 3 машин приподняты над полотном до 12 см (склон, крупные треугольники); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-35-top.png",
+    "fly-shots/park-35-side.png",
+    "fly-shots/park-35-edge.png"
+   ]
+  },
+  {
+   "x": 1981.2,
+   "z": 2509.2,
+   "name": "Семипалатинская улица (~58.3 м)",
+   "carsTotal": 9,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 9,
+   "carsInAisle": 2,
+   "carsInRowCentre": 7,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    38.6,
+    14.6
+   ],
+   "what": "9 из 9 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 2 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-36-top.png",
+    "fly-shots/park-36-side.png",
+    "fly-shots/park-36-edge.png"
+   ]
+  },
+  {
+   "x": 2670.6,
+   "z": 107.2,
+   "name": "Мореходная улица (~121 м)",
+   "carsTotal": 15,
+   "carsOutside": 3,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 15,
+   "carsInAisle": 7,
+   "carsInRowCentre": 8,
+   "carsOffPavement": 3,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    82.1,
+    20.5
+   ],
+   "what": "15 из 15 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 7 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 3 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 1 машин приподняты над полотном до 9 см (склон, крупные треугольники); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-37-top.png",
+    "fly-shots/park-37-side.png",
+    "fly-shots/park-37-edge.png"
+   ]
+  },
+  {
+   "x": 2306.9,
+   "z": 1643,
+   "name": "Паршина улица (~13.5 м)",
+   "carsTotal": 0,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": true,
+   "carsOnBayLine": 0,
+   "carsInAisle": 0,
+   "carsInRowCentre": 0,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.309,
+   "sizeM": [
+    12.7,
+    9.3
+   ],
+   "what": "машин нет; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-38-top.png",
+    "fly-shots/park-38-side.png",
+    "fly-shots/park-38-edge.png"
+   ]
+  },
+  {
+   "x": -82,
+   "z": 365.3,
+   "name": "Матросский бульвар (~9.2 м)",
+   "carsTotal": 9,
+   "carsOutside": 3,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 9,
+   "carsInAisle": 4,
+   "carsInRowCentre": 5,
+   "carsOffPavement": 3,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    135.2,
+    14.5
+   ],
+   "what": "9 из 9 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 4 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 3 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-39-top.png",
+    "fly-shots/park-39-side.png",
+    "fly-shots/park-39-edge.png"
+   ]
+  },
+  {
+   "x": -78.7,
+   "z": 418.3,
+   "name": "Матросский бульвар (~6 м)",
+   "carsTotal": 3,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 3,
+   "carsInAisle": 2,
+   "carsInRowCentre": 1,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    8.9,
+    49.6
+   ],
+   "what": "3 из 3 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 2 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-40-top.png",
+    "fly-shots/park-40-side.png",
+    "fly-shots/park-40-edge.png"
+   ]
+  },
+  {
+   "x": 2028.1,
+   "z": 1355.8,
+   "name": "Оборонная улица (~31.2 м)",
+   "carsTotal": 7,
+   "carsOutside": 2,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 32,
+   "carsSunkCm": 4,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 7,
+   "carsInAisle": 3,
+   "carsInRowCentre": 4,
+   "carsOffPavement": 2,
+   "padOverTerrainM": 0.307,
+   "sizeM": [
+    19.8,
+    26.3
+   ],
+   "what": "7 из 7 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 3 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 2 машин стоят там, где полотна нет вовсе, и висят на 32 см над голой землёй; 1 машин приподняты над полотном до 10 см (склон, крупные треугольники); 3 машин утоплены в полотно до 4 см; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-41-top.png",
+    "fly-shots/park-41-side.png",
+    "fly-shots/park-41-edge.png"
+   ]
+  },
+  {
+   "x": 1894.1,
+   "z": 1000.4,
+   "name": "улица Героев Севастополя (~2.7 м)",
+   "carsTotal": 0,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": true,
+   "carsOnBayLine": 0,
+   "carsInAisle": 0,
+   "carsInRowCentre": 0,
+   "carsOffPavement": 0,
+   "padOverTerrainM": null,
+   "sizeM": [
+    61.8,
+    3
+   ],
+   "what": "машин нет; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-42-top.png",
+    "fly-shots/park-42-side.png",
+    "fly-shots/park-42-edge.png"
+   ]
+  },
+  {
+   "x": 1711.4,
+   "z": 1573.9,
+   "name": "Матроса Кошки улица (~2.7 м)",
+   "carsTotal": 25,
+   "carsOutside": 8,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 2,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 25,
+   "carsInAisle": 7,
+   "carsInRowCentre": 18,
+   "carsOffPavement": 8,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    77.2,
+    24.8
+   ],
+   "what": "25 из 25 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 7 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 8 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 1 машин приподняты над полотном до 8 см (склон, крупные треугольники); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-43-top.png",
+    "fly-shots/park-43-side.png",
+    "fly-shots/park-43-edge.png"
+   ]
+  },
+  {
+   "x": 2105,
+   "z": 1304.2,
+   "name": "улица Истомина (~42.9 м)",
+   "carsTotal": 3,
+   "carsOutside": 1,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 32,
+   "carsSunkCm": 2,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 3,
+   "carsInAisle": 0,
+   "carsInRowCentre": 3,
+   "carsOffPavement": 1,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    24.3,
+    10.5
+   ],
+   "what": "3 из 3 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 1 машин стоят там, где полотна нет вовсе, и висят на 32 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-44-top.png",
+    "fly-shots/park-44-side.png",
+    "fly-shots/park-44-edge.png"
+   ]
+  },
+  {
+   "x": 2576.6,
+   "z": -1178.8,
+   "name": "Братская улица (~458.7 м)",
+   "carsTotal": 12,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 12,
+   "carsInAisle": 7,
+   "carsInRowCentre": 5,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    42.9,
+    20.1
+   ],
+   "what": "12 из 12 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 7 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-45-top.png",
+    "fly-shots/park-45-side.png",
+    "fly-shots/park-45-edge.png"
+   ]
+  },
+  {
+   "x": -1138.8,
+   "z": 1410,
+   "name": "Стрелецкий спуск (~49.7 м)",
+   "carsTotal": 219,
+   "carsOutside": 21,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 3,
+   "orientationOk": false,
+   "carsBadAngle": 107,
+   "inBayOk": false,
+   "carsOnBayLine": 149,
+   "carsInAisle": 98,
+   "carsInRowCentre": 59,
+   "carsOffPavement": 21,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    114.3,
+    76.7
+   ],
+   "what": "149 из 219 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 98 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 21 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 107 машин развёрнуты поперёк чужой разметки (контур накладывается на соседнюю парковку); 2 машин утоплены в полотно до 3 см; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-46-top.png",
+    "fly-shots/park-46-side.png",
+    "fly-shots/park-46-edge.png"
+   ]
+  },
+  {
+   "x": -1407.9,
+   "z": 1231.6,
+   "name": "Пионерская улица (~40.7 м)",
+   "carsTotal": 15,
+   "carsOutside": 1,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 7,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 15,
+   "carsInAisle": 8,
+   "carsInRowCentre": 7,
+   "carsOffPavement": 1,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    51.7,
+    18.1
+   ],
+   "what": "15 из 15 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 8 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 1 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 1 машин приподняты над полотном до 7 см (склон, крупные треугольники); 1 машин утоплены в полотно до 7 см; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-47-top.png",
+    "fly-shots/park-47-side.png",
+    "fly-shots/park-47-edge.png"
+   ]
+  },
+  {
+   "x": 1299.1,
+   "z": -1688.7,
+   "name": "улица Челюскинцев (~77.3 м)",
+   "carsTotal": 9,
+   "carsOutside": 1,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 9,
+   "carsInAisle": 1,
+   "carsInRowCentre": 8,
+   "carsOffPavement": 1,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    27.8,
+    21.3
+   ],
+   "what": "9 из 9 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 1 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 1 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-48-top.png",
+    "fly-shots/park-48-side.png",
+    "fly-shots/park-48-edge.png"
+   ]
+  },
+  {
+   "x": 1632,
+   "z": -890.2,
+   "name": "Эскадренная улица (~16.1 м)",
+   "carsTotal": 15,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 16,
+   "carsSunkCm": 4,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 15,
+   "carsInAisle": 6,
+   "carsInRowCentre": 9,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    25.4,
+    68.3
+   ],
+   "what": "15 из 15 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 6 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 4 машин приподняты над полотном до 16 см (склон, крупные треугольники); 1 машин утоплены в полотно до 4 см; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-49-top.png",
+    "fly-shots/park-49-side.png",
+    "fly-shots/park-49-edge.png"
+   ]
+  },
+  {
+   "x": 2205.5,
+   "z": -1221.1,
+   "name": "Приморская улица (~473.5 м)",
+   "carsTotal": 35,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 35,
+   "carsInAisle": 10,
+   "carsInRowCentre": 25,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    74.1,
+    72
+   ],
+   "what": "35 из 35 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 10 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-50-top.png",
+    "fly-shots/park-50-side.png",
+    "fly-shots/park-50-edge.png"
+   ]
+  },
+  {
+   "x": 309.6,
+   "z": -1397.6,
+   "name": "улица Громова (~57.5 м)",
+   "carsTotal": 15,
+   "carsOutside": 1,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 32,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 15,
+   "carsInAisle": 7,
+   "carsInRowCentre": 8,
+   "carsOffPavement": 1,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    28.4,
+    34.3
+   ],
+   "what": "15 из 15 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 7 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 1 машин стоят там, где полотна нет вовсе, и висят на 32 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-51-top.png",
+    "fly-shots/park-51-side.png",
+    "fly-shots/park-51-edge.png"
+   ]
+  },
+  {
+   "x": -1153,
+   "z": 1541.5,
+   "name": "улица Загородная Балка (~102.8 м)",
+   "carsTotal": 9,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 9,
+   "carsInAisle": 0,
+   "carsInRowCentre": 9,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    36.7,
+    8.3
+   ],
+   "what": "9 из 9 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-52-top.png",
+    "fly-shots/park-52-side.png",
+    "fly-shots/park-52-edge.png"
+   ]
+  },
+  {
+   "x": -731,
+   "z": 298.2,
+   "name": "Капитанская улица (~52 м)",
+   "carsTotal": 15,
+   "carsOutside": 4,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 15,
+   "carsInAisle": 5,
+   "carsInRowCentre": 10,
+   "carsOffPavement": 4,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    52.3,
+    35.9
+   ],
+   "what": "15 из 15 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 5 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 4 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-53-top.png",
+    "fly-shots/park-53-side.png",
+    "fly-shots/park-53-edge.png"
+   ]
+  },
+  {
+   "x": -1350.7,
+   "z": 281.9,
+   "name": "Капитанская улица (~15 м)",
+   "carsTotal": 8,
+   "carsOutside": 0,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 0,
+   "carsSunkCm": 0,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 8,
+   "carsInAisle": 8,
+   "carsInRowCentre": 0,
+   "carsOffPavement": 0,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    33.2,
+    13.7
+   ],
+   "what": "8 из 8 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 8 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-54-top.png",
+    "fly-shots/park-54-side.png",
+    "fly-shots/park-54-edge.png"
+   ]
+  },
+  {
+   "x": -1138.9,
+   "z": 1424.3,
+   "name": "Стрелецкий спуск (~56.6 м)",
+   "carsTotal": 46,
+   "carsOutside": 2,
+   "carsOutsideContour": 0,
+   "carsFloatingCm": 33,
+   "carsSunkCm": 3,
+   "orientationOk": true,
+   "carsBadAngle": 0,
+   "inBayOk": false,
+   "carsOnBayLine": 46,
+   "carsInAisle": 24,
+   "carsInRowCentre": 22,
+   "carsOffPavement": 2,
+   "padOverTerrainM": 0.305,
+   "sizeM": [
+    107.1,
+    97.6
+   ],
+   "what": "46 из 46 машин стоят ЦЕНТРОМ НА разделительной линии — каждая занимает половинки двух соседних мест (сдвиг 1.25 м поперёк места); 24 машин из второго ряда сдвинуты на 2.65 м и наполовину торчат в проезд; 2 машин стоят там, где полотна нет вовсе, и висят на 33 см над голой землёй; 3 машин приподняты над полотном до 14 см (склон, крупные треугольники); 3 машин утоплены в полотно до 3 см; полотно лежит на 30.5 см выше рельефа без бордюра и подпорной стенки — с уровня глаз парковка висит в воздухе",
+   "shot": [
+    "fly-shots/park-55-top.png",
+    "fly-shots/park-55-side.png",
+    "fly-shots/park-55-edge.png"
+   ]
+  }
+ ],
+ "playgrounds": [
+  {
+   "x": 1271,
+   "z": -1100.7,
+   "nearestStreet": "Инженерная улица",
+   "distM": 54.5,
+   "nearestDrivable": [
+    {
+     "n": "Инженерная улица",
+     "c": 2,
+     "d": 54.5
+    },
+    {
+     "n": "улица Инженерная балка",
+     "c": 3,
+     "d": 95
+    }
+   ],
+   "nearestAnyRoadM": 12.2,
+   "sizeM": [
+    24.7,
+    18.1
+   ],
+   "equipment": 7,
+   "visible": false,
+   "what": "площадка 24.7×18.1 м, 7 предметов (качели/горка/песочница/карусель) — стоит и построена верно, оборудование на полотне +2 см; полотно на 34 см выше рельефа без бордюра. Ближайший проезд — безымянный проезд в 12.2 м, ближайшая ИМЕНОВАННАЯ улица Инженерная улица в 54.5 м; вокруг 9 домов в радиусе 60 м — площадка во дворе, с улицы её не видно",
+   "shot": [
+    "fly-shots/play-00-top.png",
+    "fly-shots/play-00-side.png",
+    "fly-shots/play-00-edge.png"
+   ]
+  },
+  {
+   "x": -2131.9,
+   "z": 2552,
+   "nearestStreet": "Воронежская улица",
+   "distM": 134.6,
+   "nearestDrivable": [
+    {
+     "n": "Воронежская улица",
+     "c": 2,
+     "d": 134.6
+    },
+    {
+     "n": "улица Декабристов",
+     "c": 2,
+     "d": 169.4
+    }
+   ],
+   "nearestAnyRoadM": 9,
+   "sizeM": [
+    24.6,
+    7.8
+   ],
+   "equipment": 6,
+   "visible": false,
+   "what": "площадка 24.6×7.8 м, 6 предметов (качели/горка/песочница/карусель) — стоит и построена верно, оборудование на полотне +2 см; полотно на 34 см выше рельефа без бордюра. Ближайший проезд — безымянный проезд в 9 м, ближайшая ИМЕНОВАННАЯ улица Воронежская улица в 134.6 м; вокруг 4 домов в радиусе 60 м — площадка во дворе, с улицы её не видно",
+   "shot": [
+    "fly-shots/play-01-top.png",
+    "fly-shots/play-01-side.png",
+    "fly-shots/play-01-edge.png"
+   ]
+  },
+  {
+   "x": 2680.6,
+   "z": 2080.8,
+   "nearestStreet": "Томская улица",
+   "distM": 21.6,
+   "nearestDrivable": [
+    {
+     "n": "Томская улица",
+     "c": 2,
+     "d": 21.6
+    },
+    {
+     "n": "Горпищенко тупик",
+     "c": 2,
+     "d": 31.9
+    }
+   ],
+   "nearestAnyRoadM": 13.5,
+   "sizeM": [
+    11,
+    23
+   ],
+   "equipment": 9,
+   "visible": true,
+   "what": "площадка 11×23 м, 9 предметов (качели/горка/песочница/карусель) — стоит и построена верно, оборудование на полотне +2 см; полотно на 34 см выше рельефа без бордюра. Ближайший проезд — безымянный проезд в 13.5 м, ближайшая ИМЕНОВАННАЯ улица Томская улица в 21.6 м; вокруг 2 домов в радиусе 60 м — площадка во дворе, с улицы её не видно",
+   "shot": [
+    "fly-shots/play-02-top.png",
+    "fly-shots/play-02-side.png",
+    "fly-shots/play-02-edge.png"
+   ]
+  },
+  {
+   "x": -116.6,
+   "z": 139.8,
+   "nearestStreet": "Матросский бульвар",
+   "distM": 18.8,
+   "nearestDrivable": [
+    {
+     "n": "проспект Нахимова",
+     "c": 1,
+     "d": 69
+    },
+    {
+     "n": "Матросский бульвар",
+     "c": 2,
+     "d": 103.6
+    }
+   ],
+   "nearestAnyRoadM": 6.4,
+   "sizeM": [
+    27.9,
+    12.8
+   ],
+   "equipment": 5,
+   "visible": true,
+   "what": "площадка 27.9×12.8 м, 5 предметов (качели/горка/песочница/карусель) — стоит и построена верно, оборудование на полотне +2 см; полотно на 34 см выше рельефа без бордюра. Ближайший проезд — безымянный проезд в 6.4 м, ближайшая ИМЕНОВАННАЯ улица Матросский бульвар в 18.8 м; вокруг 4 домов в радиусе 60 м — площадка во дворе, с улицы её не видно",
+   "shot": [
+    "fly-shots/play-03-top.png",
+    "fly-shots/play-03-side.png",
+    "fly-shots/play-03-edge.png"
+   ]
+  },
+  {
+   "x": -472.6,
+   "z": 3099.3,
+   "nearestStreet": "улица Супруна",
+   "distM": 53.9,
+   "nearestDrivable": [
+    {
+     "n": "улица Супруна",
+     "c": 2,
+     "d": 53.9
+    },
+    {
+     "n": "улица Николая Музыки",
+     "c": 1,
+     "d": 60.6
+    }
+   ],
+   "nearestAnyRoadM": 11.3,
+   "sizeM": [
+    19.8,
+    15.4
+   ],
+   "equipment": 9,
+   "visible": false,
+   "what": "площадка 19.8×15.4 м, 9 предметов (качели/горка/песочница/карусель) — стоит и построена верно, оборудование на полотне +2 см; полотно на 34 см выше рельефа без бордюра. Ближайший проезд — безымянный проезд в 11.3 м, ближайшая ИМЕНОВАННАЯ улица улица Супруна в 53.9 м; вокруг 11 домов в радиусе 60 м — площадка во дворе, с улицы её не видно",
+   "shot": [
+    "fly-shots/play-04-top.png",
+    "fly-shots/play-04-side.png",
+    "fly-shots/play-04-edge.png"
+   ]
+  },
+  {
+   "x": 240.7,
+   "z": 1311,
+   "nearestStreet": "улица Пушкина",
+   "distM": 20.2,
+   "nearestDrivable": [
+    {
+     "n": "улица Пушкина",
+     "c": 1,
+     "d": 20.2
+    },
+    {
+     "n": "Троллейбусный спуск",
+     "c": 1,
+     "d": 33.5
+    }
+   ],
+   "nearestAnyRoadM": 14.2,
+   "sizeM": [
+    24.2,
+    14.6
+   ],
+   "equipment": 9,
+   "visible": true,
+   "what": "площадка 24.2×14.6 м, 9 предметов (качели/горка/песочница/карусель) — стоит и построена верно, оборудование на полотне +2 см; полотно на 34 см выше рельефа без бордюра. Ближайший проезд — безымянный проезд в 14.2 м, ближайшая ИМЕНОВАННАЯ улица улица Пушкина в 20.2 м; вокруг 5 домов в радиусе 60 м — площадка во дворе, с улицы её не видно",
+   "shot": [
+    "fly-shots/play-05-top.png",
+    "fly-shots/play-05-side.png",
+    "fly-shots/play-05-edge.png"
+   ]
+  },
+  {
+   "x": 1635.2,
+   "z": 647.1,
+   "nearestStreet": "улица Папанина",
+   "distM": 12.3,
+   "nearestDrivable": [
+    {
+     "n": "улица Папанина",
+     "c": 2,
+     "d": 12.3
+    },
+    {
+     "n": "Белостокская улица",
+     "c": 2,
+     "d": 36.7
+    }
+   ],
+   "nearestAnyRoadM": 7.7,
+   "sizeM": [
+    39.9,
+    20.9
+   ],
+   "equipment": 6,
+   "visible": true,
+   "what": "площадка 39.9×20.9 м, 6 предметов (качели/горка/песочница/карусель) — стоит и построена верно, оборудование на полотне +2 см; полотно на 34 см выше рельефа без бордюра. Ближайший проезд — безымянный проезд в 7.7 м, ближайшая ИМЕНОВАННАЯ улица улица Папанина в 12.3 м; вокруг 11 домов в радиусе 60 м — площадка во дворе, с улицы её не видно",
+   "shot": [
+    "fly-shots/play-06-top.png",
+    "fly-shots/play-06-side.png",
+    "fly-shots/play-06-edge.png"
+   ]
+  },
+  {
+   "x": 1321.1,
+   "z": 541.8,
+   "nearestStreet": "Комсомольская улица",
+   "distM": 20,
+   "nearestDrivable": [
+    {
+     "n": "Комсомольская улица",
+     "c": 2,
+     "d": 20
+    },
+    {
+     "n": "улица Розы Люксембург",
+     "c": 2,
+     "d": 49.1
+    }
+   ],
+   "nearestAnyRoadM": 10.8,
+   "sizeM": [
+    13.6,
+    21.2
+   ],
+   "equipment": 9,
+   "visible": true,
+   "what": "площадка 13.6×21.2 м, 9 предметов (качели/горка/песочница/карусель) — стоит и построена верно, оборудование на полотне +2 см; полотно на 34 см выше рельефа без бордюра. Ближайший проезд — безымянный проезд в 10.8 м, ближайшая ИМЕНОВАННАЯ улица Комсомольская улица в 20 м; вокруг 14 домов в радиусе 60 м — площадка во дворе, с улицы её не видно",
+   "shot": [
+    "fly-shots/play-07-top.png",
+    "fly-shots/play-07-side.png",
+    "fly-shots/play-07-edge.png"
+   ]
+  },
+  {
+   "x": 2069.4,
+   "z": 270.5,
+   "nearestStreet": "1-я Бастионная улица",
+   "distM": 49.9,
+   "nearestDrivable": [
+    {
+     "n": "1-я Бастионная улица",
+     "c": 2,
+     "d": 49.9
+    },
+    {
+     "n": "улица Адмирала Макарова",
+     "c": 2,
+     "d": 81.5
+    }
+   ],
+   "nearestAnyRoadM": 19.5,
+   "sizeM": [
+    15.8,
+    15
+   ],
+   "equipment": 9,
+   "visible": false,
+   "what": "площадка 15.8×15 м, 9 предметов (качели/горка/песочница/карусель) — стоит и построена верно, оборудование на полотне +2 см; полотно на 34 см выше рельефа без бордюра. Ближайший проезд — безымянный проезд в 19.5 м, ближайшая ИМЕНОВАННАЯ улица 1-я Бастионная улица в 49.9 м; вокруг 6 домов в радиусе 60 м — площадка во дворе, с улицы её не видно",
+   "shot": [
+    "fly-shots/play-08-top.png",
+    "fly-shots/play-08-side.png",
+    "fly-shots/play-08-edge.png"
+   ]
+  },
+  {
+   "x": 2178.3,
+   "z": 1550.6,
+   "nearestStreet": "Окопная улица",
+   "distM": 40.5,
+   "nearestDrivable": [
+    {
+     "n": "Окопная улица",
+     "c": 2,
+     "d": 40.5
+    },
+    {
+     "n": "улица Истомина",
+     "c": 1,
+     "d": 49.6
+    }
+   ],
+   "nearestAnyRoadM": 7.9,
+   "sizeM": [
+    9.5,
+    7.3
+   ],
+   "equipment": 6,
+   "visible": false,
+   "what": "площадка 9.5×7.3 м, 6 предметов (качели/горка/песочница/карусель) — стоит и построена верно, оборудование на полотне +2 см; полотно на 34 см выше рельефа без бордюра. Ближайший проезд — безымянный проезд в 7.9 м, ближайшая ИМЕНОВАННАЯ улица Окопная улица в 40.5 м; вокруг 7 домов в радиусе 60 м — площадка во дворе, с улицы её не видно",
+   "shot": [
+    "fly-shots/play-09-top.png",
+    "fly-shots/play-09-side.png",
+    "fly-shots/play-09-edge.png"
+   ]
+  }
+ ],
+ "fuel": [
+  {
+   "x": -1174.9,
+   "z": 1245.1,
+   "name": "Атан",
+   "hasApron": false,
+   "apronIndex": -1,
+   "canopyBaseY": 36.05,
+   "legGapMinM": -0.26,
+   "legGapMaxM": 1.65,
+   "what": "контура площадки в OSM нет — навес, колонки и касса стоят прямо на рельефе, без асфальта; вся станция посажена на ОДНУ отметку: основания колонн отрываются от земли до 165 см — навес висит углом",
+   "shot": [
+    "fly-shots/fuelpt-00-top.png",
+    "fly-shots/fuelpt-00-side.png"
+   ]
+  },
+  {
+   "x": -404.8,
+   "z": 2839.2,
+   "name": "ТЭС",
+   "hasApron": false,
+   "apronIndex": -1,
+   "canopyBaseY": 83.12,
+   "legGapMinM": -0.26,
+   "legGapMaxM": 0.26,
+   "what": "контура площадки в OSM нет — навес, колонки и касса стоят прямо на рельефе, без асфальта; все четыре колонны в пределах ±26 см от поверхности — навес не висит",
+   "shot": [
+    "fly-shots/fuelpt-01-top.png",
+    "fly-shots/fuelpt-01-side.png"
+   ]
+  },
+  {
+   "x": 486.4,
+   "z": 2322.5,
+   "name": "ATAN Россия №88",
+   "hasApron": false,
+   "apronIndex": -1,
+   "canopyBaseY": 4.85,
+   "legGapMinM": -0.09,
+   "legGapMaxM": 0.54,
+   "what": "контура площадки в OSM нет — навес, колонки и касса стоят прямо на рельефе, без асфальта; вся станция посажена на ОДНУ отметку: основания колонн отрываются от земли до 54 см — навес висит углом",
+   "shot": [
+    "fly-shots/fuelpt-02-top.png",
+    "fly-shots/fuelpt-02-side.png"
+   ]
+  },
+  {
+   "x": 1205.4,
+   "z": 1517.4,
+   "name": null,
+   "hasApron": false,
+   "apronIndex": -1,
+   "canopyBaseY": 40.94,
+   "legGapMinM": -0.21,
+   "legGapMaxM": 0.34,
+   "what": "контура площадки в OSM нет — навес, колонки и касса стоят прямо на рельефе, без асфальта; все четыре колонны в пределах ±34 см от поверхности — навес не висит",
+   "shot": [
+    "fly-shots/fuelpt-03-top.png",
+    "fly-shots/fuelpt-03-side.png"
+   ]
+  },
+  {
+   "x": -1283.9,
+   "z": 3193.5,
+   "name": "Атан",
+   "hasApron": false,
+   "apronIndex": -1,
+   "canopyBaseY": 84.59,
+   "legGapMinM": -0.56,
+   "legGapMaxM": 0.29,
+   "what": "контура площадки в OSM нет — навес, колонки и касса стоят прямо на рельефе, без асфальта; противоположные колонны уходят в землю на 56 см",
+   "shot": [
+    "fly-shots/fuelpt-04-top.png",
+    "fly-shots/fuelpt-04-side.png"
+   ]
+  },
+  {
+   "x": -1809.5,
+   "z": 2881.4,
+   "name": "ТНК",
+   "hasApron": false,
+   "apronIndex": -1,
+   "canopyBaseY": 61.98,
+   "legGapMinM": -1.11,
+   "legGapMaxM": 0.52,
+   "what": "контура площадки в OSM нет — навес, колонки и касса стоят прямо на рельефе, без асфальта; вся станция посажена на ОДНУ отметку: основания колонн отрываются от земли до 52 см — навес висит углом; противоположные колонны уходят в землю на 111 см",
+   "shot": [
+    "fly-shots/fuelpt-05-top.png",
+    "fly-shots/fuelpt-05-side.png"
+   ]
+  },
+  {
+   "x": 2581.2,
+   "z": -1716.9,
+   "name": null,
+   "hasApron": false,
+   "apronIndex": -1,
+   "canopyBaseY": 32.78,
+   "legGapMinM": -0.32,
+   "legGapMaxM": 0.3,
+   "what": "контура площадки в OSM нет — навес, колонки и касса стоят прямо на рельефе, без асфальта; все четыре колонны в пределах ±32 см от поверхности — навес не висит",
+   "shot": [
+    "fly-shots/fuelpt-06-top.png",
+    "fly-shots/fuelpt-06-side.png"
+   ]
+  },
+  {
+   "x": 122.7,
+   "z": 2129.4,
+   "name": "RS",
+   "hasApron": false,
+   "apronIndex": -1,
+   "canopyBaseY": 3.83,
+   "legGapMinM": -0.08,
+   "legGapMaxM": 0.34,
+   "what": "контура площадки в OSM нет — навес, колонки и касса стоят прямо на рельефе, без асфальта; все четыре колонны в пределах ±34 см от поверхности — навес не висит",
+   "shot": [
+    "fly-shots/fuelpt-07-top.png",
+    "fly-shots/fuelpt-07-side.png"
+   ]
+  },
+  {
+   "x": -1762.2,
+   "z": 1585,
+   "name": "TES",
+   "hasApron": true,
+   "apronIndex": -1,
+   "canopyBaseY": 27.87,
+   "legGapMinM": -0.14,
+   "legGapMaxM": 0.48,
+   "what": "есть контур площадки (выровнена в горизонт, с подпорной стенкой по кромке); все четыре колонны в пределах ±48 см от поверхности — навес не висит",
+   "shot": [
+    "fly-shots/fuelpt-08-top.png",
+    "fly-shots/fuelpt-08-side.png"
+   ]
+  },
+  {
+   "x": 2509.1,
+   "z": 2098.8,
+   "name": "ТЭС",
+   "hasApron": true,
+   "apronIndex": 1,
+   "canopyBaseY": 91.3,
+   "legGapMinM": -0.29,
+   "legGapMaxM": 0.27,
+   "what": "есть контур площадки (выровнена в горизонт, с подпорной стенкой по кромке); все четыре колонны в пределах ±28 см от поверхности — навес не висит; полотно площадки НЕ отрисовано ни одним треугольником (всё вырезано фильтром «на дороге») — асфальта нет",
+   "shot": [
+    "fly-shots/fuelarea-01-top.png",
+    "fly-shots/fuelarea-01-side.png",
+    "fly-shots/fuelpt-09-top.png",
+    "fly-shots/fuelpt-09-side.png"
+   ]
+  },
+  {
+   "x": -376.5,
+   "z": 2492.8,
+   "name": "CRS",
+   "hasApron": true,
+   "apronIndex": 2,
+   "canopyBaseY": 78.18,
+   "legGapMinM": 0,
+   "legGapMaxM": 0.29,
+   "what": "есть контур площадки (выровнена в горизонт, с подпорной стенкой по кромке); все четыре колонны в пределах ±28 см от поверхности — навес не висит; полотно на одной отметке 78.18 м, но над рельефом от 0.3 до 0.64 м",
+   "shot": [
+    "fly-shots/fuelarea-02-top.png",
+    "fly-shots/fuelarea-02-side.png",
+    "fly-shots/fuelpt-10-top.png",
+    "fly-shots/fuelpt-10-side.png"
+   ]
+  },
+  {
+   "x": 2099.4,
+   "z": 2514.2,
+   "name": "ATAN Россия №89",
+   "hasApron": true,
+   "apronIndex": -1,
+   "canopyBaseY": 96.07,
+   "legGapMinM": 0,
+   "legGapMaxM": 0.35,
+   "what": "есть контур площадки (выровнена в горизонт, с подпорной стенкой по кромке); все четыре колонны в пределах ±35 см от поверхности — навес не висит",
+   "shot": [
+    "fly-shots/fuelpt-11-top.png",
+    "fly-shots/fuelpt-11-side.png"
+   ]
+  }
+ ],
+ "totals": {
+  "parkings": 56,
+  "parkingsWithDefects": 54,
+  "carsTotal": 1172,
+  "carsOnBayLine": 1102,
+  "carsInAisle": 490,
+  "carsInRowCentre": 620,
+  "carsOffPavement": 158,
+  "carsOffPavementFloatCm": 32.5,
+  "carsOutsideContour": 0,
+  "carsBadAngle": 107,
+  "playgrounds": 10,
+  "playgroundEquipment": 75,
+  "playgroundsWithinSightOfNamedStreet": 5,
+  "fuelStations": 12,
+  "fuelWithApron": 4,
+  "padLiftM": {
+   "parking": 0.305,
+   "playground": 0.34,
+   "path": 0.375,
+   "fuel": 0.305
+  },
+  "note": "машин вне контура своей парковки нет ни одной; все дефекты — сдвиг относительно разметки и дыры в полотне"
+ },
+ "diagnosis": [
+  {
+   "id": "C1",
+   "where": "web/js/yards.js:346  for (let u = 1.25; u < f.W; u += 2.5)",
+   "what": "Место 2.5 м по оси u, а разделительные штрихи шейдер рисует там, где fract(u/2.5)==0.5, то есть при u = 1.25 + 2.5k. Машины ставятся ровно в эти же u — каждая машина стоит центром НА линии и занимает по половине двух соседних мест.",
+   "fix": "сдвинуть на полместа: u = 0 (или 2.5) + 2.5k",
+   "affected": "1102 машины из 1172"
+  },
+  {
+   "id": "C2",
+   "where": "web/js/yards.js:341-342  for (let v = 2.65; ...) for (const vv of [v, v + 7.95])",
+   "what": "Шейдер (materials.js:794-795) кладёт ряды в band=mod(v,16.6): ряд 1 = 0..5.3 (центр 2.65), ряд 2 = 10.6..15.9 (центр 13.25). Смещение второго ряда взято 7.95 вместо 10.6 — машины второго ряда стоят на КРОМКЕ ряда и на 2.65 м торчат в проезд.",
+   "fix": "vv из [v, v + 10.6]",
+   "affected": "490 машин"
+  },
+  {
+   "id": "C3",
+   "where": "web/js/worldgen.js:2270-2283 (emit → skipOnRoad) против web/js/yards.js:348",
+   "what": "Треугольник полотна выбрасывается, если ХОТЬ ОДНА из 7 контрольных точек попала на дорогу, а машина проверяет только свой центр. В полотне остаются дыры заметно шире дороги, и в этих дырах стоят машины: асфальта под ними нет, а высота считается как рельеф + подъём площадки → ровно 32.5 см в воздухе над голой землёй.",
+   "fix": "ставить машину только там, где полотно реально нарисовано (тот же 7-точечный тест), либо не выбрасывать треугольник целиком",
+   "affected": "158 машин на 20 парковках, все ровно на 32.5 см над землёй"
+  },
+  {
+   "id": "C4",
+   "where": "data/world.json → areas, парковки #46 и #55 (~-1138, 1410..1424)",
+   "what": "Два контура парковки лежат друг на друге (5 из 17 вершин внутри соседа). У каждого своя главная ось, своя разметка и своя сетка машин: 265 машин в одном месте, 107 из них поперёк чужой разметки, машины пересекают друг друга, два полотна на одной отметке 0.305 дерутся за глубину.",
+   "fix": "слить или вычесть контуры при сборке мира",
+   "affected": "265 машин"
+  },
+  {
+   "id": "C5",
+   "where": "web/js/worldgen.js:2143-2144 LIFT0=0.13 + LAYER*0.035; подпорная стенка только при flatY!==null (2294)",
+   "what": "Полотно парковки лежит на 30.5 см выше рельефа (детская площадка 34 см, аллея 37.5 см), а кромка ничем не закрыта: ни бордюра, ни юбки, ни подпорной стенки — они строятся только для выровненных площадок (беговая дорожка и АЗС). С уровня глаз площадка выглядит парящей плитой, под её краем видно землю.",
+   "fix": "опустить подъём до дорожного (0.16) и/или замкнуть кромку юбкой до земли",
+   "affected": "все 56 парковок и все 10 детских площадок"
+  },
+  {
+   "id": "C6",
+   "where": "web/js/yards.js:659-712 (АЗС) — навес ставится на одну отметку g0=H(cx0,cz0)",
+   "what": "Вся станция сажается на одну отметку по центру. У 8 из 12 АЗС в OSM нет контура площадки, и станция стоит прямо на рельефе: у «Атан» (-1174.9, 1245.1) основания колонн отрываются от земли на 1.65 м, у «ТНК» (-1809.5, 2881.4) уходят в землю на 1.11 м.",
+   "fix": "подрезать/подсыпать площадку под навесом так же, как для контурных АЗС",
+   "affected": "2 из 12 АЗС явно, ещё 6 в пределах ±0.6 м"
+  },
+  {
+   "id": "C7",
+   "where": "data/areas.json → fuel, площадка ТЭС (2509.1, 2098.8)",
+   "what": "Полотно этой АЗС не отрисовано НИ ОДНИМ треугольником — всё съел фильтр «на дороге». Асфальта у станции нет вовсе. У площадки TES (-1762.2, 1585) рельеф пробивает выровненное полотно наружу на 56 см.",
+   "fix": "тот же фильтр, что в C3",
+   "affected": "2 из 4 площадок АЗС"
+  },
+  {
+   "id": "P1",
+   "where": "data/areas.json → sport (k=playground), 10 контуров на весь город",
+   "what": "Детские площадки ЕСТЬ и собраны правильно: 10 штук, 75 предметов, всё оборудование лежит на полотне (+2 см), ни одно не утоплено и не парит. Проблема не в сборке, а в количестве и расположении: 10 площадок на 6x6 км, средняя 270 кв.м, каждая во дворе; ближайший подъезд — безымянный проезд в 6-20 м, ближайшая ИМЕНОВАННАЯ улица в 12-135 м. Катаясь по улицам, их действительно почти невозможно заметить.",
+   "fix": "брать playground не только из явных контуров OSM, либо ставить дворовые площадки самим по дворам",
+   "affected": "все 10"
+  }
+ ]
+}

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=85214ac5';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=85214ac5';
-import { buildCoverage } from './coverage.js?v=85214ac5';
+import { SEA_FLOOR } from './terrain.js?v=c6008c8a';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=c6008c8a';
+import { buildCoverage } from './coverage.js?v=c6008c8a';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -2298,7 +2298,11 @@ export function buildAreas(world, terrain) {
   // беговую дорожку, и парковку рядом с ним. На одной высоте они дерутся за
   // глубину, и полотно шло пятнами — то асфальт, то газон. Разводим по слоям:
   // чем мельче и «главнее» площадка, тем выше она лежит.
-  const LAYER = { cemetery: 0, sportsground: 1, pitch: 2, football: 3, track: 4, parking: 5, playground: 6, path: 7, fuel: 5 };
+  // Парковка и площадка АЗС ложатся ПОД дорогу (слой −1), и потому не режутся
+  // по ней вовсе: улица и тротуар просто рисуются поверх. Обрезка по кромке
+  // давала рваный зигзаг по всему периметру — растр покрытия блочный, и как
+  // мелко ни дроби, край остаётся пилой.
+  const LAYER = { parking: -1, fuel: -1, cemetery: 0, sportsground: 1, pitch: 2, football: 3, track: 4, playground: 6, path: 7 };
   const LIFT0 = 0.13;
   // Подъём каждой площадки отдаём наружу: машины и качели ставились по
   // рельефу, а полотно лежит выше — машины оказывались ПОД парковкой.
@@ -2325,6 +2329,11 @@ export function buildAreas(world, terrain) {
     const box = obbOf(a.poly);
     if (!box) continue;
     const { ox, oz, ux, uz, W, L } = box;
+    // Рамку считали ДВАЖДЫ и независимо: здесь для разметки, и отдельно в
+    // yards для машин. На почти квадратном контуре минимальная рамка выбирает
+    // разные стороны, и 223 машины из 584 вставали поперёк своих же мест,
+    // до 89 градусов скоса. Кладём рамку в саму площадку — источник один.
+    a.__f = { ox, oz, ux, uz, W, L };
     const kind = KIND[a.k] ?? 5;
     const col = COL[a.k] || COL.sportsground;
     const LIFT = LIFT0 + (LAYER[a.k] ?? 1) * 0.035;
@@ -2339,16 +2348,24 @@ export function buildAreas(world, terrain) {
     // горизонт, и по рельефу горбился. Поле, корты, детские площадки и
     // парковки оставляем на земле — выровненные, они задирались над склоном
     // и вырастала подпорная стенка там, где её нет.
-    const LEVELED = a.k === 'track' || a.k === 'fuel';   // площадка АЗС и в жизни ровная
+    // Парковка, беговой овал и площадка АЗС — РОВНЫЕ: их срезают и подсыпают.
+    // Поле и корты оставляем на рельефе: выровненные, они задирались над
+    // склоном стеной там, где её нет.
+    const LEVELED = a.k === 'track' || a.k === 'fuel' || a.k === 'parking';
     // На дороге площадке делать нечего — кроме кладбища, где растр покрытия
     // и так пуст, и аллей, которые сами по себе тропинки.
-    const skipOnRoad = a.k !== 'cemetery';   // на дороге площадке делать нечего
+    // Под дорогой лежащие площадки не режем — их и не видно под ней.
+    const skipOnRoad = a.k !== 'cemetery' && (LAYER[a.k] ?? 1) >= 0;
     let flatY = null;
     if (LEVELED) {
       const hs = [];
       for (let i = 0; i < n; i++) hs.push(H(a.poly[i * 2], a.poly[i * 2 + 1]));
       hs.sort((p, q) => p - q);
-      flatY = hs[hs.length >> 1];
+      // 60-й процент, а не медиана: пад чуть выше середины, и низкая сторона
+      // получает подпорную стенку, а высокая не срезает землю у соседнего дома
+      // 40-й процент: пад держится НИЖЕ середины, и дорога, проходящая через
+      // парковку, нигде не тонет в нём.
+      flatY = hs[Math.min(hs.length - 1, Math.round(hs.length * 0.4))];
       liftOf.get(a).flat = flatY;
     }
 
@@ -2417,9 +2434,29 @@ export function buildAreas(world, terrain) {
     };
     // дробим треугольник, пока сторона длиннее 5 м: иначе на склоне полотно
     // висит над землёй серединой
+    // Адаптивное дробление: мельчим ТОЛЬКО там, где треугольник пересекает
+    // кромку дороги. Дробить всё подряд до полутора метров — это 2.6 млн
+    // вершин вместо 63 тысяч и мёртвый кадр; дробить крупно — рваный зигзаг
+    // по краю парковки. Считаем семь проб: все на асфальте — кусок выбросить,
+    // ни одной — рисовать как есть, вперемешку — разрезать и спросить снова.
+    const probes = (A, B, Cc) => [A, B, Cc,
+      [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2],
+      [(B[0] + Cc[0]) / 2, (B[1] + Cc[1]) / 2],
+      [(Cc[0] + A[0]) / 2, (Cc[1] + A[1]) / 2],
+      [(A[0] + B[0] + Cc[0]) / 3, (A[1] + B[1] + Cc[1]) / 3]];
+
     const emit = (A, B, Cc, depth) => {
       const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
-      if (depth < 5 && Math.max(d(A, B), d(B, Cc), d(Cc, A)) > (flatY === null ? 5 : 8)) {
+      const maxE = Math.max(d(A, B), d(B, Cc), d(Cc, A));
+      let hit = 0;
+      if (skipOnRoad) {
+        for (const q of probes(A, B, Cc)) if (onAsphalt(q[0], q[1])) hit++;
+        if (hit === 7) return;                       // целиком на дороге
+      }
+      // рельеф: на неровной земле дробим до пяти метров, ровную площадку — нет
+      const needTerrain = flatY === null && maxE > 5;
+      const needEdge = hit > 0 && maxE > 1.2;        // кромка дороги рядом
+      if (depth < 8 && (needTerrain || needEdge)) {
         const mAB = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
         const mBC = [(B[0] + Cc[0]) / 2, (B[1] + Cc[1]) / 2];
         const mCA = [(Cc[0] + A[0]) / 2, (Cc[1] + A[1]) / 2];
@@ -2427,22 +2464,11 @@ export function buildAreas(world, terrain) {
         emit(mCA, mBC, Cc, depth + 1); emit(mAB, mBC, mCA, depth + 1);
         return;
       }
-      // Кусок площадки, накрывший проезжую часть, не рисуем: на Восставших
-      // парковка из OSM обведена шире асфальта и заезжала прямо на дорогу.
-      if (skipOnRoad) {
-        // Проверяем не только центр, но и вершины со срединами сторон: у
-        // крупного треугольника центр мог висеть на газоне, а половина
-        // площадки уже лежала на асфальте.
-        const pr = [A, B, Cc,
-          [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2],
-          [(B[0] + Cc[0]) / 2, (B[1] + Cc[1]) / 2],
-          [(Cc[0] + A[0]) / 2, (Cc[1] + A[1]) / 2],
-          [(A[0] + B[0] + Cc[0]) / 3, (A[1] + B[1] + Cc[1]) / 3]];
-        for (const q of pr) if (onAsphalt(q[0], q[1])) return;
-      }
+      if (skipOnRoad && hit >= 4) return;            // больше половины на дороге
       const i0 = push(A[0], A[1]), i1 = push(B[0], B[1]), i2 = push(Cc[0], Cc[1]);
       I.push(i0, i1, i2);
     };
+
     for (const f of tri) {
       const A = [all[f[0]].x, all[f[0]].y], B = [all[f[1]].x, all[f[1]].y], Cc = [all[f[2]].x, all[f[2]].y];
       // обход к нормали вверх

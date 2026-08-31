@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=85214ac5';
+import { PolyGrid } from './worldgen.js?v=c6008c8a';
 
 // Оборудование детских площадок и машины на парковках. Места берутся из OSM
 // (data/areas.json -> world.areas): качели и горки ставим только там, где в
@@ -315,7 +315,14 @@ export function buildYards(world, terrain) {
   const carsBy = PAINTS.map(() => []);
 
   for (const a of world.areas || []) {
-    const f = frame(a.poly);
+    // Рамку берём ТУ ЖЕ, что посчитал buildAreas для разметки. Своя рамка на
+    // почти квадратном контуре выбирала другую сторону, и машины вставали
+    // поперёк мест.
+    const f = a.__f
+      ? { ux: a.__f.ux, uz: a.__f.uz, W: a.__f.W, L: a.__f.L,
+          at: (u, v) => [a.__f.ox + u * a.__f.ux - v * a.__f.uz,
+                         a.__f.oz + u * a.__f.uz + v * a.__f.ux] }
+      : frame(a.poly);
     if (!f) continue;
     const ang = Math.atan2(f.ux, f.uz);
 
