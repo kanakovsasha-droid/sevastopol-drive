@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=0c7ecb87';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=0c7ecb87';
-import { buildCoverage } from './coverage.js?v=0c7ecb87';
+import { SEA_FLOOR } from './terrain.js?v=4920fe70';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=4920fe70';
+import { buildCoverage } from './coverage.js?v=4920fe70';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -474,6 +474,26 @@ function seaMask(world, terrain, x0, z0, x1, z1, res = 8) {
       dist[n] = d + 1; q[qt++] = n;
     }
   }
+  // ВТОРОЙ ПРОХОД. Порога в 5.5 м мало: SRTM — модель ПОВЕРХНОСТИ, и узкие
+  // бухты она засыпает выше. В Южной бухте DEM показывает 5–7 м, заливка туда
+  // не проходила, и посреди воды оставался зелёный остров 200x130 м с рваными
+  // краями по клеткам рельефа — 54% акватории выше уреза. Идём вторым проходом
+  // с потолком 26 м, но СТРОГО от уже залитых клеток и по-прежнему упираясь в
+  // барьер берега: за линию берега вода уйти не может, а внутрь бухты пройдёт.
+  const LIMIT2 = 26;
+  qh = 0;
+  while (qh < qt) {
+    const c = q[qh++];
+    const i = c % W, j = (c / W) | 0, d = dist[c];
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const a = i + di, b = j + dj;
+      if (a < 0 || b < 0 || a >= W || b >= H) continue;
+      const n = idx(a, b);
+      if (wall[n] || dist[n] >= 0 || dem[n] > LIMIT2) continue;
+      dist[n] = d + 1; q[qt++] = n;
+    }
+  }
+
   let cells = 0;
   for (let c = 0; c < dist.length; c++) if (dist[c] >= 0) cells++;
 
