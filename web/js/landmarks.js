@@ -530,6 +530,12 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       const colD = col.map(v => v * 0.86);
       const a0 = R.fromDeg * Math.PI / 180, a1 = R.toDeg * Math.PI / 180;
       const at = a => [R.cx + Math.cos(a) * R.radius, R.cz + Math.sin(a) * R.radius];
+      // CylinderGeometry строит сектор от оси +X ПО СВОЕЙ мерке: точка на нём
+      // это (sin θ, cos θ), а у меня колонна стоит в (cos a, sin a). Это разные
+      // отсчёты, и антаблемент со ступенями оказывался развёрнут на 90° от
+      // колоннады — карниз висел балкой сбоку, а лестница уходила в стену.
+      // Переводим: sin θ = cos a, cos θ = sin a  =>  θ = π/2 − a.
+      const th = a => Math.PI / 2 - a;
       let gmin2 = Infinity;
       for (let k = 0; k <= 12; k++) {
         const [px, pz] = at(a0 + (a1 - a0) * k / 12);
@@ -545,7 +551,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       for (let i = 0; i < steps; i++) {
         const rr = R.radius + 2.2 - i * 0.40;
         const ring = new THREE.CylinderGeometry(rr, rr, stepH, 40, 1, false,
-          a0 - 0.22, (a1 - a0) + 0.44);
+          th(a1 + 0.22), (a1 - a0) + 0.44);
         ring.translate(R.cx, gmin2 + stepH / 2 + i * stepH, R.cz);
         parts.push({ geo: ring, color: STONE_D });
       }
@@ -584,9 +590,9 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
           const ab = new THREE.BoxGeometry(dT * 1.75, 0.12, dT * 1.75);
           ab.rotateY(-a); ab.translate(px, yFloor + baseH + hCol + 0.33, pz);
           parts.push({ geo: ab, color: col });
-          if (g0 > gmin2 + 0.02) {          // подсыпка, если земля под колонной ниже
-            const fill = new THREE.CylinderGeometry(dB * 0.85, dB * 0.85, yFloor - g0 + 0.1, 12);
-            fill.translate(px, (yFloor + g0) / 2, pz);
+          if (yFloor - g0 > 0.05) {         // ножка плинта до земли, а не барабан
+            const fill = new THREE.BoxGeometry(dB * 1.5, yFloor - g0 + 0.05, dB * 1.5);
+            fill.rotateY(-a); fill.translate(px, (yFloor + g0) / 2, pz);
             parts.push({ geo: fill, color: STONE_D });
           }
         }
@@ -602,15 +608,15 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       const yEnt = yFloor + baseH + hCol + 0.39;
       const entH = d.entablatureH ?? 1.0;
       const arch = new THREE.CylinderGeometry(R.radius + 0.75, R.radius + 0.75, entH, 44, 1, false,
-        e0, e1 - e0);
+        th(e1), e1 - e0);
       arch.translate(R.cx, yEnt + entH / 2, R.cz);
       parts.push({ geo: arch, color: col });
       const inner = new THREE.CylinderGeometry(R.radius - 0.75, R.radius - 0.75, entH + 0.1, 44, 1, false,
-        e0, e1 - e0);
+        th(e1), e1 - e0);
       inner.translate(R.cx, yEnt + entH / 2, R.cz);
       parts.push({ geo: inner, color: [0.08, 0.09, 0.10] });
       const corn = new THREE.CylinderGeometry(R.radius + 1.05, R.radius + 0.85, 0.24, 44, 1, false,
-        e0 - 0.02, (e1 - e0) + 0.04);
+        th(e1 + 0.02), (e1 - e0) + 0.04);
       corn.translate(R.cx, yEnt + entH + 0.12, R.cz);
       parts.push({ geo: corn, color: colD });
       if (d.balustrade) {
@@ -624,7 +630,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
           parts.push({ geo: b2, color: col });
         }
         const cap2 = new THREE.CylinderGeometry(R.radius + 0.30, R.radius + 0.30, 0.16, 44, 1, false,
-          e0, e1 - e0);
+          th(e1), e1 - e0);
         cap2.translate(R.cx, yEnt + entH + 0.24 + bh - 0.08, R.cz);
         parts.push({ geo: cap2, color: colD });
       }
