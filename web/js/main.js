@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=8d4e744d';
-import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=8d4e744d';
-import { buildStreetProps } from './props.js?v=8d4e744d';
-import { buildYards, buildStructures } from './yards.js?v=8d4e744d';
-import { buildFurniture } from './furniture.js?v=8d4e744d';
-import { buildLandmarks } from './landmarks.js?v=8d4e744d';
-import { buildSigns } from './signs.js?v=8d4e744d';
-import { audit } from './audit.js?v=8d4e744d';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=8d4e744d';
-import { Collider, RoadIndex } from './collision.js?v=8d4e744d';
-import { Car, createCarMesh } from './vehicle.js?v=8d4e744d';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=4ebce1c5';
+import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=4ebce1c5';
+import { buildStreetProps } from './props.js?v=4ebce1c5';
+import { buildYards, buildStructures } from './yards.js?v=4ebce1c5';
+import { buildFurniture } from './furniture.js?v=4ebce1c5';
+import { buildLandmarks } from './landmarks.js?v=4ebce1c5';
+import { buildSigns } from './signs.js?v=4ebce1c5';
+import { audit } from './audit.js?v=4ebce1c5';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=4ebce1c5';
+import { Collider, RoadIndex } from './collision.js?v=4ebce1c5';
+import { Car, createCarMesh } from './vehicle.js?v=4ebce1c5';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -105,8 +105,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=8d4e744d').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=8d4e744d').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=4ebce1c5').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=4ebce1c5').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -186,6 +186,7 @@ async function boot() {
                  get info() { return renderer.info; }, walk, cam, get mode() { return mode; } };
     window.G.audit = () => audit(window.G);
     window.G.lm = lm.userData.stats;      // отчёт по достопримечательностям
+    window.G.fly = fly;                   // состояние полёта — для замеров
     $('load').classList.add('done');
     setTimeout(() => $('load').remove(), 600);
     requestAnimationFrame(loop);
@@ -502,10 +503,12 @@ function toggleFly() {
 
 function updateFly(dt) {
   const boost = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 4 : 1;
-  const slow = keys.has('ControlLeft') || keys.has('ControlRight') ? 0.22 : 1;
+  const slow = keys.has('AltLeft') || keys.has('AltRight') ? 0.22 : 1;   // Alt — медленно
   const sp = fly.speed * boost * slow;
-  const cp = Math.cos(fly.pitch);
-  const fx = Math.sin(fly.yaw) * cp, fy = Math.sin(fly.pitch), fz = Math.cos(fly.yaw) * cp;
+  // W и S несут СТРОГО ГОРИЗОНТАЛЬНО, наклон взгляда на высоту не влияет:
+  // иначе, чтобы лететь прямо, приходится держать взгляд ровно по горизонту, а
+  // стоит посмотреть на город внизу — и снижаешься. Высота только на Space и Q.
+  const fx = Math.sin(fly.yaw), fy = 0, fz = Math.cos(fly.yaw);
   const rx = -Math.cos(fly.yaw), rz = Math.sin(fly.yaw);      // вправо
   let ax = 0, ay = 0, az = 0;
   if (keys.has('KeyW') || keys.has('ArrowUp')) { ax += fx; ay += fy; az += fz; }
@@ -513,7 +516,7 @@ function updateFly(dt) {
   if (keys.has('KeyD') || keys.has('ArrowRight')) { ax += rx; az += rz; }
   if (keys.has('KeyA') || keys.has('ArrowLeft')) { ax -= rx; az -= rz; }
   if (keys.has('Space')) ay += 1;
-  if (keys.has('KeyQ')) ay -= 1;
+  if (keys.has('KeyQ') || keys.has('ControlLeft') || keys.has('ControlRight')) ay -= 1;
   const l = Math.hypot(ax, ay, az);
   if (l > 0) { ax /= l; ay /= l; az /= l; }
   // разгон и торможение мягкие: рывками летать неприятно
@@ -559,7 +562,7 @@ function updateCamera(dt) {
     camera.position.set(fly.x, fly.y, fly.z);
     camera.rotation.set(0, 0, 0);
     camera.rotateY(fly.yaw + Math.PI);
-    camera.rotateX(-fly.pitch);
+    camera.rotateX(fly.pitch);   // тот же знак, что и пешком
     return;
   }
   if (mode === 'walk') {
@@ -570,9 +573,13 @@ function updateCamera(dt) {
     // так едет машина, так же считается направление на миникарте. Без разворота
     // на пол-оборота W уводил назад, и стрелка на карте смотрела в затылок.
     camera.rotateY(walk.yaw + Math.PI);
-    // Разворот на пол-оборота развернул и локальную ось X, поэтому наклон
-    // пошёл в обратную сторону: мышь вверх опускала взгляд. Меняем знак.
-    camera.rotateX(-walk.pitch);
+    // Знак ПЛЮС. Когда-то я решил, что разворот на пол-оборота по Y переворачивает
+    // и локальную ось X, и поставил минус — от этого мышь вверх опускала взгляд.
+    // Проверка векторами: после rotateY(a) локальная ось X = (cos a, 0, −sin a),
+    // взгляд = (−sin a, 0, −cos a), их векторное произведение = (0, 1, 0) при
+    // ЛЮБОМ a. Значит rotateX(+b) поднимает взгляд всегда, а разворот по Y на
+    // это не влияет.
+    camera.rotateX(walk.pitch);
     return;
   }
   // ------------------------------------------------------- камера как в GTA
