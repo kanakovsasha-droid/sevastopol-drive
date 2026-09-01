@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=59cbda35';
-import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=59cbda35';
-import { buildStreetProps } from './props.js?v=59cbda35';
-import { buildYards, buildStructures } from './yards.js?v=59cbda35';
-import { buildFurniture } from './furniture.js?v=59cbda35';
-import { buildLandmarks } from './landmarks.js?v=59cbda35';
-import { buildSigns } from './signs.js?v=59cbda35';
-import { audit } from './audit.js?v=59cbda35';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=59cbda35';
-import { Collider, RoadIndex } from './collision.js?v=59cbda35';
-import { Car, createCarMesh } from './vehicle.js?v=59cbda35';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=59929d99';
+import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=59929d99';
+import { buildStreetProps } from './props.js?v=59929d99';
+import { buildYards, buildStructures } from './yards.js?v=59929d99';
+import { buildFurniture } from './furniture.js?v=59929d99';
+import { buildLandmarks } from './landmarks.js?v=59929d99';
+import { buildSigns } from './signs.js?v=59929d99';
+import { audit } from './audit.js?v=59929d99';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=59929d99';
+import { Collider, RoadIndex } from './collision.js?v=59929d99';
+import { Car, createCarMesh } from './vehicle.js?v=59929d99';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -111,8 +111,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=59cbda35').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=59cbda35').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=59929d99').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=59929d99').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -136,8 +136,8 @@ async function boot() {
     // собирался, но никем не читался — сквозь круглый зал Панорамы торчали
     // этажи рядового дома с обычными окнами.
     await step('строю памятные здания…', 56);
-    const lmRoads = new RoadIndex(world.roads);
-    const lm = buildLandmarks(world, terrain, landmarkDefs, lmRoads);
+    roads = new RoadIndex(world.roads);
+    const lm = buildLandmarks(world, terrain, landmarkDefs, roads);
     scene.add(lm);
 
     await step(`поднимаю ${world.buildings.length.toLocaleString('ru')} домов…`, 58);
@@ -146,7 +146,6 @@ async function boot() {
 
     await step('готовлю столкновения…', 74);
     collider = new Collider(world.buildings);
-    roads = new RoadIndex(world.roads);
 
     await step('сажаю деревья…', 82);
     const props = buildStreetProps(world, terrain, roads);

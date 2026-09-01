@@ -91,6 +91,11 @@ function signTexture(text) {
 export function buildLandmarks(world, terrain, defs, roadIndex) {
   const group = new THREE.Group();
   group.name = 'landmarks';
+  // Сюда попадают ТОЛЬКО те дома, чей стиль строит здание целиком — со стенами
+  // от земли. Стили, которые вешают на фасад декор (колоннаду, портик, купола)
+  // и опираются на объём из OSM, класть сюда нельзя: дом пропадёт, а колонны
+  // и главы останутся висеть в воздухе. Сейчас целиком строится только
+  // «panorama» — круглый зал Панорамы обороны.
   const skip = new Set();
   const stats = [];
 
@@ -947,7 +952,8 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       }));
       mesh.castShadow = true; mesh.receiveShadow = true;
       group.add(mesh);
-      skip.add(bi);
+      // контур из OSM НЕ пропускаем: стен этот стиль не строит — карниз,
+      // кокошники и главы садятся на объём рядового дома (yBody = земля + b.h)
       stats.push({ name: d.name, ok: true, kontur: bi, glav: d.domes.length, stil: 'русский пятиглавый' });
       continue;
     }
@@ -1361,7 +1367,8 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       group.add(new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
         vertexColors: true, roughness: 0.80, metalness: 0.02,
       })));
-      skip.add(bi);
+      // ордер пристенный: колонны стоят В ПЛОСКОСТИ фасада существующего дома,
+      // самого дома этот стиль не строит — контур из OSM оставляем
       stats.push({ name: d.name, ok: true, kontur: bi, colonn: colN, stil: 'пристенный ордер' });
       continue;
     }
@@ -1484,7 +1491,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       group.add(new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
         vertexColors: true, roughness: 0.80, metalness: 0.02,
       })));
-      skip.add(bi);
+      // портик приставлен к фасаду, корпус остаётся домом из OSM
       stats.push({ name: d.name, ok: true, dist: +bd.toFixed(0), kontur: bi,
                    colonn: colN, fasadNa: S.roadName });
       continue;
@@ -1701,7 +1708,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
         new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 })));
     }
 
-    skip.add(bi);
+    // колоннада с антаблементом и буквами на кровле — тоже накладка на фасад
     stats.push({ name: d.name, ok: true, dist: +bd.toFixed(0), kontur: bi, colonn: colN,
                  fasadNa: S.roadName, doFasada: isFinite(S.facadeDist) ? +S.facadeDist.toFixed(0) : null });
   }
