@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="build" content="c6008c8a">
+<meta name="build" content="8d4e744d">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Севастополь</title>
 <style>
@@ -97,6 +97,8 @@
   #barfill{height:100%;width:0;background:var(--accent);transition:width .3s}
   #step{font-family:var(--mono);font-size:11px;color:var(--dim);height:14px}
   #err{color:var(--bad);font-size:12px;max-width:70vw;text-align:center;font-family:var(--mono);white-space:pre-wrap}
+  .fly-only{display:none;color:#9fb4c8}
+  body.fly .fly-only{display:inline}
 </style>
 </head>
 <body>
@@ -110,11 +112,13 @@
   <div id="keys" class="panel">
     <b>W A S D</b> — движение<br>
     <b><kbd>Space</kbd></b> — ручник &nbsp; <b><kbd>Shift</kbd></b> — бег<br>
-    <b><kbd>E</kbd></b> — выйти / сесть в машину<br>
+    <b><kbd>E</kbd></b> — выйти / сесть в машину &nbsp; <b><kbd>F</kbd></b> — полёт<br>
     <b><kbd>C</kbd></b> — камера &nbsp; <b><kbd>M</kbd></b> — куда поехать<br>
     <b><kbd>R</kbd></b> — вернуть на дорогу &nbsp; <b><kbd>V</kbd></b> — сбросить обзор<br>
     <b><kbd>Tab</kbd></b> — карта &nbsp; <b><kbd>N</kbd></b> — миникарта &nbsp; <b><kbd>H</kbd></b> — скрыть интерфейс<br>
-    мышь — обзор &nbsp; колесо — отдалить
+    мышь — обзор &nbsp; колесо — отдалить<br>
+    <span class="fly-only">в полёте: <b><kbd>Space</kbd></b> вверх &nbsp; <b><kbd>Q</kbd></b> вниз &nbsp;
+    <b><kbd>Shift</kbd></b> быстрее &nbsp; <b><kbd>Ctrl</kbd></b> медленнее &nbsp; колесо — скорость</span>
   </div>
   <canvas id="mini" width="200" height="200"></canvas>
   <div id="mapfull"><canvas id="mapcv"></canvas><div id="maphint">клик по карте — переехать туда &nbsp;·&nbsp; Tab — закрыть</div></div>
@@ -153,6 +157,6 @@
 <script type="importmap">
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
-<script type="module" src="./js/main.js?v=c6008c8a"></script>
+<script type="module" src="./js/main.js?v=8d4e744d"></script>
 </body>
 </html>

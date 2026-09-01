@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=c6008c8a';
-import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=c6008c8a';
-import { buildStreetProps } from './props.js?v=c6008c8a';
-import { buildYards, buildStructures } from './yards.js?v=c6008c8a';
-import { buildFurniture } from './furniture.js?v=c6008c8a';
-import { buildLandmarks } from './landmarks.js?v=c6008c8a';
-import { buildSigns } from './signs.js?v=c6008c8a';
-import { audit } from './audit.js?v=c6008c8a';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=c6008c8a';
-import { Collider, RoadIndex } from './collision.js?v=c6008c8a';
-import { Car, createCarMesh } from './vehicle.js?v=c6008c8a';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=8d4e744d';
+import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=8d4e744d';
+import { buildStreetProps } from './props.js?v=8d4e744d';
+import { buildYards, buildStructures } from './yards.js?v=8d4e744d';
+import { buildFurniture } from './furniture.js?v=8d4e744d';
+import { buildLandmarks } from './landmarks.js?v=8d4e744d';
+import { buildSigns } from './signs.js?v=8d4e744d';
+import { audit } from './audit.js?v=8d4e744d';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=8d4e744d';
+import { Collider, RoadIndex } from './collision.js?v=8d4e744d';
+import { Car, createCarMesh } from './vehicle.js?v=8d4e744d';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -72,7 +72,11 @@ let renderer, scene, camera, sun, sky;
 let water = null;
 let terrain, world, furniture, landmarkDefs = [], collider, roads, carMesh, car;
 let cityMap = null, miniCtx = null, mapCtx = null, mapOpen = false, miniOn = true;
-let mode = 'car';                              // 'car' | 'walk'
+let mode = 'car';                              // 'car' | 'walk' | 'fly'
+// Свободный полёт: камера сама по себе, без машины и без рельефа под ногами.
+// Скорость держим в метрах в секунду и крутим колесом — над городом хочется
+// лететь быстро, а у фасада подходить медленно.
+const fly = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, speed: 40, vx: 0, vy: 0, vz: 0 };
 const walk = { x: 0, z: 0, yaw: 0, pitch: 0, vy: 0 };
 // Орбитальная камера. ГЛАВНОЕ: yaw здесь — угол В МИРЕ, а не относительно
 // кузова. Раньше он был относительным (camYaw + carYaw), и любой поворот руля
@@ -101,8 +105,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=c6008c8a').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=c6008c8a').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=8d4e744d').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=8d4e744d').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -351,6 +355,7 @@ function bindInput() {
     const k = e.code;
     keys.add(k);
     if (k === 'KeyE') toggleMode();
+    if (k === 'KeyF') toggleFly();
     if (k === 'KeyC') { cam.mode = (cam.mode + 1) % CAM_MODES.length; }
     if (k === 'KeyM') { const m = $('menu'); m.classList.toggle('on'); if (m.classList.contains('on')) document.exitPointerLock?.(); }
     if (k === 'KeyR' && mode === 'car') respawn(car.pos.x, car.pos.z);
@@ -363,7 +368,8 @@ function bindInput() {
   });
   addEventListener('keyup', e => keys.delete(e.code));
   addEventListener('wheel', e => {
-    cam.dist = clamp(cam.dist + e.deltaY * 0.012, 0.45, 3.2);
+    if (mode === 'fly') fly.speed = clamp(fly.speed * (e.deltaY > 0 ? 0.86 : 1.16), 3, 900);
+    else cam.dist = clamp(cam.dist + e.deltaY * 0.012, 0.45, 3.2);
     e.preventDefault();
   }, { passive: false });
   addEventListener('blur', () => keys.clear());
@@ -377,7 +383,10 @@ function bindInput() {
   });
   addEventListener('mousemove', e => {
     if (!pointerLocked) return;
-    if (mode === 'walk') {
+    if (mode === 'fly') {
+      fly.yaw -= e.movementX * 0.0022;
+      fly.pitch = clamp(fly.pitch - e.movementY * 0.0022, -1.52, 1.52);
+    } else if (mode === 'walk') {
       walk.yaw -= e.movementX * 0.0022;
       walk.pitch = clamp(walk.pitch - e.movementY * 0.0022, -1.35, 1.35);
     } else {
@@ -423,9 +432,9 @@ function toggleMap() {
 function drawMap() {
   if (!mapOpen || !cityMap) return;
   const cv = $('mapcv');
-  const px = mode === 'car' ? car.pos.x : walk.x;
-  const pz = mode === 'car' ? car.pos.z : walk.z;
-  const yaw = mode === 'car' ? car.yaw : walk.yaw;
+  const px = mode === 'car' ? car.pos.x : mode === 'fly' ? fly.x : walk.x;
+  const pz = mode === 'car' ? car.pos.z : mode === 'fly' ? fly.z : walk.z;
+  const yaw = mode === 'car' ? car.yaw : mode === 'fly' ? fly.yaw : walk.yaw;
   const marks = landmarkDefs.map(d => ({ name: d.name, x: d.x, z: d.z }))
     .concat(PLACES.slice(0, 6).map(([n, x, z]) => ({ name: n, x, z })));
   drawFull(cv.getContext('2d'), cityMap, cv.width, cv.height, px, pz, yaw, marks);
@@ -468,6 +477,57 @@ function toggleMode() {
   }
 }
 
+// ------------------------------------------------------------------ полёт
+function toggleFly() {
+  if (mode === 'fly') {                       // возвращаемся туда, откуда взлетели
+    mode = fly.from || 'car';
+    document.body.classList.toggle('walk', mode === 'walk');
+    document.body.classList.remove('fly');
+    $('mode').textContent = mode === 'walk' ? 'Пешком' : 'За рулём';
+    return;
+  }
+  fly.from = mode;
+  // стартуем оттуда, где стоит камера сейчас, и смотрим туда же
+  fly.x = camera.position.x; fly.y = camera.position.y; fly.z = camera.position.z;
+  const d = new THREE.Vector3();
+  camera.getWorldDirection(d);
+  fly.yaw = Math.atan2(-d.x, -d.z) + Math.PI;   // мир смотрит в +(sin, cos)
+  fly.pitch = Math.asin(clamp(d.y, -1, 1));
+  fly.vx = fly.vy = fly.vz = 0;
+  mode = 'fly';
+  document.body.classList.remove('walk');
+  document.body.classList.add('fly');
+  $('mode').textContent = 'Полёт';
+}
+
+function updateFly(dt) {
+  const boost = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 4 : 1;
+  const slow = keys.has('ControlLeft') || keys.has('ControlRight') ? 0.22 : 1;
+  const sp = fly.speed * boost * slow;
+  const cp = Math.cos(fly.pitch);
+  const fx = Math.sin(fly.yaw) * cp, fy = Math.sin(fly.pitch), fz = Math.cos(fly.yaw) * cp;
+  const rx = -Math.cos(fly.yaw), rz = Math.sin(fly.yaw);      // вправо
+  let ax = 0, ay = 0, az = 0;
+  if (keys.has('KeyW') || keys.has('ArrowUp')) { ax += fx; ay += fy; az += fz; }
+  if (keys.has('KeyS') || keys.has('ArrowDown')) { ax -= fx; ay -= fy; az -= fz; }
+  if (keys.has('KeyD') || keys.has('ArrowRight')) { ax += rx; az += rz; }
+  if (keys.has('KeyA') || keys.has('ArrowLeft')) { ax -= rx; az -= rz; }
+  if (keys.has('Space')) ay += 1;
+  if (keys.has('KeyQ')) ay -= 1;
+  const l = Math.hypot(ax, ay, az);
+  if (l > 0) { ax /= l; ay /= l; az /= l; }
+  // разгон и торможение мягкие: рывками летать неприятно
+  const k = 1 - Math.exp(-dt * 7);
+  fly.vx += (ax * sp - fly.vx) * k;
+  fly.vy += (ay * sp - fly.vy) * k;
+  fly.vz += (az * sp - fly.vz) * k;
+  fly.x += fly.vx * dt; fly.y += fly.vy * dt; fly.z += fly.vz * dt;
+  // ниже земли не проваливаемся, выше пяти километров не уходим
+  const g = terrain.gridHeightAt(fly.x, fly.z) + 1.2;
+  if (fly.y < g) { fly.y = g; if (fly.vy < 0) fly.vy = 0; }
+  if (fly.y > 5000) fly.y = 5000;
+}
+
 // ------------------------------------------------------------------ пешком
 function updateWalk(dt) {
   const run = keys.has('ShiftLeft') || keys.has('ShiftRight');
@@ -495,6 +555,13 @@ function updateWalk(dt) {
 
 // ------------------------------------------------------------------ камера
 function updateCamera(dt) {
+  if (mode === 'fly') {
+    camera.position.set(fly.x, fly.y, fly.z);
+    camera.rotation.set(0, 0, 0);
+    camera.rotateY(fly.yaw + Math.PI);
+    camera.rotateX(-fly.pitch);
+    return;
+  }
   if (mode === 'walk') {
     const eye = terrain.gridHeightAt(walk.x, walk.z) + 1.68;
     camera.position.set(walk.x, eye, walk.z);
@@ -620,10 +687,10 @@ function updateHUD(dt) {
   if (hudT < 0.12) return;
   hudT = 0;
 
-  const px = mode === 'car' ? car.pos.x : walk.x;
-  const pz = mode === 'car' ? car.pos.z : walk.z;
+  const px = mode === 'car' ? car.pos.x : mode === 'fly' ? fly.x : walk.x;
+  const pz = mode === 'car' ? car.pos.z : mode === 'fly' ? fly.z : walk.z;
 
-  const hit = roads.nearest(px, pz, mode === 'car' ? 22 : 14);
+  const hit = roads.nearest(px, pz, mode === 'car' ? 22 : mode === 'fly' ? 40 : 14);
   const name = hit?.road?.n || null;
   if (name !== lastStreet) {
     lastStreet = name;
@@ -641,7 +708,11 @@ function updateHUD(dt) {
   $('fps').textContent = Math.round(fpsN / fpsAcc) + ' fps';
   fpsAcc = 0; fpsN = 0;
   $('coord').textContent = `${px > 0 ? '+' : ''}${px.toFixed(0)}, ${pz > 0 ? '+' : ''}${pz.toFixed(0)} м`;
-  $('alt').textContent = terrain.gridHeightAt(px, pz).toFixed(0) + ' м над морем';
+  // В полёте показываем ВЫСОТУ КАМЕРЫ, а не землю под ней: на 347 метрах
+  // строка «20 м над морем» смотрелась издевательством.
+  $('alt').textContent = mode === 'fly'
+    ? fly.y.toFixed(0) + ' м высота'
+    : terrain.gridHeightAt(px, pz).toFixed(0) + ' м над морем';
 
   const near = Math.hypot(walk.x - car.pos.x, walk.z - car.pos.z) < 4.5;
   $('prompt').classList.toggle('on', mode === 'walk' && near);
@@ -668,6 +739,8 @@ function loop(now) {
       steer: menuOpen ? 0 : (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0),
       handbrake: !menuOpen && keys.has('Space'),
     });
+  } else if (mode === 'fly') {
+    if (!$('menu').classList.contains('on')) updateFly(dt);
   } else if (!$('menu').classList.contains('on')) {
     updateWalk(dt);
   }
@@ -687,7 +760,9 @@ function loop(now) {
   }
 
   // тень едет за игроком, иначе карты теней не хватит на 5 км
-  const t = mode === 'car' ? car.pos : new THREE.Vector3(walk.x, terrain.gridHeightAt(walk.x, walk.z), walk.z);
+  const t = mode === 'car' ? car.pos
+    : mode === 'fly' ? new THREE.Vector3(fly.x, terrain.gridHeightAt(fly.x, fly.z), fly.z)
+    : new THREE.Vector3(walk.x, terrain.gridHeightAt(walk.x, walk.z), walk.z);
   sun.target.position.copy(t);
   sun.position.copy(t).addScaledVector(SUN, 420);
   sky.position.copy(camera.position);
