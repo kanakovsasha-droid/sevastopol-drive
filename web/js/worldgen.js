@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=7bf44f79';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=7bf44f79';
-import { buildCoverage } from './coverage.js?v=7bf44f79';
+import { SEA_FLOOR } from './terrain.js?v=90968aa2';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=90968aa2';
+import { buildCoverage } from './coverage.js?v=90968aa2';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -242,6 +242,7 @@ function roadCorridor(world, terrain, x0, z0, x1, z1, res = 5) {
   // чем на пологий откос — иначе на склоне он просто накрывает улицу.
   const STEP = 4, FLAT = 13.0, FEATHER = 14.0, CAP_SLOPE = 0.55;
 
+  const profiles = [];
   for (const r of world.roads) {
     if (r.c > 3 || r.br || r.tn) continue;      // мосты и тоннели на грунт не сажаем
     // концы вытягиваем так же, как при построении полотна, иначе за перекрёстком
@@ -307,7 +308,81 @@ function roadCorridor(world, terrain, x0, z0, x1, z1, res = 5) {
         }
       }
     };
-    smooth(5); soft(); limitGrade(); smooth(2); soft(); limitGrade(); smooth(1);
+    // Проходов больше, и после каждого возврата к земле — ещё сглаживание.
+    // При переломе в 11 пунктов на пять метров машина на 25 м/с получает
+    // вертикальное ускорение больше g и физически взлетает: на спуске
+    // Котовского замер дал 27 ударов сильнее 3 g на 330 метрах.
+    smooth(9); soft(); limitGrade(); smooth(5); soft(); limitGrade(); smooth(3);
+    // Последняя проверка на кривизну: где профиль всё ещё ломается круче
+    // 4 пунктов уклона на шаг, сглаживаем это место точечно.
+    for (let pass = 0; pass < 6; pass++) {
+      let worst = 0;
+      for (let i = 1; i < n - 1; i++) {
+        const c = h[i - 1] - 2 * h[i] + h[i + 1];   // вторая разность = перелом
+        if (Math.abs(c) > 0.04 * STEP) {
+          h[i] += c * 0.5;
+          worst = Math.max(worst, Math.abs(c));
+        }
+      }
+      if (worst < 0.04 * STEP) break;
+    }
+    soft();
+    // Ключ узла берём по ИСХОДНЫМ концам улицы из OSM, а не по растянутым:
+    // extendEnds добавляет до пяти метров, и растянутые концы соседних улиц
+    // между собой не совпадают — свести их не удавалось.
+    const findNear = (px, pz) => {
+      let bi = 0, bd = Infinity;
+      for (let i = 0; i < n; i++) {
+        const d = (sx[i] - px) ** 2 + (sz[i] - pz) ** 2;
+        if (d < bd) { bd = d; bi = i; }
+      }
+      return bi;
+    };
+    const iA = findNear(r.pts[0], r.pts[1]);
+    const iB = findNear(r.pts[r.pts.length - 2], r.pts[r.pts.length - 1]);
+    profiles.push({ r, sx, sz, h, n, iA, iB,
+                    ax: r.pts[0], az: r.pts[1],
+                    bx: r.pts[r.pts.length - 2], bz: r.pts[r.pts.length - 1] });
+  }
+
+  // ---- СТЫКИ. Профиль каждой улицы сглаживался сам по себе, и в общем узле
+  // они расходились: на спуске Котовского это давало перелом в 13 пунктов на
+  // пятиметровый шаг — машину подбрасывало ровно на переходе с улицы на улицу.
+  // Сводим концы к ОДНОЙ отметке: считаем среднее по всем улицам узла и
+  // растягиваем поправку вдоль улицы, чтобы середина не дёрнулась.
+  {
+    const key = (x, z) => Math.round(x / 3) + ',' + Math.round(z / 3);
+    const node = new Map();
+    for (const pr of profiles)
+      for (const [x, z, hh] of [[pr.ax, pr.az, pr.h[pr.iA]],
+                                [pr.bx, pr.bz, pr.h[pr.iB]]]) {
+        const k = key(x, z);
+        const e = node.get(k) || node.set(k, { s: 0, c: 0 }).get(k);
+        e.s += hh; e.c++;
+      }
+    let fixed = 0;
+    for (const pr of profiles) {
+      const a = node.get(key(pr.ax, pr.az));
+      const b = node.get(key(pr.bx, pr.bz));
+      const dA = a && a.c > 1 ? a.s / a.c - pr.h[pr.iA] : 0;
+      const dB = b && b.c > 1 ? b.s / b.c - pr.h[pr.iB] : 0;
+      if (Math.abs(dA) < 0.02 && Math.abs(dB) < 0.02) continue;
+      // поправка не должна ломать саму улицу: больше метра не двигаем
+      const cA = Math.max(-1, Math.min(1, dA)), cB = Math.max(-1, Math.min(1, dB));
+      // растягиваем между теми индексами, где действительно стоят узлы
+      const lo = Math.min(pr.iA, pr.iB), hi = Math.max(pr.iA, pr.iB);
+      const first = lo === pr.iA ? cA : cB, last = lo === pr.iA ? cB : cA;
+      for (let i = 0; i < pr.n; i++) {
+        const t = hi > lo ? Math.max(0, Math.min(1, (i - lo) / (hi - lo))) : 0;
+        pr.h[i] += first * (1 - t) + last * t;
+      }
+      fixed++;
+    }
+    if (fixed) console.log(`  профили улиц сведены в общих узлах: ${fixed}`);
+  }
+
+  for (const pr of profiles) {
+    const { r, sx, sz, h, n } = pr;
 
     const inner = r.w / 2 + FLAT, rad = inner + FEATHER;
     for (let i = 0; i < n; i++) {
@@ -739,11 +814,14 @@ export function buildRoads(world, terrain, chunk = 500) {
   // Последний рубеж. Какая бы причина ни развела профиль дороги и рельеф,
   // полотно не имеет права ни утонуть, ни повиснуть больше чем на 1.2 м:
   // иначе получаются балки в воздухе и куски улиц под землёй.
-  const SAFE = 0.35;   // лучше небольшой бугор, чем дыра в полотне
+  // Полотно обязано лежать НА ТОЙ ЖЕ поверхности, по которой едут колёса.
+  // Порог тот же, что в terrain.groundDriveHeightAt: 0.35 м было меньше
+  // собственных выемки и насыпи коридора, и профиль возвращался к сырому
+  // рельефу — отсюда прыжки на спуске Котовского.
   const H = (x, z) => {
     const g = terrain.gridHeightAt(x, z);
     const d = terrain.driveHeightAt(x, z);
-    return d < g - SAFE ? g - SAFE : d > g + SAFE ? g + SAFE : d;
+    return d < g - 1.7 ? g - 1.7 : d > g + 1.1 ? g + 1.1 : d;
   };
 
   // Полоса между двумя смещениями от осевой. lift — над поверхностью.
