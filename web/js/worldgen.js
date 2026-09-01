@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=90968aa2';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=90968aa2';
-import { buildCoverage } from './coverage.js?v=90968aa2';
+import { SEA_FLOOR } from './terrain.js?v=59cbda35';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=59cbda35';
+import { buildCoverage } from './coverage.js?v=59cbda35';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -1805,7 +1805,11 @@ function garageBoxes(poly, terrain, pushV, rnd) {
 }
 
 // ---------------------------------------------------------------- здания
-export function buildBuildings(world, terrain, chunk = 500) {
+// skip — индексы зданий, которые целиком берёт на себя модуль
+// достопримечательностей. Раньше этот список собирался, но никем не читался:
+// круглый зал Панорамы строился поверх обычного дома из OSM, и сквозь ротонду
+// торчали его этажи с рядовыми окнами.
+export function buildBuildings(world, terrain, chunk = 500, skip = null) {
   const chunks = new Map();
   const bucket = (x, z) => {
     const k = Math.floor(x / chunk) + ',' + Math.floor(z / chunk);
@@ -1863,7 +1867,9 @@ export function buildBuildings(world, terrain, chunk = 500) {
              y - 0.05, y + 0.11, col, 1, dx / l, dz / l, Hb);
   };
 
-  for (const b of world.buildings) {
+  for (let bi = 0; bi < world.buildings.length; bi++) {
+    const b = world.buildings[bi];
+    if (skip && skip.has(bi)) continue;
     const poly = b.poly, n = poly.length / 2;
     if (n < 3) continue;
 

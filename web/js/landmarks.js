@@ -517,6 +517,148 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       atWall = (t, out) => S.Q(t, out);
     }
 
+    // ---- круглый зал панорамы: цилиндр, пилястры, купол, портал ----
+    // Здание Панорамы обороны рисовалось рядовым круглым домом с обычными
+    // окнами, а портик стоял отдельно в двадцати метрах сбоку. Здесь оно
+    // строится целиком: ротонда по вписанному кругу (МНК по 15-угольнику
+    // контура), кольцо пилястр, карниз, пологий купол и выступающий на запад
+    // входной портал с фронтоном.
+    if (d.style === 'panorama' && d.round) {
+      const parts = [];
+      const R = d.round.radius, cx = d.round.cx ?? d.x, cz = d.round.cz ?? d.z;
+      const WALLC = hexToLin(d.wallColor || '#e8e2d4');
+      const WALLD = WALLC.map(v => v * 0.86);
+      const DOME = hexToLin(d.domeColor || '#6f7d74');
+      let g0 = Infinity;
+      for (let k = 0; k < 16; k++) {
+        const a = k / 16 * Math.PI * 2;
+        g0 = Math.min(g0, terrain.gridHeightAt(cx + Math.cos(a) * R, cz + Math.sin(a) * R));
+      }
+      const hW = d.wallH ?? 14.0;             // до карниза
+      const N = 30;
+
+      // цоколь
+      const base = new THREE.CylinderGeometry(R + 0.5, R + 0.7, 1.1, N);
+      base.translate(cx, g0 + 0.55, cz);
+      parts.push({ geo: base, color: WALLD });
+      // стена
+      const wall = new THREE.CylinderGeometry(R, R, hW, N);
+      wall.translate(cx, g0 + 1.1 + hW / 2, cz);
+      parts.push({ geo: wall, color: WALLC });
+      // пилястры и высокие окна между ними
+      const nP = 24;
+      for (let i = 0; i < nP; i++) {
+        const a = i / nP * Math.PI * 2;
+        const px = cx + Math.cos(a) * R, pz = cz + Math.sin(a) * R;
+        const pil = new THREE.BoxGeometry(0.75, hW - 1.4, 0.55);
+        pil.rotateY(-a);
+        pil.translate(px, g0 + 1.1 + (hW - 1.4) / 2, pz);
+        parts.push({ geo: pil, color: WALLD });
+        const aw = a + Math.PI / nP;
+        const wx = cx + Math.cos(aw) * (R - 0.10), wz = cz + Math.sin(aw) * (R - 0.10);
+        const win = new THREE.BoxGeometry(0.24, hW * 0.42, R * 0.135);
+        win.rotateY(-aw);
+        win.translate(wx, g0 + 1.1 + hW * 0.60, wz);
+        parts.push({ geo: win, color: [0.10, 0.12, 0.14] });
+      }
+      // карниз и парапет
+      const corn = new THREE.CylinderGeometry(R + 1.0, R + 0.6, 1.0, N);
+      corn.translate(cx, g0 + 1.1 + hW + 0.5, cz);
+      parts.push({ geo: corn, color: WALLD });
+      const par = new THREE.CylinderGeometry(R + 0.35, R + 0.35, 1.3, N);
+      par.translate(cx, g0 + 1.1 + hW + 1.0 + 0.65, cz);
+      parts.push({ geo: par, color: WALLC });
+      // пологий купол
+      const yD = g0 + 1.1 + hW + 2.3;
+      const dome = new THREE.SphereGeometry(R * 0.98, N, 14, 0, Math.PI * 2, 0, Math.PI / 2);
+      dome.scale(1, 0.30, 1);
+      dome.translate(cx, yD, cz);
+      parts.push({ geo: dome, color: DOME });
+      const lant = new THREE.CylinderGeometry(2.0, 2.4, 2.2, 12);
+      lant.translate(cx, yD + R * 0.30 - 0.2, cz);
+      parts.push({ geo: lant, color: WALLC });
+      const cap = new THREE.SphereGeometry(2.2, 12, 7, 0, Math.PI * 2, 0, Math.PI / 2);
+      cap.scale(1, 0.55, 1); cap.translate(cx, yD + R * 0.30 + 0.9, cz);
+      parts.push({ geo: cap, color: DOME });
+
+      // ---- входной портал: выступ на запад с фронтоном и колоннами
+      if (d.wall) {
+        const [wx0, wz0, wx1, wz1] = d.wall;
+        const wl = Math.hypot(wx1 - wx0, wz1 - wz0) || 1;
+        const ux = (wx1 - wx0) / wl, uz = (wz1 - wz0) / wl;
+        let nx = -uz, nz = ux;
+        const mx = (wx0 + wx1) / 2, mz = (wz0 + wz1) / 2;
+        if (nx * (cx - mx) + nz * (cz - mz) < 0) { nx = -nx; nz = -nz; }  // внутрь, к ротонде
+        const ang = Math.atan2(ux, uz);
+        const depth = Math.max(4, Math.hypot(cx - mx, cz - mz) - R + 3);
+        const hP = hW * 0.78;
+        const gP = terrain.gridHeightAt(mx, mz);
+        const blk = new THREE.BoxGeometry(wl, hP, depth);
+        blk.rotateY(ang);
+        blk.translate(mx + nx * depth / 2, gP + hP / 2, mz + nz * depth / 2);
+        parts.push({ geo: blk, color: WALLC });
+        // Фронтон строим явной трёхгранной призмой. Через CylinderGeometry с
+        // тремя сегментами он выходил тонким вертикальным лезвием: у цилиндра
+        // ось идёт вдоль Y, и никакими поворотами треугольник не ложится
+        // поперёк фасада так, как нужно.
+        {
+          const halfW = wl * 0.56, rise = 2.2, thick = 2.6;
+          const P2 = [], I2 = [];
+          const add = (u, y, v) => {
+            P2.push(mx + ux * u + nx * v, gP + hP + 0.8 + y, mz + uz * u + nz * v);
+            return P2.length / 3 - 1;
+          };
+          const f = [add(-halfW, 0, -0.2), add(halfW, 0, -0.2), add(0, rise, -0.2)];
+          const bk = [add(-halfW, 0, thick), add(halfW, 0, thick), add(0, rise, thick)];
+          I2.push(f[0], f[1], f[2]);              // лицо
+          I2.push(bk[2], bk[1], bk[0]);           // изнанка
+          for (let e = 0; e < 3; e++) {           // боковины
+            const a1 = f[e], b1 = f[(e + 1) % 3], a2 = bk[e], b2 = bk[(e + 1) % 3];
+            I2.push(a1, a2, b1, b1, a2, b2);
+          }
+          const gp = new THREE.BufferGeometry();
+          gp.setAttribute('position', new THREE.Float32BufferAttribute(P2, 3));
+          gp.setIndex(I2);
+          gp.computeVertexNormals();
+          parts.push({ geo: gp, color: WALLD });
+        }
+        const arch = new THREE.BoxGeometry(wl + 0.8, 0.8, depth * 0.5);
+        arch.rotateY(ang);
+        arch.translate(mx + nx * depth * 0.25, gP + hP + 0.4, mz + nz * depth * 0.25);
+        parts.push({ geo: arch, color: WALLD });
+        // четыре колонны перед порталом
+        const nCol = d.columns ?? 4;
+        for (let i = 0; i < nCol; i++) {
+          const t = (i + 0.5) / nCol - 0.5;
+          const px = mx + ux * wl * t * 0.86 - nx * 2.1;
+          const pz = mz + uz * wl * t * 0.86 - nz * 2.1;
+          const gc = terrain.gridHeightAt(px, pz);
+          const col = new THREE.CylinderGeometry(0.42, 0.50, hP - 1.2, 12);
+          col.translate(px, gc + 0.6 + (hP - 1.2) / 2, pz);
+          parts.push({ geo: col, color: WALLC });
+          const ab = new THREE.BoxGeometry(1.3, 0.24, 1.3);
+          ab.rotateY(ang); ab.translate(px, gc + 0.6 + hP - 1.2 + 0.12, pz);
+          parts.push({ geo: ab, color: WALLD });
+        }
+        // ступени крыльца
+        for (let i = 0; i < 4; i++) {
+          const st = new THREE.BoxGeometry(wl + 1.6 - i * 0.3, 0.18, 1.0);
+          st.rotateY(ang);
+          st.translate(mx - nx * (2.6 - i * 0.5), gP + 0.09 + i * 0.18, mz - nz * (2.6 - i * 0.5));
+          parts.push({ geo: st, color: WALLD });
+        }
+      }
+
+      const mesh = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.76, metalness: 0.05,
+      }));
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      group.add(mesh);
+      skip.add(bi);                    // сам контур из OSM больше не рисуем
+      stats.push({ name: d.name, ok: true, kontur: bi, stil: 'круглый зал панорамы' });
+      continue;
+    }
+
     // ---- ротонда с круглым ордером: колонны по ДУГЕ, а не по стене ----
     // Корпус СевГУ на Гоголя: полукруглый ризалит главного входа, шесть
     // тосканских колонн тремя спаренными парами. Раньше тут стоял пристенный
