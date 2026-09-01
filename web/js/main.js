@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=4ebce1c5';
-import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=4ebce1c5';
-import { buildStreetProps } from './props.js?v=4ebce1c5';
-import { buildYards, buildStructures } from './yards.js?v=4ebce1c5';
-import { buildFurniture } from './furniture.js?v=4ebce1c5';
-import { buildLandmarks } from './landmarks.js?v=4ebce1c5';
-import { buildSigns } from './signs.js?v=4ebce1c5';
-import { audit } from './audit.js?v=4ebce1c5';
-import { buildMap, drawMini, drawFull } from './minimap.js?v=4ebce1c5';
-import { Collider, RoadIndex } from './collision.js?v=4ebce1c5';
-import { Car, createCarMesh } from './vehicle.js?v=4ebce1c5';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=7bf44f79';
+import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=7bf44f79';
+import { buildStreetProps } from './props.js?v=7bf44f79';
+import { buildYards, buildStructures } from './yards.js?v=7bf44f79';
+import { buildFurniture } from './furniture.js?v=7bf44f79';
+import { buildLandmarks } from './landmarks.js?v=7bf44f79';
+import { buildSigns } from './signs.js?v=7bf44f79';
+import { audit } from './audit.js?v=7bf44f79';
+import { buildMap, drawMini, drawFull } from './minimap.js?v=7bf44f79';
+import { Collider, RoadIndex } from './collision.js?v=7bf44f79';
+import { Car, createCarMesh } from './vehicle.js?v=7bf44f79';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -91,6 +91,12 @@ const cam = {
   pos: new THREE.Vector3(), look: new THREE.Vector3(),
 };
 const CAM_SENS = 0.0026;       // одна чувствительность на обе оси
+// Инверсия вертикали — дело вкуса, а не правильности: замер показывает, что
+// по умолчанию мышь вверх поднимает взгляд во всех трёх режимах. Кому привычно
+// наоборот — клавиша I, и выбор запоминается между заходами.
+let invertY = false;
+try { invertY = localStorage.getItem('sev.invertY') === '1'; } catch { /* приватный режим */ }
+const mouseY = dy => (invertY ? -dy : dy);
 const PITCH_MIN = -0.35;       // −20°: камера ниже цели, смотрим снизу вверх
 const PITCH_MAX = 1.31;        // +75°: почти отвес, но не через зенит
 // кратчайшая разница углов: без неё доводка на границе ±π едет длинным путём
@@ -105,8 +111,8 @@ async function boot() {
     await step('качаю город…', 6);
     const loaded = await Terrain.load('..');
     world = loaded.world; terrain = loaded.terrain;
-    furniture = await fetch('../data/furniture.json?v=4ebce1c5').then(r => r.json());
-    landmarkDefs = await fetch('../data/landmarks.json?v=4ebce1c5').then(r => r.json()).catch(() => []);
+    furniture = await fetch('../data/furniture.json?v=7bf44f79').then(r => r.json());
+    landmarkDefs = await fetch('../data/landmarks.json?v=7bf44f79').then(r => r.json()).catch(() => []);
 
     await step('строю рельеф…', 20);
     initScene();
@@ -187,6 +193,8 @@ async function boot() {
     window.G.audit = () => audit(window.G);
     window.G.lm = lm.userData.stats;      // отчёт по достопримечательностям
     window.G.fly = fly;                   // состояние полёта — для замеров
+    window.G.walk = walk;
+    window.G.setInvertY = v => { invertY = !!v; };
     $('load').classList.add('done');
     setTimeout(() => $('load').remove(), 600);
     requestAnimationFrame(loop);
@@ -357,6 +365,15 @@ function bindInput() {
     keys.add(k);
     if (k === 'KeyE') toggleMode();
     if (k === 'KeyF') toggleFly();
+    if (k === 'KeyI') {
+      invertY = !invertY;
+      try { localStorage.setItem('sev.invertY', invertY ? '1' : '0'); } catch { /* приватный режим */ }
+      $('mode').textContent = invertY ? 'Мышь: инверсия' : 'Мышь: обычная';
+      clearTimeout(window.__invT);
+      window.__invT = setTimeout(() => {
+        $('mode').textContent = mode === 'fly' ? 'Полёт' : mode === 'walk' ? 'Пешком' : 'За рулём';
+      }, 1400);
+    }
     if (k === 'KeyC') { cam.mode = (cam.mode + 1) % CAM_MODES.length; }
     if (k === 'KeyM') { const m = $('menu'); m.classList.toggle('on'); if (m.classList.contains('on')) document.exitPointerLock?.(); }
     if (k === 'KeyR' && mode === 'car') respawn(car.pos.x, car.pos.z);
@@ -386,17 +403,17 @@ function bindInput() {
     if (!pointerLocked) return;
     if (mode === 'fly') {
       fly.yaw -= e.movementX * 0.0022;
-      fly.pitch = clamp(fly.pitch - e.movementY * 0.0022, -1.52, 1.52);
+      fly.pitch = clamp(fly.pitch - mouseY(e.movementY) * 0.0022, -1.52, 1.52);
     } else if (mode === 'walk') {
       walk.yaw -= e.movementX * 0.0022;
-      walk.pitch = clamp(walk.pitch - e.movementY * 0.0022, -1.35, 1.35);
+      walk.pitch = clamp(walk.pitch - mouseY(e.movementY) * 0.0022, -1.35, 1.35);
     } else {
       // Шаг 2-3 спецификации: смещение мыши × чувствительность → углы.
       // X крутит вокруг мировой оси Y, Y наклоняет по дуге.
       // Знак Y: мышь вперёд (movementY < 0) должна ПОДНИМАТЬ взгляд, то есть
       // опускать камеру по дуге — значит pitch убывает. Отсюда плюс.
       cam.yaw = wrapPi(cam.yaw - e.movementX * CAM_SENS);
-      cam.pitch = clamp(cam.pitch + e.movementY * CAM_SENS, PITCH_MIN, PITCH_MAX);
+      cam.pitch = clamp(cam.pitch + mouseY(e.movementY) * CAM_SENS, PITCH_MIN, PITCH_MAX);
     }
   });
 }
