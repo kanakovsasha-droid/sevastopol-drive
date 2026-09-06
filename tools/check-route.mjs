@@ -81,44 +81,44 @@ function buildGraph(roads) {
   return { adj, segments };
 }
 
-// Ближайший узел графа к точке. Через сетку, иначе на сотнях тысяч узлов
-// это заметная пауза на каждую цель.
-function nearestNode(adj, x, z) {
+// Узлы графа рядом с точкой. Возвращаем НЕ один ближайший, а всех кандидатов
+// в радиусе: у цели часто стоит обрывок сети в пару сотен узлов — тупик во
+// дворе, кусок отдельной парковки, — и проверка по одному ближайшему узлу
+// объявляла «сеть разорвана» там, где до города метров двести и он достижим.
+// На Инкермане я на это попался.
+function nodesNear(adj, x, z, radius = 400) {
   const CELL = 200;
-  if (!nearestNode.grid || nearestNode.grid.adj !== adj) {
+  if (!nodesNear.grid || nodesNear.grid.adj !== adj) {
     const g = new Map();
     for (const k of adj.keys()) {
       const [a, b] = k.split(',').map(Number);
-      const gx = Math.floor(a * SNAP / CELL), gz = Math.floor(b * SNAP / CELL);
-      const gk = gx + ',' + gz;
+      const gk = Math.floor(a * SNAP / CELL) + ',' + Math.floor(b * SNAP / CELL);
       let arr = g.get(gk);
       if (!arr) g.set(gk, arr = []);
       arr.push([k, a * SNAP, b * SNAP]);
     }
-    nearestNode.grid = { adj, g };
+    nodesNear.grid = { adj, g };
   }
-  const { g } = nearestNode.grid;
-  for (let ring = 0; ring < 40; ring++) {
-    let best = null, bd = Infinity;
-    const gx = Math.floor(x / CELL), gz = Math.floor(z / CELL);
-    for (let i = -ring; i <= ring; i++) {
-      for (let j = -ring; j <= ring; j++) {
-        if (ring && Math.max(Math.abs(i), Math.abs(j)) !== ring) continue;
-        const arr = g.get((gx + i) + ',' + (gz + j));
-        if (!arr) continue;
-        for (const [k, px, pz] of arr) {
-          const d = Math.hypot(px - x, pz - z);
-          if (d < bd) { bd = d; best = k; }
-        }
+  const { g } = nodesNear.grid;
+  const R = Math.ceil(radius / CELL);
+  const gx = Math.floor(x / CELL), gz = Math.floor(z / CELL);
+  const out = [];
+  for (let i = -R; i <= R; i++) {
+    for (let j = -R; j <= R; j++) {
+      const arr = g.get((gx + i) + ',' + (gz + j));
+      if (!arr) continue;
+      for (const [k, px, pz] of arr) {
+        const d = Math.hypot(px - x, pz - z);
+        if (d <= radius) out.push([k, d]);
       }
     }
-    if (best) return [best, bd];
   }
-  return [null, Infinity];
+  return out.sort((a, b) => a[1] - b[1]);
 }
 
 // Дейкстра. A* тут не нужен: граф укладывается в память, а запусков единицы.
-function shortestPath(adj, from, to) {
+function shortestPath(adj, from, targets) {
+  const goal = targets instanceof Set ? targets : new Set([targets]);
   const dist = new Map([[from, 0]]);
   const heap = [[0, from]];
   const pop = () => {
@@ -128,7 +128,7 @@ function shortestPath(adj, from, to) {
   };
   while (heap.length) {
     const [d, node] = pop();
-    if (node === to) return d;
+    if (goal.has(node)) return d;
     if (d > (dist.get(node) ?? Infinity)) continue;
     for (const [nb, w] of adj.get(node) || []) {
       const nd = d + w;
@@ -168,19 +168,22 @@ console.log(`связных кусков ${comp.length}, крупнейший д
 
 const start = TARGETS[0];
 const sp = project(start[1], start[2]);
-const [startNode, sd] = nearestNode(adj, sp.x, sp.z);
-if (!startNode) { console.error('НЕ НАЙДЕН стартовый узел у площади Нахимова'); process.exit(1); }
+const startCands = nodesNear(adj, sp.x, sp.z, 200);
+if (!startCands.length) { console.error('НЕ НАЙДЕН стартовый узел у площади Нахимова'); process.exit(1); }
+const [startNode, sd] = startCands[0];
 console.log(`старт: ${start[0]}, ближайшая дорога в ${sd.toFixed(0)} м\n`);
 
 let bad = 0;
 for (const [name, lat, lon] of TARGETS.slice(1)) {
   const p = project(lat, lon);
-  const [node, d] = nearestNode(adj, p.x, p.z);
-  if (!node) { console.log(`  ✗ ${name.padEnd(18)} дорог рядом нет вообще`); bad++; continue; }
-  if (d > 1200) { console.log(`  ✗ ${name.padEnd(18)} ближайшая дорога в ${d.toFixed(0)} м — данных нет`); bad++; continue; }
-  const len = shortestPath(adj, startNode, node);
+  const cands = nodesNear(adj, p.x, p.z, 500);
+  if (!cands.length) { console.log(`  ✗ ${name.padEnd(18)} дорог рядом нет вообще`); bad++; continue; }
+  const len = shortestPath(adj, startNode, new Set(cands.map(c => c[0])));
   const air = Math.hypot(p.x - sp.x, p.z - sp.z);
-  if (!isFinite(len)) { console.log(`  ✗ ${name.padEnd(18)} дороги есть, но пути нет — сеть разорвана`); bad++; continue; }
+  if (!isFinite(len)) {
+    console.log(`  ✗ ${name.padEnd(18)} дороги есть (${cands.length} узлов в 500 м), но пути нет — сеть разорвана`);
+    bad++; continue;
+  }
   const detour = len / air;
   const flag = detour > 2.6 ? '?' : '✓';
   if (flag === '?') bad++;
