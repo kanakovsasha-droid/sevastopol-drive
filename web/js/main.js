@@ -1,16 +1,16 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=59cbda35';
-import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=59cbda35';
-import { buildStreetProps } from './props.js?v=59cbda35';
-import { buildYards, buildStructures } from './yards.js?v=59cbda35';
-import { buildFurniture } from './furniture.js?v=59cbda35';
-import { buildLandmarks } from './landmarks.js?v=59cbda35';
-import { buildSigns } from './signs.js?v=59cbda35';
-import { audit } from './audit.js?v=59cbda35';
-import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=59cbda35';
-import { ChunkManager } from './chunks.js?v=59cbda35';
-import { Collider, RoadIndex } from './collision.js?v=59cbda35';
-import { Car, createCarMesh } from './vehicle.js?v=59cbda35';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=f6ddddb8';
+import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=f6ddddb8';
+import { buildStreetProps } from './props.js?v=f6ddddb8';
+import { buildYards, buildStructures } from './yards.js?v=f6ddddb8';
+import { buildFurniture } from './furniture.js?v=f6ddddb8';
+import { buildLandmarks } from './landmarks.js?v=f6ddddb8';
+import { buildSigns } from './signs.js?v=f6ddddb8';
+import { audit } from './audit.js?v=f6ddddb8';
+import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=f6ddddb8';
+import { ChunkManager } from './chunks.js?v=f6ddddb8';
+import { Collider, RoadIndex } from './collision.js?v=f6ddddb8';
+import { Car, createCarMesh } from './vehicle.js?v=f6ddddb8';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
