@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=6f18b910';
+import { PolyGrid } from './worldgen.js?v=c5537c1f';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
