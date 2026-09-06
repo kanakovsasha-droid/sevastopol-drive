@@ -75,15 +75,13 @@ export class Terrain {
     return v ? '?v=' + v : '';
   }
 
+  // Старый монолитный вход: и мир, и высоты одним куском. Игра им больше не
+  // пользуется (она грузит нарезку через loadChunked и чанки города), остался
+  // для отладочных страниц. В ЧАНКОВОМ режиме world.json не читаем ВООБЩЕ:
+  // двадцать два мегабайта на каждый заход — половина веса выкладки, а meta
+  // лежит и в terrain/index.json.
   static async load(base = '..', opts = {}) {
-    if (opts.chunked) {
-      const [world, terrain] = await Promise.all([
-        fetch(`${base}/data/world.json${Terrain.#ver()}`).then(r => r.json()),
-        Terrain.loadChunked(base, opts),
-      ]);
-      terrain.meta = world.meta;      // мир и рельеф обязаны жить в одной системе координат
-      return { world, terrain };
-    }
+    if (opts.chunked) return { world: null, terrain: await Terrain.loadChunked(base, opts) };
     const q = Terrain.#ver();
     const [world, dem, bin] = await Promise.all([
       fetch(`${base}/data/world.json${q}`).then(r => r.json()),

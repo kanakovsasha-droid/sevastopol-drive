@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=f6ddddb8';
+import { PolyGrid } from './worldgen.js?v=6f18b910';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
@@ -11,19 +11,14 @@ const rng = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967
 // buildFurniture получает только точки, рельеф, индекс дорог и растр асфальта —
 // контуров зданий среди них нет. А без них павильон встаёт прямо в стену: в
 // сырых данных OSM внутри домов лежат 9 остановок из 117, все 11 почтовых
-// ящиков и 74 «киоска» (банкоматы отмечены узлом на стене банка). Поэтому
-// контуры подтягиваем сами — один раз на модуль и заранее: импорт случается
-// за десятки секунд до вызова buildFurniture, к нему ответ давно пришёл.
-// Адрес пишем шаблонной строкой, чтобы tools/stamp.mjs не приклеил ?v=: тогда
-// он совпадает с адресом из terrain.js, и на Pages (там ответ кешируемый)
-// браузер отдаст мир из кеша вместо второй закачки. На локальном сервере
-// заголовок no-store, так что там это честное второе чтение с 127.0.0.1.
-let BUILDINGS = null;
-fetch(`../data/world.json` + (document.querySelector('meta[name="build"]')?.content ? '?v=' + document.querySelector('meta[name="build"]').content : ''))
-  .then(r => r.json())
-  // держим ТОЛЬКО контуры: вторая копия всего мира в памяти нам не нужна
-  .then(w => { BUILDINGS = new PolyGrid(w.buildings.map(b => ({ poly: b.poly, holes: b.holes })), 90); })
-  .catch(() => { BUILDINGS = null; });   // не пришло — просто не проверяем дома
+// ящиков и 74 «киоска» (банкоматы отмечены узлом на стене банка).
+//
+// Раньше контуры тянулись из data/world.json — двадцать два мегабайта ради
+// одних полигонов, и это была ПОЛОВИНА веса игры на каждый заход. Теперь
+// контуры приходят вместе с квадратом: в чанке лежат все дома, задевающие его
+// квадрат с запасом 64 м, а значит и все, внутрь которых могла попасть точка
+// мебели этого квадрата. Список берётся ДО дедупликации (data.allBuildings) —
+// дом на шве принадлежит соседу, но проверять по нему всё равно надо.
 
 function merge(parts) {
   let nv = 0, ni = 0;
@@ -353,7 +348,7 @@ function nameAtlas(names) {
   return { tex, COLS, ROWS };
 }
 
-export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones = []) {
+export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones = [], buildings = null) {
   const group = new THREE.Group();
   group.name = 'furniture';
   const rand = rng(31337);
@@ -367,6 +362,9 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
 
   // ---------------- где можно стоять ----------------
   const asphalt = (x, z) => !!(onRoad && onRoad(x, z));
+  // Контуры домов квадрата: сетка строится на месте, домов тут пара сотен.
+  const BUILDINGS = buildings && buildings.length
+    ? new PolyGrid(buildings.map(b2 => ({ poly: b2.poly, holes: b2.holes })), 90) : null;
   const inHouse = (x, z) => !!(BUILDINGS && BUILDINGS.find(x, z));
   // Остановка привязывается только к ПРОЕЗЖЕЙ улице: тропинка в сквере и
   // лестница — не маршрут автобуса, а nearest() без фильтра цепляет именно их.
@@ -563,7 +561,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
       `${body(raw, (x, z) => asphalt(x, z) || inHouse(x, z))} → `
       + `${body(stops, (x, z) => asphalt(x, z) || inHouse(x, z))}`;
     stats['переставлено объектов'] = `${movedTotal} (макс сдвиг ${movedMax.toFixed(1)} м)`;
-    if (!BUILDINGS) stats['контуры домов'] = 'не загрузились — проверка по домам пропущена';
+    if (!BUILDINGS) stats['контуры домов'] = 'в квадрате домов нет — проверка по домам пропущена';
   }
 
   // ---------------- таблички с именами остановок ----------------

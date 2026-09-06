@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=f6ddddb8';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=f6ddddb8';
-import { buildCoverage } from './coverage.js?v=f6ddddb8';
+import { SEA_FLOOR } from './terrain.js?v=6f18b910';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=6f18b910';
+import { buildCoverage } from './coverage.js?v=6f18b910';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -264,7 +264,15 @@ function roadCorridor(world, terrain, x0, z0, x1, z1, res = 5) {
     if (n < 2) continue;
 
     let h = new Float32Array(n);
-    for (let i = 0; i < n; i++) h[i] = terrain.gridHeightAt(sx[i], sz[i]);
+    // Профиль берём по СЫРЫМ высотам, а не по уже нарисованной сетке.
+    // Сетка живёт в окне вокруг игрока и переезжает вместе с ним: считая по
+    // ней, мы получали для одной и той же улицы РАЗНЫЙ профиль в зависимости
+    // от того, где стоял игрок, когда окно перекладывали. Полотно чанка
+    // сажается один раз, при сборке, и после переезда окна оказывалось то
+    // над землёй, то под ней. По сырому DEM профиль от окна не зависит —
+    // земля и полотно всегда сходятся. (На первой сборке разницы нет вовсе:
+    // сетки ещё не существует и gridHeightAt сам отвечал по heightAt.)
+    for (let i = 0; i < n; i++) h[i] = terrain.heightAt(sx[i], sz[i]);
     // Низкочастотный фильтр [1,2,1]. Но сглаживание тянет профиль к среднему,
     // и на пологом месте дорога уезжает вверх — вокруг неё коридор достраивает
     // насыпь, которой в жизни нет. Поэтому после сглаживания возвращаем профиль
@@ -932,6 +940,48 @@ export function buildRoads(world, terrain, chunk = 500) {
         ch.O.push(own); ch.S.push(surf);
       }
     }
+    // ПРОВИСАНИЕ ПОЛОТНА. Пролёт дороги — плоский четырёхугольник по четырём
+    // углам, а земля под ним склеена из треугольников сетки в девять метров.
+    // Отметки в самих углах совпадают, но между ними поверхность выпуклая — на
+    // гребне она выходит ВЫШЕ хорды, и полотно тонет в грунте на десятки
+    // сантиметров: подъёма в 14 см на это не хватает.
+    // Щупаем землю посреди пролёта и приподнимаем его углы ровно настолько,
+    // чтобы асфальт остался сверху. Там, где рельеф вдавлен коридором (и под
+    // мостом, где hFn — палуба), поправка выходит нулевой сама собой.
+    const lo = start * 3 + 1;                       // индекс Y первой вершины
+    const at = k => ch.P[lo + k * 3];
+    const px = k => ch.P[lo + k * 3 - 1], pz = k => ch.P[lo + k * 3 + 1];
+    const up = new Float32Array(mt.n);
+    for (let i = 0; i < mt.n - 1; i++) {
+      if (skipJ && midSkip(pts, i, 5.5)) continue;
+      if (skipFn && skipFn(i)) continue;
+      const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+      let need = 0;
+      // Пять проб: середины четырёх сторон и центр. Углы не щупаем — они и
+      // так стоят ровно на земле. u — вдоль пролёта, v — поперёк полотна.
+      for (const [u, v] of [[0, 0.5], [1, 0.5], [0.5, 0], [0.5, 1], [0.5, 0.5]]) {
+        const ax = px(a) + (px(c) - px(a)) * u, az = pz(a) + (pz(c) - pz(a)) * u;
+        const bx = px(b) + (px(d) - px(b)) * u, bz = pz(b) + (pz(d) - pz(b)) * u;
+        const ay = at(a) + (at(c) - at(a)) * u, by = at(b) + (at(d) - at(b)) * u;
+        const mx = ax + (bx - ax) * v, mz = az + (bz - az) * v, my = ay + (by - ay) * v;
+        const g = hFn(mx, mz) + lift - my;
+        if (g > need) need = g;
+      }
+      // Потолок поправки. На замерах хватало 30 см, и больше нам не нужно:
+      // одиночный выброс высоты не должен вздёргивать полотно над бордюром
+      // (тот живёт на своих 17 см и о поправке не знает).
+      if (need > 0.4) need = 0.4;
+      if (need > 0.005) {
+        if (need > up[i]) up[i] = need;
+        if (need > up[i + 1]) up[i + 1] = need;
+      }
+    }
+    for (let i = 0; i < mt.n; i++) {
+      if (!up[i]) continue;
+      ch.P[lo + (i * 2) * 3] += up[i];
+      ch.P[lo + (i * 2 + 1) * 3] += up[i];
+    }
+
     // Обход даёт нормаль вверх ТОЛЬКО при таком порядке: offA левее offB,
     // а нормаль митры смотрит против оси. Обратный порядок кладёт полосу лицом в землю.
     for (let i = 0; i < mt.n - 1; i++) {

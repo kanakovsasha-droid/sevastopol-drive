@@ -280,6 +280,11 @@ export class ChunkManager {
       }
       return mine;
     };
+    // Контуры домов квадрата ДО дедупликации: по ним мебель проверяет, не
+    // встала ли остановка в стену. Дом на шве принадлежит соседнему квадрату
+    // и из out.buildings уходит, а проверять по нему всё равно надо.
+    // Это только ссылка на уже разобранный массив — памяти не стоит.
+    out.allBuildings = data.buildings || [];
     for (const f of FIELDS) if (data[f]) out[f] = take(data[f], f, null);
     for (const [f, subs] of Object.entries(SUBFIELDS)) {
       if (!data[f]) continue;

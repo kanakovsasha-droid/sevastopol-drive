@@ -1,16 +1,16 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=f6ddddb8';
-import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=f6ddddb8';
-import { buildStreetProps } from './props.js?v=f6ddddb8';
-import { buildYards, buildStructures } from './yards.js?v=f6ddddb8';
-import { buildFurniture } from './furniture.js?v=f6ddddb8';
-import { buildLandmarks } from './landmarks.js?v=f6ddddb8';
-import { buildSigns } from './signs.js?v=f6ddddb8';
-import { audit } from './audit.js?v=f6ddddb8';
-import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=f6ddddb8';
-import { ChunkManager } from './chunks.js?v=f6ddddb8';
-import { Collider, RoadIndex } from './collision.js?v=f6ddddb8';
-import { Car, createCarMesh } from './vehicle.js?v=f6ddddb8';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=6f18b910';
+import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=6f18b910';
+import { buildStreetProps } from './props.js?v=6f18b910';
+import { buildYards, buildStructures } from './yards.js?v=6f18b910';
+import { buildFurniture } from './furniture.js?v=6f18b910';
+import { buildLandmarks } from './landmarks.js?v=6f18b910';
+import { buildSigns } from './signs.js?v=6f18b910';
+import { audit } from './audit.js?v=6f18b910';
+import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=6f18b910';
+import { ChunkManager } from './chunks.js?v=6f18b910';
+import { Collider, RoadIndex } from './collision.js?v=6f18b910';
+import { Car, createCarMesh } from './vehicle.js?v=6f18b910';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -240,15 +240,17 @@ function chunkTerrainReady(key, cell) {
   const x0 = cell.cx * S - P, z0 = cell.cz * S - P;
   const x1 = (cell.cx + 1) * S + P, z1 = (cell.cz + 1) * S + P;
   if (terrain.detailReady && !terrain.detailReady(x0, z0, x1, z1)) return false;
-  // Второе условие — про ПРЫЖОК через полкарты. Землю мы держим одним мешем
+  // Второе условие — про ПРЫЖОК через полкарты. Землю мы держим ОДНИМ мешем
   // на окно вокруг игрока, и сразу после jumpTo окно всё ещё стоит там, где
-  // игрок был: сетка и коридор дорог новой точки ещё не посчитаны, и квадрат
-  // сел бы по сырому DEM. Рядом с окном (обычная езда) не мешаем — там
-  // расхождение в дециметры, а вот оторванный кусок карты ждёт перекладки.
+  // игрок был: ни сетки, ни коридора дорог в новой точке ещё нет, и квадрат
+  // сел бы по грубым высотам. Признак «окно не отсюда» простой: сам игрок
+  // оказался за его пределами. При обычной езде такого не бывает —
+  // перекладка запускается за 700 м до края, — а прыжок ловится сразу.
   if (terrainWin) {
-    const d = Math.hypot(Math.max(0, terrainWin.minX - x1, x0 - terrainWin.maxX),
-                         Math.max(0, terrainWin.minZ - z1, z0 - terrainWin.maxZ));
-    if (d > chunks.keep) return false;
+    const px = mode === 'car' ? car.pos.x : mode === 'fly' ? fly.x : walk.x;
+    const pz = mode === 'car' ? car.pos.z : mode === 'fly' ? fly.z : walk.z;
+    if (px < terrainWin.minX || px > terrainWin.maxX
+     || pz < terrainWin.minZ || pz > terrainWin.maxZ) return false;
   }
   return true;
 }
@@ -524,7 +526,8 @@ function* buildChunk(d, key) {
   yield;
   const furn = buildFurniture(furniture, terrain, roads,
                               props.userData.onRoad,
-                              defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear })));
+                              defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear })),
+                              d.allBuildings || w.buildings);
   castShadows(furn);
   g.add(furn);
   lap('мебель');
@@ -754,8 +757,11 @@ function jumpTo(x, z) {
   // Окно рельефа перекладываем СРАЗУ, не дожидаясь секундной проверки в
   // цикле: пока оно стоит на старом месте, ни сетки, ни коридора дорог в
   // новой точке нет, и собранные там квадраты сели бы мимо земли.
+  // Без force: если точка и так уверенно внутри окна (прыжок по соседней
+  // улице), перекладывать нечего — лишняя перекладка стоит полторы секунды
+  // и заодно расходится с уже собранными рядом квадратами.
   if (terrain.ensure) terrain.ensure(x, z, DETAIL_ENSURE);
-  if (!terrBusy) { terrBusy = true; rebuildTerrain(x, z, true).finally(() => { terrBusy = false; }); }
+  if (!terrBusy) { terrBusy = true; rebuildTerrain(x, z).finally(() => { terrBusy = false; }); }
   wantJump = { x, z, t: performance.now() };
 }
 
