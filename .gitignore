@@ -9,3 +9,7 @@ node_modules/
 data/dem-tiles/
 # промежуточные каталоги сборки
 data/chunks-tmp/
+# сырьё сборки: качается заново, в репозиторий не кладём
+data/osm-raw/
+data/osm-raw.json
+data/*-center.json
