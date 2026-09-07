@@ -1,16 +1,16 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=c5537c1f';
-import { buildTerrain, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=c5537c1f';
-import { buildStreetProps } from './props.js?v=c5537c1f';
-import { buildYards, buildStructures } from './yards.js?v=c5537c1f';
-import { buildFurniture } from './furniture.js?v=c5537c1f';
-import { buildLandmarks } from './landmarks.js?v=c5537c1f';
-import { buildSigns } from './signs.js?v=c5537c1f';
-import { audit } from './audit.js?v=c5537c1f';
-import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=c5537c1f';
-import { ChunkManager } from './chunks.js?v=c5537c1f';
-import { Collider, RoadIndex } from './collision.js?v=c5537c1f';
-import { Car, createCarMesh } from './vehicle.js?v=c5537c1f';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=8ca68630';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=8ca68630';
+import { buildStreetProps } from './props.js?v=8ca68630';
+import { buildYards, buildStructures } from './yards.js?v=8ca68630';
+import { buildFurniture } from './furniture.js?v=8ca68630';
+import { buildLandmarks } from './landmarks.js?v=8ca68630';
+import { buildSigns } from './signs.js?v=8ca68630';
+import { audit } from './audit.js?v=8ca68630';
+import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=8ca68630';
+import { ChunkManager } from './chunks.js?v=8ca68630';
+import { Collider, RoadIndex } from './collision.js?v=8ca68630';
+import { Car, createCarMesh } from './vehicle.js?v=8ca68630';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -79,7 +79,8 @@ let chunks = null;                             // ChunkManager
 const farCells = new Map();                    // ключ чанка → силуэт дальнего слоя
 const deckParts = new Map();                   // ключ пачки → полотно мостов этого чанка
 const skipIds = new Set();                     // дома, отданные памятным зданиям целиком
-let terrainMesh = null, terrainWin = null;     // окно, на котором построен рельеф
+let ground = null;                             // квадраты земли (TerrainTiles)
+let farIndex = null;                           // far-слой, разложенный по квадратам
 let wantJump = null;                           // отложенная доводка до дороги после прыжка
 let mode = 'car';                              // 'car' | 'walk' | 'fly'
 // Свободный полёт: камера сама по себе, без машины и без рельефа под ногами.
@@ -148,8 +149,21 @@ async function boot() {
 
     await step('строю рельеф…', 26);
     initScene();
-    await rebuildTerrain(SPAWN.x, SPAWN.z);
-    lap('рельеф');
+    // far-слой раскладываем по квадратам один раз: каждый квадрат земли берёт
+    // из него только своё окно, а линейный перебор 13 тысяч домов на квадрат
+    // стоил бы полсекунды на круг.
+    farIndex = new FarIndex(far, 1024);
+    // Связность моря — на весь мир и один раз, по грубой сетке. Внутри
+    // квадрата 1024 м заливать неоткуда: в Южной бухте нет ни одной клетки
+    // открытого моря, и бухта осталась бы зелёным островом.
+    terrain.setSeaMask(coarseSeaMask(terrain, far));
+    lap('связность моря');
+    ground = new TerrainTiles();
+    // Ждём только землю ПОД машиной и вплотную к ней: остальное дорисуется
+    // на ходу, по кусочку в кадр. Раньше здесь строилось окно ±3 км целиком —
+    // полторы секунды и семь десятков файлов высот до первого кадра.
+    await warmGround(SPAWN.x, SPAWN.z);
+    lap('земля под машиной');
 
     // Коллизии и индекс улиц теперь пополняемые: пусто на старте, дома и
     // дороги приезжают вместе со своими чанками.
@@ -175,6 +189,7 @@ async function boot() {
     chunks.onBuild = buildChunk;
     chunks.onDrop = dropChunk;
     chunks.canBuild = chunkTerrainReady;
+    chunks.prof = chunkProf;
 
     // Ждём ТОЛЬКО квадрат под колёсами и его соседей по кресту: без них
     // машину некуда ставить. Остальной город догрузится на ходу.
@@ -192,13 +207,15 @@ async function boot() {
     $('stat').appendChild(document.createElement('br'));
     $('stat').appendChild(el);
 
-    window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks,
+    window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam, get mode() { return mode; } };
     window.G.audit = () => audit(window.G);
     window.G.fly = fly;
     window.G.walk = walk;
     window.G.setInvertY = v => { invertY = !!v; };
-    window.G.terrainAt = (x, z) => rebuildTerrain(x, z, true);
+    window.G.ground = ground;
+    window.G.tileProf = tileProf;
+    window.G.chunkProf = chunkProf;
     window.G.counts = counts;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
@@ -213,62 +230,184 @@ async function boot() {
   }
 }
 
-// Радиус, в котором держим детальный рельеф и на котором строится его меш.
-const TERRAIN_HALF = 3000;
-// Запас вокруг окна, который сборщик рельефа берёт под растры (opts.pad ниже).
-const TERRAIN_PAD = 500;
-// Детальные высоты нужны ШИРЕ окна рельефа: коридор дорог считает профиль по
-// осевым, попавшим в окно с запасом 400 м, и на краю читал бы coarse.
-const TERRAIN_ENSURE = TERRAIN_HALF + TERRAIN_PAD + 100;
-// А вокруг ИГРОКА высоты нужны ещё шире: квадраты города грузятся в радиусе
-// chunks.radius (2600 м), и дальний край такого квадрата уходит ещё на сторону
-// чанка. Всё, что там строится, сажается по heightAt — детальные тайлы обязаны
-// приехать РАНЬШЕ квадрата, иначе дорога встанет по coarse и уйдёт в склон.
-const DETAIL_ENSURE = 4100;
+// ------------------------------------------------------------------ земля
+// Земля нарезана по тем же квадратам 1024 м, что и город: квадрат земли
+// строится вместе с кварталом над ним и выгружается вместе с ним. Раньше это
+// был ОДИН меш на окно ±3 км, который перекладывался целиком каждую пару
+// километров пути, — полторы секунды в одном кадре, тот самый фриз на переезде.
+const P0 = new URLSearchParams(location.search);
+const GROUND_RADIUS = +P0.get('ground') || 3000;  // на сколько вокруг игрока держим землю
+const GROUND_KEEP = GROUND_RADIUS + 700;          // дальше — выгружаем (гистерезис)
+// Запас растров за краем квадрата. Не украшение: ограничение уклона в коридоре
+// дорог расходится на 300 м, и всё, что ближе этого к шву, обязано попасть в
+// окно ОБОИХ соседей — иначе улица за краем окна двигает высоту только у
+// одного из них, и на шве получается ступенька.
+const GROUND_PAD = 380;
+// Детальные высоты держим чуть шире земли: растры квадрата смотрят за его край.
+const DETAIL_KEEP = GROUND_KEEP + 900;
+
+class TerrainTiles {
+  constructor() {
+    this.size = chunks.chunk;
+    this.mesh = new Map();      // ключ → меш
+    this.job = null;            // квадрат, который собирается прямо сейчас
+    this.asked = new Set();     // за высотами под квадратом уже сходили
+    this.stats = { built: 0, dropped: 0, ms: 0, worstMs: 0 };
+    this.want = 0;              // сколько квадратов ещё не построено
+  }
+  keyAt(x, z) { return Math.floor(x / this.size) + '_' + Math.floor(z / this.size); }
+  has(key) { return this.mesh.has(key); }
+  get pending() { return this.want + (this.job ? 1 : 0); }
+
+  // расстояние от точки до квадрата (0 — точка внутри)
+  _dist(i, j, x, z) {
+    const S = this.size, x0 = i * S, z0 = j * S;
+    const dx = x < x0 ? x0 - x : x > x0 + S ? x - x0 - S : 0;
+    const dz = z < z0 ? z0 - z : z > z0 + S ? z - z0 - S : 0;
+    return Math.hypot(dx, dz);
+  }
+
+  update(x, z, budget, radius = GROUND_RADIUS) {
+    const t0 = performance.now();
+    if (this.job) this._step(t0, budget);
+    if (this.job) return;                       // квадрат ещё собирается
+    this._dropFar(x, z);
+
+    const S = this.size, R = radius, b = far.meta.bounds;
+    const list = [];
+    for (let j = Math.floor((z - R) / S); j <= Math.floor((z + R) / S); j++)
+      for (let i = Math.floor((x - R) / S); i <= Math.floor((x + R) / S); i++) {
+        const key = i + '_' + j;
+        if (this.mesh.has(key)) continue;
+        // за границами мира земли нет — там и высот нет
+        if ((i + 1) * S < b.minX || i * S > b.maxX || (j + 1) * S < b.minZ || j * S > b.maxZ) continue;
+        const d = this._dist(i, j, x, z);
+        if (d > R) continue;
+        list.push({ i, j, key, d });
+      }
+    this.want = list.length;
+    if (!list.length) return;
+    list.sort((a, c) => a.d - c.d);
+
+    // Высоты просим с опережением, но не за все сразу: сорок файлов одним
+    // залпом на старте — это те самые секунды до первого кадра.
+    let asked = 0, pick = null;
+    for (const c of list) {
+      const x0 = c.i * S - GROUND_PAD, z0 = c.j * S - GROUND_PAD;
+      const x1 = (c.i + 1) * S + GROUND_PAD, z1 = (c.j + 1) * S + GROUND_PAD;
+      if (!this.asked.has(c.key)) {
+        if (asked >= 4) { if (pick) break; else continue; }
+        this.asked.add(c.key);
+        asked++;
+        terrain.ensureRect(x0, z0, x1, z1);
+      }
+      // Пока детальные высоты под квадратом не приехали, собирать нельзя:
+      // всё сядет по грубой сетке, а это промах до восемнадцати метров.
+      if (!pick && terrain.detailReady(x0, z0, x1, z1)) pick = c;
+      if (pick && asked >= 4) break;
+    }
+    if (!pick) return;
+    this.job = {
+      key: pick.key, ms: 0, cell: { i: pick.i, j: pick.j },
+      gen: buildTerrainTile(terrain, farIndex, {
+        cx: pick.i, cz: pick.j, key: pick.key, size: S, pad: GROUND_PAD,
+        sea: terrain.sea,
+      }),
+    };
+    this._step(t0, budget);
+  }
+
+  _step(t0, budget) {
+    const j = this.job;
+    for (;;) {
+      let r;
+      const tp = performance.now();
+      try { r = j.gen.next(); }
+      catch (e) { console.error('земля', j.key, 'не собралась:', e); r = { done: true, value: null }; }
+      const dms = performance.now() - tp;
+      tileProf[tileProf.cur] = (tileProf[tileProf.cur] || 0) + dms;
+      if (dms > (tileProf.worst[tileProf.cur] || 0)) tileProf.worst[tileProf.cur] = Math.round(dms);
+      if (r.done) {
+        const ms = j.ms + (performance.now() - t0);
+        if (r.value) {
+          r.value.userData.cell = j.cell;
+          scene.add(r.value);
+          this.mesh.set(j.key, r.value);
+        }
+        this.job = null;
+        this.stats.built++; this.stats.ms += ms;
+        if (ms > this.stats.worstMs) this.stats.worstMs = ms;
+        return;
+      }
+      if (performance.now() - t0 >= budget) { j.ms += performance.now() - t0; return; }
+    }
+  }
+
+  // По паре за кадр: после прыжка через полкарты разом устаревают все сорок
+  // квадратов, и сорок geometry.dispose() в одном кадре — это видимая пауза.
+  _dropFar(x, z, n = 2) {
+    for (const [key, m] of this.mesh) {
+      const { i, j } = m.userData.cell;
+      if (this._dist(i, j, x, z) <= GROUND_KEEP) continue;
+      scene.remove(m);
+      m.geometry.dispose();                 // материал общий на все квадраты, его не трогаем
+      this.mesh.delete(key);
+      this.asked.delete(key);
+      terrain.dropSurface(key);
+      this.stats.dropped++;
+      if (--n <= 0) return;
+    }
+  }
+}
+
+// Земля ПОД МАШИНОЙ к первому кадру — и только она. Соседние квадраты доедут
+// за первые доли секунды, по кусочку в кадр; ждать их — это лишние файлы
+// высот и лишняя секунда на экране загрузки.
+async function warmGround(x, z, ms = 2500) {
+  const t0 = performance.now();
+  const key = ground.keyAt(x, z);
+  let tick = 0;
+  while (performance.now() - t0 < ms) {
+    // Радиус на старте маленький нарочно: за высотами ходит каждый квадрат
+    // сам, и полный круг в три километра — это семь десятков файлов до
+    // первого кадра.
+    ground.update(x, z, 30, 200);
+    if (ground.has(key)) break;
+    // Ждём КОРОТКО: step() держит два кадра ради полосы загрузки, и на
+    // десяти оборотах это треть секунды чистого ожидания.
+    if ((tick++ & 7) === 7) await step('строю рельеф…', 26 + Math.min(18, (performance.now() - t0) / ms * 18));
+    else await new Promise(r => setTimeout(r, 0));
+  }
+}
 
 // Готов ли рельеф под квадратом города. Всё, что строит buildChunk — полотно
 // дорог, дома, деревья, — сажается по высотам ОДИН раз и потом не двигается.
-// Если собрать квадрат раньше, чем приедут его детальные высоты, геометрия
-// встанет по грубой сетке coarse: на трассе это промах до восемнадцати метров,
-// и дорожное полотно оказывается закопанным в склон. Отсюда и весь баг
-// «на трассе не видно дороги» — в городе он не проявлялся, потому что там
-// высоты приезжают вместе со стартовым окном рельефа.
+// Земля под квадратом строится РАНЬШЕ него и по тем же границам: нет земли —
+// нет и квартала, иначе дороги и дома сядут по сырому DEM мимо коридора.
+// Плюс детальные высоты: собрать квадрат по грубой сетке coarse — это промах
+// до восемнадцати метров, отсюда весь баг «на трассе не видно дороги».
 // PAD тот же, что берёт buildChunk под свои растры, плюс запас на деревья
 // и тротуары, которые щупают землю чуть за краем квадрата.
 function chunkTerrainReady(key, cell) {
+  if (!ground.has(key)) return false;
   const S = chunks.chunk, P = 300;
   const x0 = cell.cx * S - P, z0 = cell.cz * S - P;
   const x1 = (cell.cx + 1) * S + P, z1 = (cell.cz + 1) * S + P;
-  if (terrain.detailReady && !terrain.detailReady(x0, z0, x1, z1)) return false;
-  // Второе условие — про ПРЫЖОК через полкарты. Землю мы держим ОДНИМ мешем
-  // на окно вокруг игрока, и сразу после jumpTo окно всё ещё стоит там, где
-  // игрок был: ни сетки, ни коридора дорог в новой точке ещё нет, и квадрат
-  // сел бы по грубым высотам. Признак «окно не отсюда» простой: сам игрок
-  // оказался за его пределами. При обычной езде такого не бывает —
-  // перекладка запускается за 700 м до края, — а прыжок ловится сразу.
-  if (terrainWin) {
-    const px = mode === 'car' ? car.pos.x : mode === 'fly' ? fly.x : walk.x;
-    const pz = mode === 'car' ? car.pos.z : mode === 'fly' ? fly.z : walk.z;
-    if (px < terrainWin.minX || px > terrainWin.maxX
-     || pz < terrainWin.minZ || pz > terrainWin.maxZ) return false;
-  }
-  return true;
+  return !terrain.detailReady || terrain.detailReady(x0, z0, x1, z1);
 }
 
-// Высоты. Соседняя задача переводит terrain.js на чанки — если у него уже
-// появился свой загрузчик, идём через него; иначе поднимаем прежний Float32
-// террарий одним куском. world.json больше не читаем ВООБЩЕ: два мегабайта
-// разбора в главном потоке — это и есть та секунда, которой не хватало.
+// Высоты. Чанковый рельеф, если он выложен: heightAt отвечает всегда (грубо по
+// coarse.bin), а детальные квадраты подтягивает ensure(). world.json не читаем
+// ВООБЩЕ: два мегабайта разбора в главном потоке — это и есть та секунда,
+// которой не хватало.
 async function loadTerrain(meta, v) {
   const q = v ? '?v=' + v : '';
-  // Чанковый рельеф, если он уже выложен: heightAt отвечает всегда (грубо по
-  // coarse.bin), а детальные квадраты подтягивает ensure().
   if (typeof Terrain.loadChunked === 'function') {
     try {
-      // keep заметно больше того, что просим: prune считает от точки запроса,
-      // а просим мы то вокруг игрока, то вокруг центра окна рельефа — при
-      // тесном пороге тайлы вымывались бы и качались по второму разу.
-      const t = await Terrain.loadChunked('..', { radius: TERRAIN_ENSURE, keep: DETAIL_ENSURE + 1200 });
+      // keep заметно больше того, что просим: за высотами ходит каждый квадрат
+      // земли отдельно, и при тесном пороге тайлы вымывались бы и качались по
+      // второму разу.
+      const t = await Terrain.loadChunked('..', { radius: GROUND_RADIUS, keep: DETAIL_KEEP });
       t.meta = meta;                  // мир и рельеф — в одной системе координат
       return t;
     } catch (e) {
@@ -280,61 +419,6 @@ async function loadTerrain(meta, v) {
     fetch(`../data/terrain.bin${q}`).then(r => r.arrayBuffer()),
   ]);
   return new Terrain(meta, dem, new Float32Array(bin));
-}
-
-// Рельеф пока строится ОДНИМ мешем на окно вокруг игрока. Для города 5×5 это
-// весь мир; для полной карты с коридором до Ялты окно ограничено — иначе
-// сетка 900×900 растянется на пятьдесят километров и станет бесполезной.
-// Настоящая чанковая земля приедет из terrain.js, здесь остаётся только
-// перестроить меш, если игрок ушёл далеко за край окна.
-async function rebuildTerrain(x, z, force = false) {
-  const b = far.meta.bounds;
-  const win = {
-    minX: Math.max(b.minX, x - TERRAIN_HALF), maxX: Math.min(b.maxX, x + TERRAIN_HALF),
-    minZ: Math.max(b.minZ, z - TERRAIN_HALF), maxZ: Math.min(b.maxZ, z + TERRAIN_HALF),
-  };
-  if (!force && terrainWin
-      && x > terrainWin.minX + 900 && x < terrainWin.maxX - 900
-      && z > terrainWin.minZ + 900 && z < terrainWin.maxZ - 900) return;
-  if (terrain.ensure) await terrain.ensure(x, z, TERRAIN_ENSURE);
-  // Перекладка окна рельефа синхронна и стоит полторы секунды: пока земля
-  // строится ОДНИМ мешем, спрятать это нечем — но хотя бы честно скажем, что
-  // происходит, и дадим кадру нарисоваться до остановки.
-  const note = $('chunkstat');
-  if (note && terrainWin) {
-    note.textContent = 'перестраиваю рельеф…';
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  }
-  const hit = (p) => {
-    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
-    for (let i = 0; i < p.length; i += 2) {
-      if (p[i] < x0) x0 = p[i]; if (p[i] > x1) x1 = p[i];
-      if (p[i + 1] < z0) z0 = p[i + 1]; if (p[i + 1] > z1) z1 = p[i + 1];
-    }
-    return x1 > win.minX - 400 && x0 < win.maxX + 400 && z1 > win.minZ - 400 && z0 < win.maxZ + 400;
-  };
-  const w = {
-    meta: { ...far.meta, bounds: win },
-    buildings: (far.buildings || []).filter(o => hit(o.poly)),
-    roads: (far.roads || []).filter(o => hit(o.pts)),
-    green: (far.green || []).filter(o => hit(o.poly)),
-    coast: (far.coast || []).filter(o => hit(o.pts)),
-    water: (far.water || []).filter(o => hit(o.poly)),
-    rail: [], areas: [], junctions: [], crossings: [], places: {},
-  };
-  if (terrainMesh) {
-    scene.remove(terrainMesh);
-    terrainMesh.traverse(o => { o.geometry?.dispose(); });
-  }
-  // Запас вокруг окна режем: по умолчанию сборщик берёт 1400 м с каждой
-  // стороны, а это +45% площади всех растров — на них и уходит вся секунда
-  // с лишним. Сегменты держим около девяти метров на ячейку, как было.
-  const side = Math.max(win.maxX - win.minX, win.maxZ - win.minZ) + 2 * TERRAIN_PAD;
-  terrainMesh = buildTerrain(terrain, w, {
-    pad: TERRAIN_PAD, segments: clamp(Math.round(side / 9), 200, 900),
-  });
-  scene.add(terrainMesh);
-  terrainWin = win;
 }
 
 // ------------------------------------------------------------------ дальний слой
@@ -437,6 +521,13 @@ const PROF = new URLSearchParams(location.search).has('prof');
 // что давала сборка всего города разом (G.counts).
 const counts = {};
 
+// Куда уходит время сборки квартала. Считает МЕНЕДЖЕР: генератор рвётся на
+// кусочки по кадрам, и секундомер внутри него мерил бы заодно всё, что
+// нарисовалось между шагами. Здесь только имя текущего этапа; сумма и худший
+// шаг — в G.chunkProf.
+export const chunkProf = { cur: '', worst: {} };
+const at = n => { chunkProf.cur = n; };
+
 const fill = (src, keys) => {
   const out = {};
   for (const k of keys) out[k] = (src && src[k]) || [];
@@ -469,7 +560,10 @@ function* buildChunk(d, key) {
   // стоит те самые полтораста миллисекунд на плотном квартале.
   const prof = PROF ? [] : null;
   let pt = performance.now();
-  const lap = n => { if (prof) { prof.push(n + ' ' + (performance.now() - pt).toFixed(0)); pt = performance.now(); } };
+  // Считаем ЧИСТОЕ время этапа: после каждого yield менеджер успевает нарисовать
+  // кадр (а то и не один), и секундомер, не сбрасываемый на возврате, приписывал
+  // этапу всю эту чужую работу — «площадки 3332 мс» на пустом месте.
+  const lap = n => { if (prof) prof.push(n + ' ' + (performance.now() - pt).toFixed(0)); };
   const g = new THREE.Group();
   g.name = 'чанк ' + part;
   g.userData.part = part;
@@ -479,8 +573,10 @@ function* buildChunk(d, key) {
   // Группу отдаём менеджеру СРАЗУ, первым же yield: если сборка развалится на
   // середине, он всё равно будет знать, что снимать со сцены и из индексов.
   yield g;
+  pt = performance.now();
 
-  const rg = buildRoads(w, terrain);
+  at('дороги');
+  const rg = yield* buildRoads(w, terrain);
   rg.userData.coverage = null;      // растр покрытия нужен только на сборке
   g.add(rg);
   // Полотно мостов сборщик дорог ставит в terrain целиком, затирая чужое.
@@ -492,38 +588,45 @@ function* buildChunk(d, key) {
   roads.add(part, w.roads);
   collider.add(part, w.buildings);
   lap('дороги');
-  yield;
+  yield; pt = performance.now();
 
-  g.add(buildAreas(w, terrain));
+  at('площадки');
+  g.add(yield* buildAreas(w, terrain));
   lap('площадки');
-  yield;
+  yield; pt = performance.now();
+  at('дворы');
   g.add(buildYards(w, terrain));
   lap('дворы');
-  yield;
+  yield; pt = performance.now();
+  at('сооружения');
   g.add(buildStructures(w, terrain));
   lap('сооружения');
-  yield;
+  yield; pt = performance.now();
 
   const defs = d.landmarks || [];
+  at('памятные');
   const lm = buildLandmarks(w, terrain, defs, roads);
   g.add(lm);
   lap('памятные');
-  yield;
+  yield; pt = performance.now();
   // Дом, отданный памятному зданию, не должен рисоваться ещё и рядовым.
   // Список ведём по id: соседний чанк, где тот же дом лежит копией, обязан
   // его пропустить — иначе сквозь Панораму торчат обычные этажи.
   const skip = new Set(lm.userData.skip);
   w.buildings.forEach((b, i) => { if (b.id && skipIds.has(b.id)) skip.add(i); });
   for (const i of skip) { const b = w.buildings[i]; if (b && b.id) skipIds.add(b.id); }
-  g.add(buildBuildings(w, terrain, 500, skip));
+  at('дома');
+  g.add(yield* buildBuildings(w, terrain, 500, skip));
   lap('дома');
-  yield;
+  yield; pt = performance.now();
 
+  at('деревья');
   const props = buildStreetProps(w, terrain, roads);
   g.add(props);
   for (const [k, v] of Object.entries(props.userData.counts || {})) counts[k] = (counts[k] || 0) + v;
   lap('деревья');
-  yield;
+  yield; pt = performance.now();
+  at('мебель');
   const furn = buildFurniture(furniture, terrain, roads,
                               props.userData.onRoad,
                               defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear })),
@@ -531,7 +634,8 @@ function* buildChunk(d, key) {
   castShadows(furn);
   g.add(furn);
   lap('мебель');
-  yield;
+  yield; pt = performance.now();
+  at('вывески');
   g.add(buildSigns(w, terrain, roads));
   lap('вывески');
 
@@ -541,13 +645,20 @@ function* buildChunk(d, key) {
 // Выгрузка. Геометрию освобождаем обязательно — без dispose видеопамять
 // растёт с каждым проездом. Материалы каждый сборщик создаёт свои, на чанк,
 // поэтому их тоже освобождаем; общие (рельеф, вода, силуэт) сюда не попадают.
-function dropChunk(g, key) {
-  scene.remove(g);
-  const seen = new Set();
-  g.traverse(o => {
+//
+// Но НЕ сразу: dispose каждой геометрии и каждой текстуры — это отдельный
+// вызов драйверу, и плотный квартал их отдаёт под сотню. После прыжка через
+// полкарты устаревают все тридцать кварталов разом, и на этом кадр вставал на
+// сотню миллисекунд. Со сцены снимаем сейчас же, а освобождаем по кусочку.
+const junk = [];
+function drainJunk(ms = 2) {
+  const t0 = performance.now();
+  const seen = junk.seen || (junk.seen = new Set());
+  while (junk.length && performance.now() - t0 < ms) {
+    const o = junk.pop();
     o.geometry?.dispose();
-    const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
-    for (const m of ms) {
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) {
       if (seen.has(m)) continue;
       seen.add(m);
       // Вывески магазинов и указатели — это CanvasTexture, и material.dispose()
@@ -556,7 +667,13 @@ function dropChunk(g, key) {
       for (const k in m) { const v = m[k]; if (v && v.isTexture) v.dispose(); }
       m.dispose();
     }
-  });
+  }
+  if (!junk.length) seen.clear();
+}
+
+function dropChunk(g, key) {
+  scene.remove(g);
+  g.traverse(o => { if (o.geometry || o.material) junk.push(o); });
   const part = g.userData.part;
   roads.remove(part);
   collider.remove(part);
@@ -585,13 +702,21 @@ function installDeck() {
 async function warmup(x, z, timeout = 4000) {
   const key = chunks.keyAt(x, z);
   const t0 = performance.now();
+  // Пока идёт загрузка, просим ТОЛЬКО ближний круг: полный радиус — это три
+  // десятка файлов до первого кадра, а нужен из них один, под колёсами.
+  const full = chunks.radius;
+  chunks.radius = 1300;
+  let tick = 0;
   while (performance.now() - t0 < timeout) {
     chunks.update(x, z);
     if (chunks.has(key)) break;                                  // под колёсами есть улица
     if (!chunks.cells.has(key) && !chunks.pending) break;         // здесь просто пусто
-    const pct = 72 + Math.min(26, (performance.now() - t0) / timeout * 26);
-    await step(`поднимаю квартал вокруг… ${chunks.loaded}`, pct);
+    if ((tick++ & 7) === 7) {
+      const pct = 72 + Math.min(26, (performance.now() - t0) / timeout * 26);
+      await step(`поднимаю квартал вокруг… ${chunks.loaded}`, pct);
+    } else await new Promise(r => setTimeout(r, 0));
   }
+  chunks.radius = full;
 }
 
 // Включить отбрасывание тени у пачек InstancedMesh. receiveShadow им не даём:
@@ -754,14 +879,10 @@ function jumpTo(x, z) {
   if (mode === 'car') { car.reset(x, z, car.yaw); cam.carYaw = car.yaw; }
   else { walk.x = x; walk.z = z; }
   chunks.update(x, z);
-  // Окно рельефа перекладываем СРАЗУ, не дожидаясь секундной проверки в
-  // цикле: пока оно стоит на старом месте, ни сетки, ни коридора дорог в
-  // новой точке нет, и собранные там квадраты сели бы мимо земли.
-  // Без force: если точка и так уверенно внутри окна (прыжок по соседней
-  // улице), перекладывать нечего — лишняя перекладка стоит полторы секунды
-  // и заодно расходится с уже собранными рядом квадратами.
-  if (terrain.ensure) terrain.ensure(x, z, DETAIL_ENSURE);
-  if (!terrBusy) { terrBusy = true; rebuildTerrain(x, z).finally(() => { terrBusy = false; }); }
+  // Землю в новой точке очередь квадратов подхватит в ближайших кадрах сама:
+  // она считается от игрока. Перекладывать окно, как раньше, больше не надо —
+  // вместе с ним ушли и полторы секунды на прыжок.
+  ground.update(x, z, 4);
   wantJump = { x, z, t: performance.now() };
 }
 
@@ -1081,8 +1202,9 @@ function updateCamera(dt) {
     );
     // Земля и стены. Радиус не рвём рывком: подтягиваем камеру по прямой к
     // цели, пока не выйдет из препятствия — так делает и оригинал.
-    const ground = terrain.gridHeightAt(want.x, want.z) + 0.9;
-    if (want.y < ground) want.y = ground;
+    // (имя не ground: так теперь зовётся сам набор квадратов земли)
+    const floorY = terrain.gridHeightAt(want.x, want.z) + 0.9;
+    if (want.y < floorY) want.y = floorY;
     for (let k = 0; k < 3; k++) {
       const probe = new THREE.Vector3(want.x, 0, want.z);
       if (!collider.resolve(probe, 0.6)) break;
@@ -1175,6 +1297,7 @@ function updateHUD(dt) {
   if (cs) {
     const mb = performance.memory ? ` · ${(performance.memory.usedJSHeapSize / 1048576).toFixed(0)} МБ` : '';
     cs.textContent = `${chunks.loaded} чанк. ${chunks.pending ? '(+' + chunks.pending + ')' : ''}`
+      + ` · земля ${ground.mesh.size}${ground.pending ? ' (+' + ground.pending + ')' : ''}`
       + ` · ${(renderer.info.render.triangles / 1000).toFixed(0)}k тр${mb}`;
   }
 
@@ -1187,8 +1310,7 @@ function updateHUD(dt) {
 
 // ------------------------------------------------------------------ цикл
 let prev = performance.now();
-let terrCheck = 1, terrBusy = false;
-let lastEnsureX = Infinity, lastEnsureZ = Infinity;
+let lastPruneX = Infinity, lastPruneZ = Infinity;
 function loop(now) {
   const dt = Math.min((now - prev) / 1000, 0.1);
   prev = now;
@@ -1212,30 +1334,27 @@ function loop(now) {
   // полёте город обязан грузиться так же, как за рулём.
   const sx = mode === 'car' ? car.pos.x : mode === 'fly' ? fly.x : walk.x;
   const sz = mode === 'car' ? car.pos.z : mode === 'fly' ? fly.z : walk.z;
+  // Бюджет кадра делим: сперва земля (по ней сядет всё остальное), потом
+  // кварталы. Пока земли под ногами нет — старт, прыжок через полкарты —
+  // даём больше: несколько кадров по 35 мс лучше, чем дыра под машиной.
+  drainJunk(2);
+  const tGround = performance.now();
+  // Бюджет на достройку мира — ДОЛЯ кадра, а не константа. На быстрой машине
+  // это десяток миллисекунд, и кадр остаётся шестидесятым; на медленной (или
+  // в headless, где кадр и так по сто миллисекунд) — до трети секунды, иначе
+  // круг в три километра заполняется полминуты. Земля идёт первой: по ней
+  // садится всё остальное. Пока земли под ногами нет вовсе (старт, прыжок
+  // через полкарты) — отдаём ей почти весь бюджет.
+  const budget = clamp(dt * 300, 8, 24);
+  ground.update(sx, sz, budget * (ground.has(ground.keyAt(sx, sz)) ? 0.5 : 0.8));
+  chunks.msBudget = Math.max(3, budget - (performance.now() - tGround));
   chunks.update(sx, sz);
   settleJump();
-  // Детальные высоты качаем ВОКРУГ ИГРОКА и с опережением: квадраты города
-  // грузятся в радиусе chunks.radius, и высоты под ними обязаны приехать
-  // раньше самих квадратов — иначе всё, что в них построится, сядет по coarse.
-  // Раньше ensure звался только при перекладке окна рельефа, то есть раз в
-  // пару километров, и на трассе квадраты собирались по грубой сетке.
-  if (terrain.ensure && Math.hypot(sx - lastEnsureX, sz - lastEnsureZ) > 160) {
-    lastEnsureX = sx; lastEnsureZ = sz;
-    terrain.ensure(sx, sz, DETAIL_ENSURE);
-  }
-  // Рельеф пока один меш на окно; если игрок ушёл к его краю (коридор трассы),
-  // перекладываем окно. Проверяем раз в секунду, не каждый кадр.
-  terrCheck -= dt;
-  if (terrCheck <= 0) {
-    terrCheck = 1;
-    if (!terrBusy && terrainWin
-        && (sx < terrainWin.minX + 700 || sx > terrainWin.maxX - 700
-         || sz < terrainWin.minZ + 700 || sz > terrainWin.maxZ - 700)) {
-      const b = far.meta.bounds;
-      const edge = sx <= b.minX + 700 || sx >= b.maxX - 700
-                || sz <= b.minZ + 700 || sz >= b.maxZ - 700;
-      if (!edge) { terrBusy = true; rebuildTerrain(sx, sz, true).finally(() => { terrBusy = false; }); }
-    }
+  // Детальные высоты под собой квадраты земли просят сами; здесь только
+  // выгружаем дальние, иначе за поездку через город наберётся весь охват.
+  if (terrain.prune && Math.hypot(sx - lastPruneX, sz - lastPruneZ) > 320) {
+    lastPruneX = sx; lastPruneZ = sz;
+    terrain.prune(sx, sz, DETAIL_KEEP);
   }
 
   carMesh.position.copy(car.pos);

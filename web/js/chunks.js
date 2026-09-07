@@ -1,12 +1,18 @@
 // Потоковая подгрузка города квадратами по 1024 м. Контракт — docs/CHUNKS.md.
 //
-// Три правила, из-за которых всё и написано именно так:
+// Пять правил, из-за которых всё и написано именно так:
 //   1. Качаем и разбираем JSON в воркере: разбор чанка стоит десятки
 //      миллисекунд, в главном потоке это пропущенный кадр на каждом квартале.
 //   2. Собираем НЕ БОЛЬШЕ ОДНОГО чанка за кадр. Сборка геометрии синхронна;
 //      два-три чанка подряд — уже заметный рывок.
 //   3. Выгружаем с гистерезисом: грузим по radius, держим до keep. Без запаса
 //      чанк на границе радиуса дёргается «загрузился — выгрузился» каждый кадр.
+//   4. Выгружаем ПО ОЧЕРЕДИ, по паре за кадр. Прыжок через полкарты разом
+//      обесценивает все три десятка квадратов, а выгрузка одного — это сотни
+//      dispose и снятие с индексов: все сразу давали 600 мс паузы.
+//   5. Сирот выгруженного квадрата (объект лежит и у соседа) пересобираем
+//      ТОЙ ЖЕ очередью, что и обычные квадраты. Раньше их домматывали разом
+//      прямо в выгрузке — длинная улица через полгорода стоила там 130 мс.
 
 // Поля чанка, которые дедуплицируются по id. Объект, попавший в несколько
 // чанков (длинная улица, дом на шве), лежит в каждом из них целиком, но
@@ -45,6 +51,8 @@ export class ChunkManager {
     this.refs = new Map();       // id → Set(чанки, где объект лежит)
     this.shared = new Map();     // id → { f, s, o } для объектов из двух и более чанков
     this.queue = [];             // ключи к загрузке, отсортированы по важности
+    this.dropQueue = [];         // ключи к выгрузке — по паре за кадр, не все разом
+    this.orphans = [];           // осиротевшие объекты, ждут пересборки
     this.building = null;        // чанк, который собирается прямо сейчас
     this.loading = new Set();
     this.built = new Set();
@@ -125,11 +133,13 @@ export class ChunkManager {
       this._scan(x, z);
     }
     this._pump();
+    this._dropSome(x, z);
     this._buildOne();
   }
 
   get pending() {
-    return this.queue.length + this.loading.size + this.ready.size + (this.building ? 1 : 0);
+    return this.queue.length + this.loading.size + this.ready.size
+         + this.orphans.length + (this.building ? 1 : 0);
   }
   get loaded() { return this.built.size; }
   has(key) { return this.built.has(key); }
@@ -196,7 +206,23 @@ export class ChunkManager {
   _buildOne() {
     const t0 = performance.now();
     if (this.building) this._step(t0);
-    if (this.building || !this.ready.size || !this.onBuild) return;
+    if (this.building || !this.onBuild) return;
+    // Сироты выгруженного квадрата — такая же сборка, как обычная, и такая же
+    // тяжёлая: длинная улица через полгорода. Разом её домотать нельзя, это
+    // сотня миллисекунд ровно в кадре выгрузки.
+    if (this.orphans.length) {
+      const j = this.orphans.shift();
+      if (!this.built.has(j.host)) return;          // хозяин успел уехать сам
+      try {
+        const r = this.onBuild(j.data, j.host);
+        if (r && typeof r.next === 'function') {
+          this.building = { key: j.host, gen: r, out: [], ms: 0, host: j.host };
+          this._step(t0);
+        } else if (r) this.groups.get(j.host).push(...(Array.isArray(r) ? r : [r]));
+      } catch (e) { console.error('сироты для', j.host, e); }
+      return;
+    }
+    if (!this.ready.size) return;
 
     // Из готовых берём самый нужный: пока качалось, игрок уехал, и первым
     // должен собраться тот, в который он въезжает, а не тот, что скачался.
@@ -232,12 +258,24 @@ export class ChunkManager {
     const b = this.building;
     do {
       let r;
+      const tp = performance.now();
       try { r = b.gen.next(); }
       catch (e) { console.error('чанк', b.key, 'не собрался:', e); r = { done: true }; }
+      if (this.prof) {
+        const d = performance.now() - tp, k = this.prof.cur || '?';
+        this.prof[k] = (this.prof[k] || 0) + d;
+        if (d > (this.prof.worst[k] || 0)) this.prof.worst[k] = Math.round(d);
+      }
       if (r.value) b.out.push(...(Array.isArray(r.value) ? r.value : [r.value]));
       if (r.done) {
         b.ms += performance.now() - t0;
         this.building = null;
+        if (b.host) {                       // пачка сирот — она живёт у хозяина
+          const g = this.groups.get(b.host);
+          if (g) g.push(...b.out);
+          else for (const o of b.out) { try { this.onDrop && this.onDrop(o, b.host); } catch { /* уже выгружен */ } }
+          return;
+        }
         this._done(b.key, b.out, b.ms);
         return;
       }
@@ -296,10 +334,23 @@ export class ChunkManager {
   }
 
   // ------------------------------------------------------------- выгрузка
+  // Прыжок через полкарты разом обесценивает ВСЕ загруженные квадраты, а
+  // выгрузка одного — это сотни geometry.dispose() и текстуры вывесок.
+  // Тридцать квадратов в одном кадре давали шестьсот миллисекунд паузы ровно
+  // в момент прыжка. Поэтому выгружаем по паре за кадр, из очереди.
+  _dropSome(x, z, n = 2) {
+    while (n-- > 0 && this.dropQueue.length) {
+      const key = this.dropQueue.shift();
+      if (!this.built.has(key)) continue;
+      if (this._dist(this.cells.get(key), x, z) <= this.keep) continue;   // вернулись — оставляем
+      this._drop(key);
+    }
+  }
+
   _dropFar(x, z) {
     for (const key of [...this.built]) {
       if (this._dist(this.cells.get(key), x, z) <= this.keep) continue;
-      this._drop(key);
+      if (!this.dropQueue.includes(key)) this.dropQueue.push(key);
     }
     // То, что успело скачаться, но собирать уже незачем
     for (const key of [...this.ready.keys()]) {
@@ -362,25 +413,15 @@ export class ChunkManager {
       this.owner.set(id, host);          // теперь объект держит хозяин
       this.contains.get(host)?.push(id);
     }
-    try {
-      let g = this.onBuild(data, host);
-      if (g && typeof g.next === 'function') {          // пачка маленькая — домотаем разом
-        const out = [];
-        for (let r = g.next(); ; r = g.next()) {
-          if (r.value) out.push(...(Array.isArray(r.value) ? r.value : [r.value]));
-          if (r.done) break;
-        }
-        g = out;
-      }
-      if (g) this.groups.get(host).push(...(Array.isArray(g) ? g : [g]));
-    } catch (e) { console.error('сироты чанка', key, e); }
+    this.orphans.push({ data, host });
   }
 
   // Всё снести (смена набора данных, отладка)
   clear() {
     for (const key of [...this.built]) this._drop(key);
     this.building = null;
-    this.ready.clear(); this.queue.length = 0; this.state.clear();
+    this.ready.clear(); this.queue.length = 0; this.dropQueue.length = 0;
+    this.orphans.length = 0; this.state.clear();
     this.owner.clear(); this.refs.clear(); this.shared.clear(); this.contains.clear();
   }
 }

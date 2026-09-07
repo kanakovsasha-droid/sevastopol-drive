@@ -45,10 +45,15 @@ export class Terrain {
     t.unit = d.unit ?? 0.1;
 
     const c = index.coarse;
+    // Грубая сетка приезжает ПЕРВОЙ и целиком, поэтому её вес — это время до
+    // первого кадра. Float32 тут был расточительством: 54 метра на пиксель,
+    // а хранили сантиметры. Int16 в дециметрах вдвое легче (4.0 → 2.0 МБ) и
+    // точнее самой сетки на два порядка. Формат читаем из индекса — старая
+    // выкладка (float32) продолжает работать без правок.
     t.coarse = {
       n2: 2 ** c.zoom * c.tileSize, px0: c.px0, py0: c.py0,
       w: c.width, h: c.height, unit: c.unit ?? 1,
-      data: new Float32Array(coarseBuf),
+      data: c.type === 'int16' ? new Int16Array(coarseBuf) : new Float32Array(coarseBuf),
     };
 
     t.loadChunk = loadChunk;
@@ -159,9 +164,24 @@ export class Terrain {
   // за одним и тем же чанком повторно не ходим, уже загруженный не перезапрашиваем.
   async ensure(x, z, radius = this.radius) {
     if (this.mode !== 'chunk') return;
+    const jobs = this._want(x - radius, z - radius, x + radius, z + radius);
+    this.prune(x, z);
+    if (jobs.length) await Promise.all(jobs);
+  }
+
+  // Высоты на прямоугольнике — БЕЗ выгрузки дальних. Квадрат земли просит
+  // детали под себя, а он бывает в трёх километрах от игрока: prune внутри
+  // ensure() считает расстояние от точки запроса и вымыл бы тайлы под ногами.
+  ensureRect(x0, z0, x1, z1) {
+    if (this.mode !== 'chunk') return Promise.resolve();
+    const jobs = this._want(x0, z0, x1, z1);
+    return jobs.length ? Promise.all(jobs) : Promise.resolve();
+  }
+
+  _want(x0, z0, x1, z1) {
     const c = this.chunk;
-    const i0 = Math.floor((x - radius) / c), i1 = Math.floor((x + radius) / c);
-    const j0 = Math.floor((z - radius) / c), j1 = Math.floor((z + radius) / c);
+    const i0 = Math.floor(x0 / c), i1 = Math.floor(x1 / c);
+    const j0 = Math.floor(z0 / c), j1 = Math.floor(z1 / c);
     const jobs = [];
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
@@ -183,8 +203,7 @@ export class Terrain {
         jobs.push(t.req);
       }
     }
-    this.prune(x, z);
-    if (jobs.length) await Promise.all(jobs);
+    return jobs;
   }
 
   // Выгрузка дальних чанков — иначе за поездку через город память вырастет
@@ -243,7 +262,15 @@ export class Terrain {
     const fx = px - x0, fy = py - y0;
     const h = g.data, W = g.w, i = y0 * W + x0;
     const a = h[i], b = h[i + 1], c = h[i + W], d = h[i + W + 1];
-    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+    return ((a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy) * g.unit;
+  }
+
+  // Высота грубой сетки по её собственному пикселю — для глобальных растров
+  // (маска моря), которым не нужна проекция на каждую ячейку.
+  coarseAt(i, j) {
+    const g = this.coarse;
+    if (i < 0 || j < 0 || i >= g.w || j >= g.h) return SEA_FLOOR;
+    return g.data[j * g.w + i] * g.unit;
   }
 
   heightAt(x, z) {
@@ -272,18 +299,65 @@ export class Terrain {
   // Сетка, которая реально нарисована. Дороги и колёса должны опираться на неё,
   // а не на исходные данные: между узлами поверхность плоская, и дорога,
   // посаженная по данным, на склоне уходит под треугольник.
+  //
+  // Земля нарезана по тем же квадратам 1024 м, что и город, поэтому сетка тут
+  // не одна: у каждого квадрата своя (плюс коридор дорог, посчитанный вместе
+  // с ней). Раньше на всё окно ±3 км была ОДНА сетка, и её перекладка
+  // отнимала полторы секунды в одном кадре.
+  surfKey(x, z) {
+    const c = this.chunk || 1024;
+    return Math.floor(x / c) + '_' + Math.floor(z / c);
+  }
+  setSurface(key, grid, corr) {
+    (this.surf ||= new Map()).set(key, { grid, corr });
+    this._sk = null;
+  }
+  dropSurface(key) {
+    if (this.surf) this.surf.delete(key);
+    this._sk = null;
+  }
+  hasSurface(key) { return !!(this.surf && this.surf.has(key)); }
+  // Запоминаем последний квадрат: обращения идут подряд по соседним точкам
+  // (вершина за вершиной, колесо за колесом), и склейка ключа строкой на
+  // каждый вызов сама по себе стоит заметных процентов кадра.
+  surfaceAt(x, z) {
+    if (!this.surf || !this.surf.size) return null;
+    const c = this.chunk || 1024;
+    const i = Math.floor(x / c), j = Math.floor(z / c);
+    if (this._sk && this._si === i && this._sj === j) return this._sv;
+    this._si = i; this._sj = j; this._sk = 1;
+    return this._sv = this.surf.get(i + '_' + j) || null;
+  }
+
+  // Глобальная маска моря (связность, посчитанная один раз на весь мир).
+  // Нужна там, где нарисованной сетки нет: карта города, дальний силуэт,
+  // «в бухту не заходим» — по сырому DEM бухты выглядят сушей.
+  setSeaMask(m) { this.sea = m || null; }
+  fallbackHeight(x, z) {
+    const h = this.heightAt(x, z);
+    // Выше потолка заливки моря вода не бывает — и незачем считать проекцию
+    // в грубую маску на каждую точку: карта города строится по этой самой
+    // выборке, и лишняя тригонометрия стоила там сотни миллисекунд.
+    if (h > 26) return h;
+    // Берём УЖАТУЮ маску (seeded), а не всю воду: клетка грубой сетки — 54 м,
+    // и клетка «море» на кромке наполовину суша. По полной маске набережная
+    // с домами уходила бы под воду.
+    return this.sea && this.sea.seeded(x, z) ? Math.min(h, -1) : h;
+  }
+
   setGrid(x0, z0, dx, dz, nx, heights) {
     this.grid = { x0, z0, dx, dz, nx, h: heights };
   }
 
   // Высота на нарисованном треугольнике. Квад делится диагональю b–c,
-  // порядок индексов тот же, что в buildTerrain.
+  // порядок индексов тот же, что в buildTerrainTile.
   gridHeightAt(x, z) {
-    const g = this.grid;
-    if (!g) return this.heightAt(x, z);
+    const s = this.surfaceAt(x, z);
+    const g = (s && s.grid) || this.grid;
+    if (!g) return this.fallbackHeight(x, z);
     const gx = (x - g.x0) / g.dx, gz = (z - g.z0) / g.dz;
     const ix = Math.floor(gx), iz = Math.floor(gz);
-    if (ix < 0 || iz < 0 || ix >= g.nx - 1 || iz >= g.nx - 1) return this.heightAt(x, z);
+    if (ix < 0 || iz < 0 || ix >= g.nx - 1 || iz >= g.nx - 1) return this.fallbackHeight(x, z);
     const fx = gx - ix, fz = gz - iz;
     const h = g.h, i = iz * g.nx + ix;
     const a = h[i], b = h[i + 1], c = h[i + g.nx], d = h[i + g.nx + 1];
@@ -294,12 +368,15 @@ export class Terrain {
 
   // Профиль дороги. Полотно и колёса должны опираться на НЕГО, а не на сетку
   // рельефа: её узлы попадают внутрь проезжей части и пробивают полотно горбом.
+  // Коридор тоже свой на каждый квадрат земли — считается вместе с ним.
   setCorridor(c) { this.corr = c; }
 
   // Та же билинейная выборка, что и у рельефа: иначе полотно ступенчатое,
   // а поверхность гладкая, и на уклоне они расходятся.
   corridorAt(x, z) {
-    const s = this.sampler && this.sampler(this.corr, x, z);
+    const sf = this.surfaceAt(x, z);
+    const c = sf ? sf.corr : this.corr;
+    const s = c && this.sampler && this.sampler(c, x, z);
     return s && s.w > 0.5 ? s.h : null;
   }
 
