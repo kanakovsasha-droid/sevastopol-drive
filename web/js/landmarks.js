@@ -19,10 +19,13 @@ function loadModel(file) {
     p = new GLTFLoader().loadAsync(`../data/models/${file}${v ? '?v=' + v : ''}`).then(g => {
       g.scene.traverse(o => {
         if (!o.isMesh) return;
-        o.castShadow = true; o.receiveShadow = true;
+        const m = o.material;
+        // Тень бросает только масса дома: наличники и решётки в карте теней —
+        // тысячи треугольников ради полосок, которых на стене не разглядеть.
+        o.castShadow = !/trim$|metal|wood|glass/.test(m.name);
+        o.receiveShadow = true;
         // Теневая сторона под одним небесным светом уходит в грязно-оливковый:
         // штукатурка добирает отражённым от земли светом, которого в сцене нет.
-        const m = o.material;
         if (m.name !== 'glass' && m.name !== 'metal') { m.emissive.copy(m.color); m.emissiveIntensity = 0.2; }
       });
       return g.scene;
@@ -31,6 +34,41 @@ function loadModel(file) {
   }
   return p;
 }
+
+// Два уровня: дальний (масса дома, сотни треугольников) приезжает вместе с
+// кварталом, подробный — только когда камера подошла ближе MODEL_NEAR, и
+// выключается дальше MODEL_FAR. Полсотни подробных моделей разом — это пара
+// миллионов треугольников в кадре и в карте теней; так в кадре их две-три.
+const MODEL_NEAR = 380, MODEL_FAR = 460;
+function placeModel(holder, file) {
+  const low = file.replace(/\.glb$/, '.lod.glb');
+  let full = null, asked = false;
+  const probe = new THREE.Vector3();
+  loadModel(low).then(src => {
+    const far = src.clone();
+    holder.add(far);
+    far.traverse(o => { if (o.isMesh) o.userData.mat = o.material; });
+    const swap = on => far.traverse(o => { if (o.isMesh) o.material = on ? HIDDEN : o.userData.mat; });
+    // onBeforeRender зовётся каждый кадр и даёт камеру — отдельный обход
+    // моделей в главном цикле не нужен. Сторож не должен отсекаться по кадру
+    // сам по себе: его рамка — рамка одного материала, а не всего дома.
+    const guard = far.getObjectByProperty('isMesh', true);
+    guard.frustumCulled = false;
+    guard.onBeforeRender = (r, sc, cam) => {
+      const d = probe.setFromMatrixPosition(holder.matrixWorld).distanceTo(cam.position);
+      if (d < MODEL_NEAR && !asked) {
+        asked = true;
+        loadModel(file).then(s2 => { full = s2.clone(); full.visible = false; holder.add(full); });
+      }
+      if (!full) return;
+      if (!full.visible && d < MODEL_NEAR) { full.visible = true; swap(true); }
+      else if (full.visible && d > MODEL_FAR) { full.visible = false; swap(false); }
+    };
+  }).catch(e => console.warn('модель не загрузилась:', file, e));
+}
+// Дальний уровень при подробном не убираем со сцены (иначе пропадёт его
+// onBeforeRender), а рисуем пустым материалом: ни цвета, ни глубины.
+const HIDDEN = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
 
 function merge(parts) {
   let nv = 0, ni = 0;
@@ -449,8 +487,7 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       const holder = new THREE.Group();
       holder.name = 'model:' + d.file;
       holder.position.set(d.ox, d.y ?? terrain.gridHeightAt(d.ox, d.oz), d.oz);
-      loadModel(d.file).then(src => holder.add(src.clone()))
-        .catch(e => console.warn('модель не загрузилась:', d.file, e));
+      placeModel(holder, d.file);
       group.add(holder);
       skip.add(bi);
       stats.push({ name: d.name, ok: true, kontur: bi, stil: 'модель ' + d.file });
