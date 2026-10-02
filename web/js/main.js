@@ -210,6 +210,22 @@ async function boot() {
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam, get mode() { return mode; } };
     window.G.audit = () => audit(window.G);
+    // Отладочный вид: ?at=x,z,высота&look=x,z,высота — камера полёта сразу
+    // стоит в точке и смотрит на цель. Обзор в игре идёт через захват мыши, а
+    // в управляемом браузере его нет; без этого здание в кадр не поймать.
+    if (P.get('at')) {
+      const a = P.get('at').split(',').map(Number);
+      const l = (P.get('look') || '').split(',').map(Number);
+      toggleFly();
+      fly.x = a[0]; fly.z = a[1];
+      fly.y = terrain.gridHeightAt(a[0], a[1]) + (a[2] ?? 2);
+      if (l.length >= 2 && l.every(isFinite)) {
+        const dx = l[0] - fly.x, dz = l[1] - fly.z;
+        const dy = terrain.gridHeightAt(l[0], l[1]) + (l[2] ?? 2) - fly.y;
+        fly.yaw = Math.atan2(dx, dz);
+        fly.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+      }
+    }
     window.G.fly = fly;
     window.G.walk = walk;
     window.G.setInvertY = v => { invertY = !!v; };

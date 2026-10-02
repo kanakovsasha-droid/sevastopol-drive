@@ -1,10 +1,36 @@
 import * as THREE from 'three';
+import { GLTFLoader } from '../lib/GLTFLoader.js';
 
 // Здания, которые нельзя оставлять коробкой. Массу берём из контура OSM,
 // а сверху ставим то, что делает здание узнаваемым: колоннаду, портик,
 // балюстраду и буквы на кровле — как на панораме проспекта Нахимова.
 
 const s2l = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+
+// Здания, собранные целиком в Blender (models/<имя>/build_*.py → data/models/*.glb).
+// Файл тянется один раз на всю игру и только когда рядом впервые поднялся его
+// квартал; в чанк кладётся пустая группа, модель приезжает в неё позже — сборка
+// мира остаётся синхронной.
+const MODELS = new Map();
+function loadModel(file) {
+  let p = MODELS.get(file);
+  if (!p) {
+    const v = document.querySelector('meta[name="build"]')?.content || '';
+    p = new GLTFLoader().loadAsync(`../data/models/${file}${v ? '?v=' + v : ''}`).then(g => {
+      g.scene.traverse(o => {
+        if (!o.isMesh) return;
+        o.castShadow = true; o.receiveShadow = true;
+        // Теневая сторона под одним небесным светом уходит в грязно-оливковый:
+        // штукатурка добирает отражённым от земли светом, которого в сцене нет.
+        const m = o.material;
+        if (m.name !== 'glass' && m.name !== 'metal') { m.emissive.copy(m.color); m.emissiveIntensity = 0.2; }
+      });
+      return g.scene;
+    });
+    MODELS.set(file, p);
+  }
+  return p;
+}
 
 function merge(parts) {
   let nv = 0, ni = 0;
@@ -414,6 +440,22 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
     const b = world.buildings[bi];
     const box = obb(b.poly);
     if (!box) continue;
+
+    // ---- готовая модель вместо контура: дом из OSM не рисуем вовсе ----
+    // (ox, oz) — точка мира, в которой у модели начало координат; ноль высоты
+    // модели — тротуар у этой точки. Поворота нет: модель строится сразу в
+    // осях мира.
+    if (d.style === 'model') {
+      const holder = new THREE.Group();
+      holder.name = 'model:' + d.file;
+      holder.position.set(d.ox, d.y ?? terrain.gridHeightAt(d.ox, d.oz), d.oz);
+      loadModel(d.file).then(src => holder.add(src.clone()))
+        .catch(e => console.warn('модель не загрузилась:', d.file, e));
+      group.add(holder);
+      skip.add(bi);
+      stats.push({ name: d.name, ok: true, kontur: bi, stil: 'модель ' + d.file });
+      continue;
+    }
 
     let gmin = Infinity, gmax = -Infinity;
     for (let i = 0; i < b.poly.length / 2; i++) {
