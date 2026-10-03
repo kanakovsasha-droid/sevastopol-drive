@@ -333,7 +333,9 @@ export function buildStreetProps(world, terrain, roadIndex) {
   const lampBins = { street: [], park: [], twin: [] };
   let bushes = [], hedges = [];
 
-  const free = (x, z) => H(x, z) > 1.2 && !buildings.find(x, z);
+  // ни в доме, ни на площадке: парковку и поле размечает buildAreas
+  const noPlant = world.__noPlant || (() => false);
+  const free = (x, z) => H(x, z) > 1.2 && !buildings.find(x, z) && !noPlant(x, z);
   // Дерево или фонарь не должны встать на пересекающую улицу: осевые в OSM
   // пересекаются, и точка «в тротуаре» своей улицы легко оказывается на чужой проезжей части.
   // на проезжей части не место ни дереву, ни фонарю — чья бы улица ни была
@@ -447,7 +449,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
     // Обмер снят по спутнику, а полотно у меня своей ширины: часть посадок
     // попадает на асфальт. Такие не сажаем — дерево посреди дороги хуже,
     // чем отсутствующее дерево.
-    if (onRoad(t.x, t.z)) { onAsphalt++; continue; }
+    if (onRoad(t.x, t.z) || noPlant(t.x, t.z)) { onAsphalt++; continue; }
     const key = (t.sp || '').toLowerCase();
     const sp = SPEC_MAP[key] || (key.includes('кипар') ? 'cypress' : key.includes('сосн') ? 'pine' : 'platan');
     const list = bins[sp] || bins.platan;
@@ -489,7 +491,9 @@ export function buildStreetProps(world, terrain, roadIndex) {
     // Живая изгородь по кромке газона, спортплощадки и сквера. Именно кромка
     // объясняет глазу, где кончается газон и начинается тротуар: без неё
     // зелёное пятно просто упирается в серое.
-    if (g.kind === 'park' || g.kind === 'grass' || g.kind === 'pitch') {
+    // У спортплощадки своя ограда (sport.js): изгородь по её зелени стояла
+    // кустами посреди беговой дорожки и висела над полем.
+    if (g.kind === 'park' || g.kind === 'grass') {
       for (let i = 0, n = q.length / 2; i < n; i++) {
         const j = (i + 1) % n;
         const ax = q[i * 2], az = q[i * 2 + 1];
@@ -517,7 +521,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
     let placed = 0, tries = 0;
     while (placed < want && tries++ < want * 12) {
       const x = x0 + rand() * (x1 - x0), z = z0 + rand() * (z1 - z0);
-      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z) || hasMeasured(x, z)) continue;
+      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z) || hasMeasured(x, z) || noPlant(x, z)) continue;
       // В роще деревья одной породы стоят куртинами, а не вперемешку: породу
       // задаёт крупная ячейка 90 м, внутри неё лес однородный.
       const cellSeed = hash2(Math.floor(x / 90) * 90, Math.floor(z / 90) * 90);
@@ -532,7 +536,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
     let pb = 0; tries = 0;
     while (pb < wantB && tries++ < wantB * 12) {
       const x = x0 + rand() * (x1 - x0), z = z0 + rand() * (z1 - z0);
-      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z) || hasMeasured(x, z)) continue;
+      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z) || hasMeasured(x, z) || noPlant(x, z)) continue;
       pushBush(x, H(x, z) - 0.1, z);
       pb++;
     }

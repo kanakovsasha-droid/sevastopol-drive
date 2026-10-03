@@ -807,64 +807,97 @@ export function areaMaterial() {
     vertexColors: true, roughness: 0.92, metalness: 0.0,
     polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -4,
   });
-  return inject(mat, 'sev-area', {
-    vertHead: `attribute vec4 aArea; attribute float aAKind;
-               varying vec4 vArea; varying float vAK;`,
-    vertBody: `vArea = aArea; vAK = aAKind;`,
-    fragHead: `varying vec4 vArea; varying float vAK;`,
+  // Виды (aAKind) и покрытия (aASurf) — см. buildAreas в worldgen.js.
+  // Размеры разметки — по правилам: футбол 105 × 68 (штрафная 16.5 × 40.32,
+  // вратарская 5.5 × 18.32, круг 9.15, точка 11 м), теннис 23.77 × 10.97,
+  // баскетбол 28 × 15, волейбол 18 × 9, мини-футбол 40 × 20. Поле меньше
+  // нормы — разметка ужимается пропорционально. Те же формулы у ворот и сеток
+  // в sport.js.
+  return inject(mat, 'sev-area-2', {
+    vertHead: `attribute vec4 aArea; attribute float aAKind; attribute float aASurf;
+               varying vec4 vArea; varying float vAK; varying float vAS;`,
+    vertBody: `vArea = aArea; vAK = aAKind; vAS = aASurf;`,
+    fragHead: `varying vec4 vArea; varying float vAK; varying float vAS;
+      // линия ширины w по полю расстояний d; тоньше пикселя — гаснет, а не рябит
+      float lineW(float d, float w){
+        float aa = max(fwidth(d), 1e-4);
+        float k = clamp(w / (aa * 1.6), 0.0, 1.0);
+        return k * (1.0 - smoothstep(0.5 * w, 0.5 * w + aa, d));
+      }
+      float rectEdge(vec2 p, vec2 a, vec2 b){
+        vec2 c = (a + b) * 0.5, h = (b - a) * 0.5;
+        vec2 q = abs(p - c) - h;
+        return abs(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0));
+      }
+      float inRect(vec2 p, vec2 a, vec2 b){
+        return step(a.x, p.x) * step(p.x, b.x) * step(a.y, p.y) * step(p.y, b.y);
+      }`,
     fragBody: `
       {
         vec3 c = diffuseColor.rgb;
         float u = vArea.x, v = vArea.y, W = vArea.z, L = vArea.w;
         float rough = 0.92;
         float paint = 0.0;
-        vec3 pcol = vec3(0.70, 0.69, 0.66);
+        vec3 pcol = vec3(0.86, 0.86, 0.83);
+        // поле: x — вдоль длинной стороны, y — поперёк, от угла рамки
+        bool lu = W >= L;
+        float FL = max(W, L), FW = min(W, L);
+        float x = lu ? u : v, y = lu ? v : u;
+        vec2 q = vec2(x - FL * 0.5, y - FW * 0.5);       // от центра
+        float surf = vAS;
 
         if (vAK < 0.5) {
-          // ---- парковка: асфальт и разметка машиномест 2.5 x 5.3 м ----
+          // ---- парковка: асфальт; разметка мест — геометрией (вид 15) ----
           c *= 0.90 + 0.16 * hash21(floor(vec2(u * 1.5, v * 1.5)));
           c *= 0.96 + 0.07 * fbm(vec2(u, v) * 0.25);
-          // Ряды ставим вдоль КОРОТКОЙ стороны: 5.3 м место плюс 6 м проезд.
-          float band = mod(v, 16.6);
-          float inRow = step(band, 5.3) + step(10.6, band) * step(band, 15.9);
-          // поперечные штрихи между местами
-          float tick = 1.0 - smoothstep(0.05, 0.11, abs(fract(u / 2.5) - 0.5) * 2.5);
-          paint = inRow * tick;
-          // и продольная линия по головам мест
-          paint = max(paint, (1.0 - smoothstep(0.06, 0.12, abs(band - 5.3)))
-                           * step(1.0, W) * step(6.0, L));
           rough = 0.90;
         } else if (vAK < 1.5) {
-          // ---- футбольное поле: газон в полосы, белая разметка ----
-          float mow = step(0.5, fract(v / 6.0));
-          c *= 0.93 + 0.13 * mow;
-          c *= 0.95 + 0.10 * fbm(vec2(u, v) * 0.9);
-          float mU = 3.0, mV = 3.0;               // поле от кромки
-          float lineU = (1.0 - smoothstep(0.06, 0.13, abs(u - mU)))
-                      + (1.0 - smoothstep(0.06, 0.13, abs(u - (W - mU))));
-          float lineV = (1.0 - smoothstep(0.06, 0.13, abs(v - mV)))
-                      + (1.0 - smoothstep(0.06, 0.13, abs(v - (L - mV))));
-          float mid   = 1.0 - smoothstep(0.06, 0.13, abs(v - L * 0.5));
-          float circ  = 1.0 - smoothstep(0.07, 0.15,
-                        abs(length(vec2(u - W * 0.5, v - L * 0.5)) - min(9.15, W * 0.22)));
-          paint = clamp(lineU + lineV + mid + circ, 0.0, 1.0)
-                * step(mU - 0.4, u) * step(u, W - mU + 0.4)
-                * step(mV - 0.4, v) * step(v, L - mV + 0.4);
-          pcol = vec3(0.82, 0.82, 0.79);
+          // ---- футбольное поле ----
+          float m = FL >= 80.0 ? 1.5 : 0.8;
+          float s = clamp((FL - 2.0 * m) / 105.0, 0.35, 1.0);
+          float lw = FL >= 80.0 ? 0.12 : 0.09;
+          float pw = FW - 2.0 * m;
+          if (surf > 6.5 && surf < 7.5) {            // грунт
+            c *= 0.84 + 0.26 * fbm(vec2(x, y) * 0.7);
+          } else if (surf > 1.5 && surf < 2.5) {     // искусственный газон
+            c *= 0.95 + 0.06 * step(0.5, fract(x / max(4.0, (FL - 2.0 * m) / 14.0)));
+            c *= 0.97 + 0.05 * fbm(vec2(x, y) * 3.0);
+          } else if (surf < 0.5 || (surf > 0.5 && surf < 1.5)) {   // трава: полосы стрижки
+            c *= 0.90 + 0.14 * step(0.5, fract(x / max(4.0, (FL - 2.0 * m) / 18.0)));
+            c *= 0.93 + 0.12 * fbm(vec2(x, y) * 0.9);
+          } else {
+            c *= 0.92 + 0.12 * fbm(vec2(x, y) * 1.2);
+          }
+          float xe = min(x - m, FL - m - x);         // от ближней лицевой внутрь
+          float yc = q.y;
+          float d = rectEdge(vec2(x, y), vec2(m), vec2(FL - m, FW - m));
+          d = min(d, abs(q.x));
+          d = min(d, abs(length(q) - 9.15 * s));
+          float PA = 16.5 * s, PW = min(20.16 * s, pw * 0.42);
+          d = min(d, rectEdge(vec2(xe, yc), vec2(-6.0, -PW), vec2(PA, PW)));
+          float GA = 5.5 * s, GW = min(9.16 * s, pw * 0.2);
+          d = min(d, rectEdge(vec2(xe, yc), vec2(-6.0, -GW), vec2(GA, GW)));
+          if (xe > PA) d = min(d, abs(length(vec2(xe - 11.0 * s, yc)) - 9.15 * s));
+          float cy = min(y - m, FW - m - y);
+          if (xe < 1.6 && cy < 1.6) d = min(d, abs(length(vec2(xe, cy)) - 1.0));
+          paint = lineW(d, lw) * inRect(vec2(x, y), vec2(m - lw), vec2(FL - m + lw, FW - m + lw));
+          paint = max(paint, 1.0 - smoothstep(0.16, 0.24, length(q)));
+          paint = max(paint, 1.0 - smoothstep(0.14, 0.22, length(vec2(xe - 11.0 * s, yc))));
+          if (surf > 6.5 && surf < 7.5) paint *= 0.6;
           rough = 0.95;
         } else if (vAK < 2.5) {
-          // ---- спортплощадка: щебень с крошкой ----
           c *= 0.88 + 0.22 * hash21(floor(vec2(u * 4.0, v * 4.0)));
           c *= 0.94 + 0.12 * fbm(vec2(u, v) * 1.6);
         } else if (vAK < 3.5) {
-          // ---- беговая дорожка: тартан и белые линии между дорожками ----
-          // Линию рисуем ТОНКОЙ (5 см как в жизни, а не 12) и только там, где
-          // покрытие: раньше вся площадь стадиона шла в белую полоску.
+          // ---- беговая дорожка: тартан (или гарь), линии между дорожками ----
+          // v — расстояние от внутренней кромки (внутри овала — меньше нуля).
+          float cinder = step(7.5, surf) * step(surf, 8.5);
           c *= 0.95 + 0.09 * fbm(vec2(u, v) * 2.2);
           c *= 0.96 + 0.07 * hash21(floor(vec2(u * 3.0, v * 3.0)));
-          float lane = 1.0 - smoothstep(0.025, 0.055, abs(fract(v / 1.22) - 0.5) * 1.22);
-          paint = lane * 0.75;
-          pcol = vec3(0.88, 0.88, 0.86);
+          if (cinder > 0.5) c *= 0.88 + 0.22 * fbm(vec2(u, v) * 0.6);
+          float lane = abs(fract(v / 1.22 + 0.5) - 0.5) * 1.22;
+          paint = lineW(lane, 0.05) * step(-0.03, v) * step(v, 8.0 * 1.22 + 0.03) * (cinder > 0.5 ? 0.45 : 0.85);
+          pcol = vec3(0.90, 0.90, 0.88);
           rough = 0.86;
         } else if (vAK < 4.5) {
           // ---- детская площадка: резиновое покрытие плитами ----
@@ -872,14 +905,18 @@ export function areaMaterial() {
           vec2 f2 = abs(fract(g2) - 0.5);
           float seam = smoothstep(0.44, 0.495, max(f2.x, f2.y));
           float tone = hash21(floor(g2));
-          // тёплая плитка вперемешку с синей — как на настоящих площадках
           vec3 rub = tone > 0.72 ? vec3(0.180, 0.263, 0.400) : vec3(0.494, 0.243, 0.180);
           rub *= 0.92 + 0.14 * hash21(floor(g2) + 7.0);
           c = mix(rub, rub * 0.72, seam);
           rough = 0.80;
         } else if (vAK < 5.5) {
           c *= 0.92 + 0.14 * fbm(vec2(u, v) * 1.1);
-        } else if (vAK > 6.5) {
+        } else if (vAK < 6.5) {
+          // ---- кладбище: трава с проплешинами и дорожками ----
+          c *= 0.90 + 0.16 * fbm(vec2(u, v) * 0.8);
+          float path = 1.0 - smoothstep(0.9, 1.5, abs(fract(v / 9.0) - 0.5) * 9.0);
+          c = mix(c, vec3(0.435, 0.416, 0.376), path * 0.75);
+        } else if (vAK < 7.5) {
           // ---- аллея парка: плитка со швом, к кромке темнее ----
           vec2 g3 = vec2(u / 0.52, v / 0.52);
           vec2 f3 = abs(fract(g3 + vec2(0.0, step(0.5, fract(g3.x * 0.5)) * 0.5)) - 0.5);
@@ -888,16 +925,93 @@ export function areaMaterial() {
           c *= 0.94 + 0.11 * hash21(floor(g3));
           c *= 1.0 - 0.16 * smoothstep(0.55, 0.98, abs(v) / max(0.5, W * 0.5));
           rough = 0.88;
+        } else if (vAK < 8.5) {
+          // ---- площадка АЗС ----
+          c *= 0.90 + 0.16 * hash21(floor(vec2(u * 1.5, v * 1.5)));
+          c *= 0.96 + 0.07 * fbm(vec2(u, v) * 0.25);
+        } else if (vAK < 9.5) {
+          // ---- теннисный корт ----
+          float sc = clamp(min((FL - 1.0) / 23.77, (FW - 1.0) / 10.97), 0.4, 1.0);
+          float hl = 11.885 * sc, hwD = 5.485 * sc, hwS = 4.115 * sc, sl = 6.40 * sc;
+          float inC = inRect(q, -vec2(hl, hwD), vec2(hl, hwD));
+          // хард: синий корт в зелёной зоне; грунт и газон — одним цветом
+          if (surf < 0.5 || (surf > 2.5 && surf < 4.5)) c = mix(c, vec3(0.165, 0.300, 0.470), inC);
+          c *= 0.95 + 0.08 * fbm(vec2(u, v) * 2.0);
+          float d = rectEdge(q, -vec2(hl, hwD), vec2(hl, hwD));
+          if (abs(q.x) <= hl) d = min(d, abs(abs(q.y) - hwS));
+          if (abs(q.y) <= hwS) d = min(d, abs(abs(q.x) - sl));
+          if (abs(q.x) <= sl) d = min(d, abs(q.y));
+          if (abs(q.x) > hl - 0.15 && abs(q.x) <= hl) d = min(d, abs(q.y));
+          paint = lineW(d, 0.06) * inRect(q, -vec2(hl + 0.05, hwD + 0.05), vec2(hl + 0.05, hwD + 0.05));
+          rough = 0.80;
+        } else if (vAK < 10.5) {
+          // ---- баскетбол ----
+          float sc = clamp(min((FL - 1.0) / 28.0, (FW - 1.0) / 15.0), 0.4, 1.0);
+          float hl = 14.0 * sc, hw = 7.5 * sc;
+          float inC = inRect(q, -vec2(hl, hw), vec2(hl, hw));
+          float xe = hl - abs(q.x);
+          float key = inRect(vec2(xe, q.y), vec2(0.0, -2.45 * sc), vec2(5.8 * sc, 2.45 * sc));
+          if (surf < 0.5 || (surf > 2.5 && surf < 3.5)) {
+            c = mix(vec3(0.200, 0.400, 0.300), c, inC);          // резина: красная площадка в зелёной зоне
+            c = mix(c, vec3(0.180, 0.330, 0.520), key * inC);
+          } else {
+            c = mix(c, c * 0.88, key * inC);
+          }
+          c *= 0.94 + 0.10 * fbm(vec2(u, v) * 2.0);
+          float d = rectEdge(q, -vec2(hl, hw), vec2(hl, hw));
+          if (abs(q.y) <= hw) d = min(d, abs(q.x));
+          d = min(d, abs(length(q) - 1.8 * sc));
+          d = min(d, rectEdge(vec2(xe, q.y), vec2(-2.0, -2.45 * sc), vec2(5.8 * sc, 2.45 * sc)));
+          if (xe > 5.8 * sc) d = min(d, abs(length(vec2(xe - 5.8 * sc, q.y)) - 1.8 * sc));
+          float bx = 1.575 * sc, r3 = 6.75 * sc;
+          if (xe > bx) d = min(d, abs(length(vec2(xe - bx, q.y)) - r3));
+          else if (r3 < hw) d = min(d, abs(abs(q.y) - r3));
+          paint = lineW(d, 0.06) * inRect(q, -vec2(hl + 0.05, hw + 0.05), vec2(hl + 0.05, hw + 0.05));
+          rough = 0.82;
+        } else if (vAK < 11.5 || (vAK > 12.5 && vAK < 13.5)) {
+          // ---- волейбол (и пляжный) ----
+          float sc = clamp(min((FL - 1.0) / 18.0, (FW - 1.0) / 9.0), 0.4, 1.0);
+          float hl = 9.0 * sc, hw = 4.5 * sc;
+          bool beach = vAK > 12.5;
+          if (beach) {
+            c *= 0.88 + 0.20 * fbm(vec2(u, v) * 1.4);
+            pcol = vec3(0.16, 0.30, 0.62);
+          } else c *= 0.94 + 0.10 * fbm(vec2(u, v) * 2.0);
+          float d = rectEdge(q, -vec2(hl, hw), vec2(hl, hw));
+          if (abs(q.y) <= hw) d = min(d, min(abs(q.x), abs(abs(q.x) - 3.0 * sc)));
+          paint = lineW(d, beach ? 0.05 : 0.05) * inRect(q, -vec2(hl + 0.05, hw + 0.05), vec2(hl + 0.05, hw + 0.05));
+          rough = beach ? 0.98 : 0.82;
+        } else if (vAK < 12.5) {
+          // ---- мини-футбол и универсальная площадка ----
+          float m = 0.5;
+          float s = clamp((FL - 2.0 * m) / 40.0, 0.4, 1.0);
+          if (surf < 0.5 || (surf > 1.5 && surf < 2.5)) {
+            c *= 0.95 + 0.06 * step(0.5, fract(x / max(2.5, FL / 12.0)));
+            c *= 0.96 + 0.06 * fbm(vec2(x, y) * 3.0);
+          } else c *= 0.93 + 0.10 * fbm(vec2(x, y) * 1.5);
+          float xe = min(x - m, FL - m - x);
+          float d = rectEdge(vec2(x, y), vec2(m), vec2(FL - m, FW - m));
+          d = min(d, abs(q.x));
+          d = min(d, abs(length(q) - 3.0 * s));
+          d = min(d, abs(length(vec2(xe, q.y)) - min(6.0 * s, (FW - 2.0 * m) * 0.4)));
+          paint = lineW(d, 0.08) * inRect(vec2(x, y), vec2(m - 0.05), vec2(FL - m + 0.05, FW - m + 0.05));
+          paint = max(paint, 1.0 - smoothstep(0.12, 0.2, length(vec2(xe - 6.0 * s, q.y))) );
+          rough = 0.86;
+        } else if (vAK < 14.5) {
+          // ---- бетон: скейт-парк, шахматные столы — плиты со швами ----
+          vec2 f4 = abs(fract(vec2(u, v) / 3.0) - 0.5);
+          c *= 1.0 - 0.16 * smoothstep(0.47, 0.495, max(f4.x, f4.y));
+          c *= 0.93 + 0.12 * fbm(vec2(u, v) * 0.8);
+          rough = 0.85;
         } else {
-          // ---- кладбище: трава с проплешинами и дорожками ----
-          c *= 0.90 + 0.16 * fbm(vec2(u, v) * 0.8);
-          float path = 1.0 - smoothstep(0.9, 1.5, abs(fract(v / 9.0) - 0.5) * 9.0);
-          c = mix(c, vec3(0.435, 0.416, 0.376), path * 0.75);
+          // ---- краска разметки: цвет из вершин, местами стёрта ----
+          c *= 0.80 + 0.22 * hash21(floor(vec2(u, v) * 2.5));
+          rough = 0.66;
         }
 
         if (paint > 0.001) {
-          float wear = 0.62 + 0.38 * hash21(floor(vec2(u * 0.8, v * 0.8)));
-          c = mix(c, pcol * wear, clamp(paint, 0.0, 1.0) * 0.88);
+          float wear = 0.70 + 0.30 * hash21(floor(vec2(u * 0.8, v * 0.8)));
+          c = mix(c, pcol * wear, clamp(paint, 0.0, 1.0) * 0.9);
           rough = mix(rough, 0.66, clamp(paint, 0.0, 1.0));
         }
         diffuseColor.rgb = c;
