@@ -2,7 +2,7 @@ import { E63Sound } from './engine-audio.js?v=a0238627';
 import { TireSmoke } from './smoke.js?v=a0238627';
 
 // Всё, что машина делает «вокруг» физики: коробка и привод с клавиатуры,
-// строка передачи на спидометре, звук мотора и шин, дым из-под колёс.
+// звук мотора и шин, дым из-под колёс.
 // Отдельным модулем, чтобы в main.js была одна врезка, а не десять.
 //
 //   B — привод: 4MATIC+ ↔ только задний (режим Drift)
@@ -28,17 +28,7 @@ export class CarFX {
     try { on = localStorage.getItem(KEY_SOUND) !== '0'; } catch { /* приватное окно */ }
     this.soundOn = on;
 
-    // строка под скоростью: передача, привод, звук
-    const sp = document.getElementById('speedo');
-    if (sp) {
-      const el = document.createElement('div');
-      el.id = 'gearbox';
-      el.style.cssText = 'position:absolute;left:16px;top:-22px;font:600 11px/1 var(--mono,monospace);' +
-        'letter-spacing:.08em;color:var(--dim,#aaa);white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.6)';
-      sp.appendChild(el);
-      this.el = el;
-    }
-    this._label = '';
+    // Передача и привод теперь в самом приборе (hud.js), отдельной строки нет.
 
     const unlock = () => this._start();
     addEventListener('keydown', e => {
@@ -93,11 +83,6 @@ export class CarFX {
         shiftCount: car.shiftCount, boost: driving ? car.boost : 0, skid, burnout: driving && car.burnout,
         inside: driving && this.inside(), dist,
       }, this.ctx.currentTime);
-    }
-    if (this.el) {
-      const lbl = `${car.gearLabel} · ${car.rwd ? 'задний привод' : '4MATIC+'}${this.soundOn ? '' : ' · без звука'}`;
-      if (lbl !== this._label) { this._label = lbl; this.el.textContent = lbl; }
-      this.el.style.display = driving ? '' : 'none';
     }
   }
 }
