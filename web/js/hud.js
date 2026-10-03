@@ -84,6 +84,7 @@ export class Hud {
       if (e.code === 'Backquote') this.toggleDebug();
       // carfx.js переключает звук своим обработчиком раньше нашего
       if (e.code === 'KeyK' && CarFX.last) this.toast(CarFX.last.soundOn ? 'Звук включён' : 'Без звука');
+      if (e.code === 'KeyJ' && CarFX.last && CarFX.last.packs?.length > 1) this.toast('Звук: ' + CarFX.last.pack);
     });
 
     this._resize();

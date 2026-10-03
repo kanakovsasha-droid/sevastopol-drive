@@ -82,6 +82,21 @@ function popBuffer(ctx, big) {
   return buf;
 }
 
+// Петля без шва: хвост записи наложен на её начало с равномощным переходом.
+// Петли модов обрезаны как попало — на стыке скачок до 0.35 полной шкалы.
+function seamless(ctx, buf, xf) {
+  const X = Math.min(Math.floor(buf.sampleRate * xf), Math.floor(buf.length / 3));
+  const L = buf.length - X;
+  const out = ctx.createBuffer(1, L, buf.sampleRate);
+  const a = buf.getChannelData(0), o = out.getChannelData(0);
+  o.set(a.subarray(0, L));
+  for (let i = 0; i < X; i++) {
+    const t = i / X;
+    o[i] = a[i] * Math.sin(t * Math.PI / 2) + a[L + i] * Math.cos(t * Math.PI / 2);
+  }
+  return out;
+}
+
 export class E63Sound {
   constructor(ctx, dest = ctx.destination) {
     this.ctx = ctx;
@@ -198,22 +213,74 @@ export class E63Sound {
       squeal = { src, g: gg };
     }
     const pick = pre => Object.keys(bufs).filter(k => k.startsWith(pre)).map(k => bufs[k]);
+    this._dropSamples(t0);
     this.smp = { loops, lp, bus, squeal, pops: pick('pop_'), bangs: pick('bang_'), mix: 0, t0 };
+  }
+
+  // Звуковой пакет из мода (только локальная игра, см. carfx.js): схема GTA —
+  // длинная петля мотора под нагрузкой, петля сброса, холостые, сброс оборотов
+  // с треском и «бонус» с выстрелами. Одна-две петли с подстройкой высоты по
+  // оборотам и переход газ ↔ сброс — как в GTA. bufs: { idle, load, off,
+  // decel, bonus? }, base — обороты, на которых записана каждая петля.
+  useModPack(bufs, base, name = '') {
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    this._dropSamples(t0);
+    const g = (v = 0) => { const n = ctx.createGain(); n.gain.value = v; return n; };
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 9000; lp.Q.value = 0.6;
+    const shelf = ctx.createBiquadFilter(); shelf.type = 'lowshelf'; shelf.frequency.value = 200; shelf.gain.value = 9;
+    const bus = g(0);
+    lp.connect(shelf).connect(bus).connect(this.master);
+    const loop = role => {
+      const src = ctx.createBufferSource(); src.buffer = seamless(ctx, bufs[role], 0.08); src.loop = true;
+      const gg = g(0); src.connect(gg).connect(lp);
+      src.start(t0, Math.random() * src.buffer.duration);
+      return { role, rpm: base[role], src, g: gg };
+    };
+    const loops = ['idle', 'load', 'off'].filter(r => bufs[r]).map(loop);
+    let squeal = null;                                    // визг шин — запись из открытого набора
+    if (bufs.squeal) {
+      const src = ctx.createBufferSource(); src.buffer = bufs.squeal; src.loop = true;
+      const gg = g(0); src.connect(gg).connect(this.master); src.start(t0);
+      squeal = { src, g: gg };
+    }
+    this.smp = { kind: 'mod', name, loops, lp, bus, squeal, decel: bufs.decel, bonus: bufs.bonus || bufs.decel, mix: 0, t0 };
+  }
+
+  _dropSamples(t) {
+    const S = this.smp;
+    if (!S) return;
+    S.bus.gain.setTargetAtTime(0, t, 0.05);
+    for (const l of S.loops) l.src.stop(t + 0.4);
+    if (S.squeal) { S.squeal.g.gain.setTargetAtTime(0, t, 0.05); S.squeal.src.stop(t + 0.4); }
   }
 
   _pop(big, t, gain, rate) {
     const S = this.smp;
+    if (S && S.kind === 'mod') {
+      // сброс газа — запись сброса оборотов с треском; дальше — короткие
+      // куски «бонуса» в случайных местах
+      if (big && S.decel) this._shot(S.decel, t, gain * 0.9, rate);
+      else if (S.bonus) this._shot(S.bonus, t, gain * 0.8, rate, Math.random() * Math.max(0, S.bonus.duration - 0.2), 0.16);
+      return;
+    }
     const list = S && (big ? S.bangs : S.pops);
     if (list && list.length) {
       this._shot(list[Math.floor(Math.random() * list.length)], t, gain * (big ? 0.9 : 1.1), rate);
     } else this._shot(big ? this.popBig : this.popSmall, t, gain, rate);
   }
 
-  _shot(buf, t, gain, rate = 1) {
+  _shot(buf, t, gain, rate = 1, offset = 0, dur = 0) {
     const ctx = this.ctx, s = ctx.createBufferSource(), g = ctx.createGain();
     s.buffer = buf; s.playbackRate.value = rate; g.gain.value = gain;
     s.connect(g).connect(this.popBus);
-    s.start(t);
+    if (dur > 0) {
+      // кусок из середины записи: огибающая от нуля и в ноль — без щелчков
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(gain, t + 0.006);
+      g.gain.setValueAtTime(gain, t + dur * 0.5);
+      g.gain.linearRampToValueAtTime(0, t + dur);
+      s.start(t, offset, dur + 0.01);
+    } else s.start(t);
     this.shots++;
     s.onended = () => { s.disconnect(); g.disconnect(); };
   }
@@ -259,11 +326,25 @@ export class E63Sound {
     // он остаётся и при записях: на высоких оборотах вспышки уходят за 300 Гц,
     // а низ должен давить в любой момент
     if (S) P(this.sub.frequency, rpm / 30, 0.012);
-    P(this.subGain.gain, S ? (0.08 + 0.22 * load) * (0.6 + 0.4 * r) * S.mix + (0.10 + 0.25 * load) * (1 - r * 0.6) * syn
+    P(this.subGain.gain, S ? (0.08 + 0.22 * load) * (0.6 + 0.4 * r) * S.mix * (S.kind === 'mod' ? 1.5 : 1) + (0.10 + 0.25 * load) * (1 - r * 0.6) * syn
       : (0.10 + 0.25 * load) * (1 - r * 0.6), 0.04);
     P(this.intakeBP.frequency, 500 + rpm * 0.35, 0.05);
     P(this.intakeGain.gain, (0.012 + 0.07 * load * r) * syn, 0.04);
-    if (S) {
+    if (S && S.kind === 'mod') {
+      // холостые — внизу; выше — петля под нагрузкой и петля сброса,
+      // равномощный переход по газу; высота — обороты / обороты записи
+      const idleW = Math.min(1, Math.max(0, (1650 - rpm) / 550));
+      const th = Math.min(1, load * 1.15) * Math.PI / 2;
+      const w = { idle: idleW, load: (1 - idleW) * Math.sin(th), off: (1 - idleW) * Math.cos(th) * 0.9 };
+      for (const lp of S.loops) {
+        P(lp.g.gain, w[lp.role] || 0, 0.035);
+        P(lp.src.playbackRate, Math.min(2.6, Math.max(0.4, rpm / lp.rpm)), 0.012);
+      }
+      // записи мода громкие (−4 дБ RMS) — без запаса они клиппуют на выходе
+      const vol = 0.62 * (0.55 + 0.3 * r) * (0.6 + 0.4 * load) * (cut ? 0.35 : 1) * dip * S.mix;
+      P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.03);
+      P(S.lp.frequency, 1600 + 9000 * Math.max(load, r * 0.4), 0.04);
+    } else if (S) {
       // две ближайшие по оборотам петли, равномощный переход по логарифму
       // оборотов; высота — отношение оборотов к оборотам записи
       const L = S.loops;
