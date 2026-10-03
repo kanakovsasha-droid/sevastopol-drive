@@ -76,7 +76,7 @@ const result = await page.evaluate(async ({ ONLY, START }) => {
   function rig(car, step = (dt, inp) => car.update(dt, inp)) {
     const s = { t: 0, v: 0, yawRate: 0, dist: 0, vy: 0, ay: 0, x: car.pos.x, y: car.pos.y, z: car.pos.z, yaw: car.yaw, beta: 0 };
     s.step = inp => {
-      step(DT, { throttle: inp.throttle || 0, steer: inp.steer || 0, handbrake: !!inp.handbrake });
+      step(DT, { throttle: inp.throttle || 0, steer: inp.steer || 0, handbrake: !!inp.handbrake, gas: !!inp.gas, brake: !!inp.brake });
       const dx = car.pos.x - s.x, dz = car.pos.z - s.z;
       const d = Math.hypot(dx, dz);
       s.v = d / DT; s.dist += d;
@@ -162,14 +162,15 @@ const result = await page.evaluate(async ({ ONLY, START }) => {
     }
     // ---- 5/6. занос и ловля. «Игрок»: газ бросил, руль против вращения,
     // пока кузов идёт боком. Поймал — угол увода и рыскание ушли в ноль.
-    const catchDrift = (s, car, tMax = 8) => {
+    const catchDrift = (s, car, tMax = 8, gasHold = 0) => {
       const t0 = s.t; let spun = 0, calm = 0, tCatch = null;
       const yawStart = car.yaw; let yawAcc = 0, prevYaw = car.yaw;
       while (s.t < t0 + tMax) {
         const b = s.beta;
         // руль в сторону, куда едет машина (β<0 — корма ушла влево от движения…)
         const st = clamp(b * 4 - s.yawRate * 0.6, -1, 1);
-        s.step({ throttle: 0, steer: st });
+        // gasHold > 0 — «дрифтер»: держит немного газа, пока угол не больше 30°
+        s.step({ throttle: gasHold && Math.abs(b) < 0.52 ? gasHold : 0, steer: st });
         yawAcc += wrap(car.yaw - prevYaw); prevYaw = car.yaw;
         if (Math.abs(s.beta) < 0.05 && Math.abs(s.yawRate) < 0.08 || s.v < 2) { calm += DT; if (calm > 0.5 && tCatch === null) tCatch = s.t - t0 - 0.5; }
         else calm = 0;
@@ -206,6 +207,60 @@ const result = await page.evaluate(async ({ ONLY, START }) => {
         maxB = Math.max(maxB, Math.abs(s.beta)); maxG = Math.max(maxG, Math.abs(s.v * s.yawRate) / G0);
       }
       out.slalom100 = { maxBetaDeg: r2(maxB * 180 / Math.PI, 1), gLatPeak: r2(maxG), kmhEnd: r2(s.v * KMH, 0) };
+    }
+    // ---- 7б. задний привод (режим Drift): тот же занос газом в повороте и
+    // ловля. Два «игрока»: бросил газ совсем — и придержал газ контррулём.
+    if (Car.prototype.toggleDrive) {
+      const rwdRun = (gasHold) => {
+        const car = mkFlat(); car.toggleDrive();
+        const s = rig(car);
+        const vt = 50 / KMH;
+        while (s.v < vt && s.t < 20) s.step({ throttle: hold(s, vt) });
+        const t0 = s.t; let maxB = 0;
+        while (s.t < t0 + 3) s.step({ throttle: hold(s, vt), steer: 0.7 });
+        const t1 = s.t;
+        while (s.t < t1 + 0.8) { s.step({ throttle: 1, steer: 0.7 }); maxB = Math.max(maxB, Math.abs(s.beta)); }
+        return { maxB, kmh: s.v * KMH, ...catchDrift(s, car, 8, gasHold) };
+      };
+      const a = rwdRun(0), b = rwdRun(0.35);
+      out.rwdPowerslide = { maxBetaDeg: r2(a.maxB * 180 / Math.PI, 1), kmh: r2(a.kmh, 0),
+        liftCaught: a.caught, liftYawDeg: a.yawTravelDeg, gasCaught: b.caught, gasTCatch: b.tCatch, gasYawDeg: b.yawTravelDeg, gasKmhEnd: b.kmhEnd };
+    }
+    // ---- 7в. бёрнаут: газ + тормоз на месте. Передние держит тормоз, задние
+    // буксуют; машина не должна уехать. На полном и на заднем приводе.
+    if (Car.prototype.toggleDrive) for (const rwd of [false, true]) {
+      const car = mkFlat(); if (rwd) car.toggleDrive();
+      const s = rig(car);
+      for (let i = 0; i < 60; i++) s.step({});
+      const z0 = car.pos.z;
+      let n = 0, sv = 0, rpm = 0, fr = 0, lim = 0;
+      while (n < 240) {
+        s.step({ gas: true, brake: true });
+        n++;
+        if (n > 60) { sv += (car.slipVel[2] + car.slipVel[3]) / 2; rpm = Math.max(rpm, car.rpm); fr = Math.max(fr, Math.abs(car._om[0])); lim += car.limiter; }
+      }
+      const moved = car.pos.z - z0;
+      // отпустили тормоз — уходит с пробуксовкой
+      const t0 = s.t; let t50 = null;
+      while (s.t < t0 + 6 && t50 === null) { s.step({ throttle: 1, gas: true }); if (s.v * KMH >= 50) t50 = s.t - t0; }
+      out[rwd ? 'burnoutRwd' : 'burnoutAwd'] = { movedM: r2(moved, 2), rearSlipMs: r2(sv / 180, 1), frontWheelRad: r2(fr, 2),
+        rpmMax: Math.round(rpm), limiterPct: r2(100 * lim / 180, 0), t0to50afterRelease: r2(t50) };
+    }
+    // ---- 7г. нейтраль: газ крутит мотор без тяги, до отсечки; из N в D на
+    // оборотах — старт с пробуксовкой
+    if (Car.prototype.setMode) {
+      const car = mkFlat(); car.setMode('N');
+      const s = rig(car);
+      let tLim = null, rpmMax = 0;
+      while (s.t < 2.5) { s.step({ throttle: 1 }); rpmMax = Math.max(rpmMax, car.rpm); if (tLim === null && car.rpm > 6900) tLim = s.t; }
+      const moved = car.pos.z;
+      car.setMode('D');
+      const t0 = s.t; let t50 = null, slipMax = 0;
+      while (s.t < t0 + 6 && t50 === null) { s.step({ throttle: 1 }); slipMax = Math.max(slipMax, car.slipVel[2]); if (s.v * KMH >= 50) t50 = s.t - t0; }
+      out.neutral = { tToLimiter: r2(tLim), rpmMax: Math.round(rpmMax), movedM: r2(moved, 3), dumpLaunch0to50: r2(t50), rearSlipMaxMs: r2(slipMax, 1) };
+      const p = mkFlat(); p.setMode('P'); const sp = rig(p);
+      while (sp.t < 2) sp.step({ throttle: 1 });
+      out.parkGas = { movedMm: r2(Math.abs(p.pos.z) * 1000, 1), rpm: Math.round(p.rpm), gear: p.gearLabel };
     }
     // ---- 8. стоянка на плите и на косогоре 10%: не ползти и не дрожать
     for (const [name, slope] of [['parkFlat', 0], ['parkSlope', 0.10]]) {
@@ -378,7 +433,7 @@ const result = await page.evaluate(async ({ ONLY, START }) => {
 await browser.close();
 
 // ---- печать
-const row = (name, o) => console.log(name.padEnd(13) + Object.entries(o || {}).map(([k, v]) =>
+const row = (name, o) => console.log(name.padEnd(15) + Object.entries(o || {}).map(([k, v]) =>
   `${k}=${typeof v === 'object' && v !== null ? JSON.stringify(v) : v}`).join('  '));
 console.log('\n=== физика машины ===');
 for (const [k, v] of Object.entries(result)) row(k, v);
