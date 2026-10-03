@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SEA_FLOOR } from './terrain.js?v=9aa71692';
 import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=9aa71692';
 import { buildCoverage } from './coverage.js?v=9aa71692';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=9aa71692';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -1262,7 +1263,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
   const bucket = (x, z) => {
     const k = Math.floor(x / chunk) + ',' + Math.floor(z / chunk);
     let c = chunks.get(k);
-    if (!c) chunks.set(k, c = { P: [], C: [], R: [], K: [], O: [], S: [], I: [], base: 0 });
+    if (!c) chunks.set(k, c = { P: [], C: [], R: [], K: [], O: [], S: [], I: [], JI: [], JV: [], base: 0 });
     return c;
   };
   // Последний рубеж. Какая бы причина ни развела профиль дороги и рельеф,
@@ -1278,6 +1279,19 @@ export function* buildRoads(world, terrain, chunk = 500) {
     return d < g - 1.7 ? g - 1.7 : d > g + 1.1 ? g + 1.1 : d;
   };
 
+  // Где полотно приподнято поправкой на провисание (до 40 см) — по клеткам
+  // 4 м. Зебра лежала на постоянных 5.5 см над землёй, и приподнятая лента
+  // соседнего пролёта резала её пополам: полосы «двоились» со сдвигом.
+  const UPC = 4, upGrid = new Map();
+  const upNear = (x0, z0, x1, z1) => {
+    let m = 0;
+    for (let cx = Math.floor(Math.min(x0, x1) / UPC) - 1; cx <= Math.floor(Math.max(x0, x1) / UPC) + 1; cx++)
+      for (let cz = Math.floor(Math.min(z0, z1) / UPC) - 1; cz <= Math.floor(Math.max(z0, z1) / UPC) + 1; cz++) {
+        const v = upGrid.get(cx * 100003 + cz);
+        if (v > m) m = v;
+      }
+    return m;
+  };
   // Полоса между двумя смещениями от осевой. lift — над поверхностью.
   // Индекс перекрёстков: внутри их пятна тротуар и бордюр не строим,
   // иначе бордюры сходящихся улиц лезут друг на друга поперёк проезжей части.
@@ -1309,22 +1323,6 @@ export function* buildRoads(world, terrain, chunk = 500) {
     }
     return far;
   };
-  // Сплошную перед перекрёстком ставим ТОЛЬКО у пересечения проезжих улиц
-  // (самая широкая ветка от 8 м) и на коротком подходе. С радиусом 14 м и
-  // всеми узлами подряд сплошной оказывалось 45% длины улиц — «везде сплошная».
-  const nearBigJunction = (x, z, extra) => {
-    const a = jmap.get(Math.floor(x / jcell) * 100003 + Math.floor(z / jcell));
-    if (!a) return false;
-    for (const j of a) {
-      if ((j.mw || 0) < 8) continue;
-      const R = j.r + 1.6 + extra;
-      if ((x - j.x) ** 2 + (z - j.z) ** 2 >= R * R) continue;
-      if (j.poly && polyOut(j.poly, x, z) > 1.6 + extra) continue;
-      return true;
-    }
-    return false;
-  };
-
   const inJunction = (x, z, extra = 0) => {
     const a = jmap.get(Math.floor(x / jcell) * 100003 + Math.floor(z / jcell));
     if (!a) return false;
@@ -1357,14 +1355,20 @@ export function* buildRoads(world, terrain, chunk = 500) {
 
   // offA/offB — либо число (постоянная полуширина), либо массив на вершину:
   // проезжая часть ужимается там, где под неё лезет соседняя улица.
-  const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1, lanes = 0, surf = 0, hFn = H) => {
+  // jn — расстояние от вершины до пятна ближайшего настоящего перекрёстка:
+  // по нему шейдер обрывает разметку ровной чертой поперёк улицы.
+  const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1, lanes = 0, surf = 0, hFn = H, jn = null) => {
     const col = ROAD_COLORS[cls];
     const start = ch.base;
     const aArr = typeof offA === 'number' ? null : offA;
     const bArr = typeof offB === 'number' ? null : offB;
     for (let i = 0; i < mt.n; i++) {
-      const t = 0.94 + 0.12 * (((i * 2654435761) >>> 8) & 255) / 255;
+      // Асфальту разнотон по вершинам не даём: у каждой улицы он свой, и на
+      // стыке двух полотен яркость прыгала ступенькой — тот самый «шов».
+      // Фактуру асфальта шейдер считает по мировым координатам, одну на всех.
+      const t = cls <= 3 ? 1 : 0.94 + 0.12 * (((i * 2654435761) >>> 8) & 255) / 255;
       for (let s = 0; s < 2; s++) {
+        if (jn) { ch.JI.push(ch.base + i * 2 + s); ch.JV.push(jn[i]); }
         const off = s === 0 ? (aArr ? aArr[i] : offA) : (bArr ? bArr[i] : offB);
         const x = pts[i * 2] + mt.NX[i] * off * mt.S[i];
         const z = pts[i * 2 + 1] + mt.NZ[i] * off * mt.S[i];
@@ -1426,6 +1430,11 @@ export function* buildRoads(world, terrain, chunk = 500) {
       if (!up[i]) continue;
       ch.P[lo + (i * 2) * 3] += up[i];
       ch.P[lo + (i * 2 + 1) * 3] += up[i];
+      // запоминаем, где полотно приподнято: зебра должна лечь ВЫШЕ него
+      if (cls <= 3) for (const v of [i * 2, i * 2 + 1]) {
+        const k = Math.floor(px(v) / UPC) * 100003 + Math.floor(pz(v) / UPC);
+        if (!(upGrid.get(k) >= up[i])) upGrid.set(k, up[i]);
+      }
     }
 
     // Обход даёт нормаль вверх ТОЛЬКО при таком порядке: offA левее offB,
@@ -1440,8 +1449,10 @@ export function* buildRoads(world, terrain, chunk = 500) {
   };
 
   // Вертикальная грань бордюра вдоль одного смещения.
-  const kerb = (ch, pts, mt, off, yLow, yHigh, skipFn, own = -1) => {
-    const skipJ = true;
+  // oneSide — только грань, смотрящую на проезжую часть (кромка из поля
+  // ориентирована: нормаль митры смотрит от асфальта). Вторая грань там
+  // всегда спрятана под тротуаром или газоном и только удваивала треугольники.
+  const kerb = (ch, pts, mt, off, yLow, yHigh, skipFn, own = -1, skipJ = true, oneSide = false) => {
     const col = ROAD_COLORS[6];
     const start = ch.base;
     for (let i = 0; i < mt.n; i++) {
@@ -1460,7 +1471,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
       if (skipFn && skipFn(i)) continue;
       const a = start + i * 2, b = a + 1, c = a + 2, d = a + 3;
       ch.I.push(a, b, c, b, d, c);
-      ch.I.push(a, c, b, b, c, d);   // двусторонний: бордюр видно с обеих сторон
+      if (!oneSide) ch.I.push(a, c, b, b, c, d);   // двусторонний: бордюр видно с обеих сторон
     }
     ch.base += mt.n * 2;
   };
@@ -1477,24 +1488,175 @@ export function* buildRoads(world, terrain, chunk = 500) {
   const cover = COV.owner, coverW = COV.width;
   const covered = COV.share;
   const onOtherRoad = (x, z, own) => COV.onOther(x, z, own);
-  const underWider = (x, z, own, w) => COV.underWider(x, z, own, w);
-  // Проверяем ВЕСЬ квад: три точки вдоль и три поперёк. Проверка только по
-  // середине пропускала изломы — там полосу раздувает скруглением, и её
-  // конец выносит на чужую проезжую часть бледным клином.
-  const stripHitsRoad = (pts, i, mt, o0, o1, own) => {
-    for (const s2 of [0, 0.5, 1]) {
-      const bx = pts[i * 2] + (pts[i * 2 + 2] - pts[i * 2]) * s2;
-      const bz = pts[i * 2 + 1] + (pts[i * 2 + 3] - pts[i * 2 + 1]) * s2;
-      const nx = mt.NX[i] + (mt.NX[i + 1] - mt.NX[i]) * s2;
-      const nz = mt.NZ[i] + (mt.NZ[i + 1] - mt.NZ[i]) * s2;
-      const sc = mt.S[i] + (mt.S[i + 1] - mt.S[i]) * s2;
-      for (const t of [0, 0.5, 1]) {
-        const o = (o0 + (o1 - o0) * t) * sc;
-        if (onOtherRoad(bx + nx * o, bz + nz * o, own)) return true;
-      }
+  // ------------------------------------------------- кромка проезжей части
+  // Поле расстояний до асфальта по ВСЕМ улицам квадрата (см. roadfield.js).
+  // Из него берутся: линия бордюра, тротуары, островки, обрезка торцов
+  // полотен и ширина зебр. Контекст приезжает от менеджера чанков; у пачки
+  // сирот его нет — там перекладывается только само полотно, а кромка
+  // остаётся той, что построил хозяин квадрата.
+  const ctx = world.roads.ctx || null;
+  const ALL = ctx ? ctx.all : world.roads;
+  const FLD = ctx ? yield* roadFieldGen(ALL, ctx.x0, ctx.z0, ctx.x1, ctx.z1) : null;
+  yield;
+
+  // Осевые всех проезжих улиц в сетке: «какая улица под этой точкой и куда
+  // она идёт». Нужна зебрам (встать поперёк СВОЕЙ улицы) и перекрёсткам
+  // (сосчитать, сколько улиц в них сходится).
+  const SGC = 32, sgrid = new Map();
+  ALL.forEach((r, ri) => {
+    if (r.c > 3 || r.w < 5 || r.pts.length < 4) return;
+    const p = r.pts;
+    for (let k = 0; k < p.length / 2 - 1; k++) {
+      const cx0 = Math.floor((Math.min(p[k * 2], p[k * 2 + 2]) - 6) / SGC);
+      const cx1 = Math.floor((Math.max(p[k * 2], p[k * 2 + 2]) + 6) / SGC);
+      const cz0 = Math.floor((Math.min(p[k * 2 + 1], p[k * 2 + 3]) - 6) / SGC);
+      const cz1 = Math.floor((Math.max(p[k * 2 + 1], p[k * 2 + 3]) + 6) / SGC);
+      for (let cx = cx0; cx <= cx1; cx++)
+        for (let cz = cz0; cz <= cz1; cz++) {
+          const key = cx * 100003 + cz;
+          let a = sgrid.get(key); if (!a) sgrid.set(key, a = []);
+          a.push(ri, k);
+        }
     }
-    return false;
+  });
+  // Ближайший пролёт осевой в пределах maxD (не больше 6 м — запас сетки).
+  const nearestSeg = (x, z, maxD) => {
+    const a = sgrid.get(Math.floor(x / SGC) * 100003 + Math.floor(z / SGC));
+    if (!a) return null;
+    let best = null, bd = maxD;
+    for (let q = 0; q < a.length; q += 2) {
+      const r = ALL[a[q]], k = a[q + 1], p = r.pts;
+      const ax = p[k * 2], az = p[k * 2 + 1];
+      const dx = p[k * 2 + 2] - ax, dz = p[k * 2 + 3] - az;
+      const L2 = dx * dx + dz * dz;
+      if (L2 < 0.01) continue;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+      const qx = ax + dx * t, qz = az + dz * t;
+      const d = Math.hypot(x - qx, z - qz);
+      if (d < bd) { bd = d; const L = Math.sqrt(L2); best = { r, k, t, qx, qz, ux: dx / L, uz: dz / L, d }; }
+    }
+    return best;
   };
+  // Направление осевой на расстоянии dist (со знаком) вдоль улицы от пролёта k.
+  const headingAt = (p, k, t, dist) => {
+    const n = p.length / 2;
+    let left = Math.abs(dist), i = k;
+    const dir = dist < 0 ? -1 : 1;
+    let segL = Math.hypot(p[i * 2 + 2] - p[i * 2], p[i * 2 + 3] - p[i * 2 + 1]);
+    left -= dir > 0 ? segL * (1 - t) : segL * t;
+    while (left > 0 && i + dir >= 0 && i + dir < n - 1) {
+      i += dir;
+      segL = Math.hypot(p[i * 2 + 2] - p[i * 2], p[i * 2 + 3] - p[i * 2 + 1]);
+      left -= segL;
+    }
+    const L = segL || 1;
+    return [(p[i * 2 + 2] - p[i * 2]) / L, (p[i * 2 + 3] - p[i * 2 + 1]) / L];
+  };
+
+  // КОЛЬЦА. Тега «круговое движение» в данных нет, а знать надо: через
+  // круговую проезжую часть пешеходов не пускают, и зебра на ней — ошибка.
+  // Кольцо узнаём по форме: цепочка односторонних улиц, которая, если ехать
+  // по ходу, возвращается в свою же точку короче чем за 260 м. Квартал с
+  // односторонним объездом длиннее, разворотная петля на бульваре — короче,
+  // и зебра на ней тоже ни к чему.
+  const ring = new Set();
+  {
+    const key = (x, z) => Math.round(x * 2) * 200003 + Math.round(z * 2);
+    const from = new Map(), len = new Map();
+    ALL.forEach((r, ri) => {
+      if (!r.ow || r.c > 3 || r.pts.length < 4) return;
+      const p = r.pts, k = key(p[0], p[1]);
+      (from.get(k) || from.set(k, []).get(k)).push(ri);
+      let L = 0;
+      for (let i = 0; i < p.length - 2; i += 2) L += Math.hypot(p[i + 2] - p[i], p[i + 3] - p[i + 1]);
+      len.set(ri, L);
+    });
+    const path = [];
+    const go = (ri, home, left, depth) => {
+      const p = ALL[ri].pts;
+      left -= len.get(ri);
+      if (left < 0 || depth > 12) return false;
+      path.push(ri);
+      const k = key(p[p.length - 2], p[p.length - 1]);
+      if (k === home) return true;
+      for (const nx of from.get(k) || []) if (!path.includes(nx) && go(nx, home, left, depth + 1)) return true;
+      path.pop();
+      return false;
+    };
+    for (const ri of len.keys()) {
+      if (ring.has(ri)) continue;
+      path.length = 0;
+      const p = ALL[ri].pts;
+      if (go(ri, key(p[0], p[1]), 260, 0)) for (const q of path) ring.add(ALL[q]);
+    }
+  }
+
+  // НАСТОЯЩИЕ перекрёстки — где сходятся хотя бы три «руки» проезжих улиц.
+  // В данных узлом считается и выезд со двора, и перед каждым таким выездом
+  // рвать осевую незачем. Улица, проходящая насквозь, даёт две руки,
+  // упирающаяся торцом — одну; проезды уже пяти метров не в счёт.
+  const jreal = new Map(), JRC = 40;
+  for (const j of world.junctions || []) {
+    const seenR = new Set();
+    let arms = 0;
+    const R = j.r + 2;
+    for (let cx = Math.floor((j.x - R) / SGC); cx <= Math.floor((j.x + R) / SGC); cx++)
+      for (let cz = Math.floor((j.z - R) / SGC); cz <= Math.floor((j.z + R) / SGC); cz++) {
+        const a = sgrid.get(cx * 100003 + cz);
+        if (!a) continue;
+        for (let q = 0; q < a.length; q += 2) {
+          if (seenR.has(a[q])) continue;
+          const p = ALL[a[q]].pts, n = p.length / 2;
+          // ближайшая к центру узла точка всей осевой
+          let bd = 1e9, bx = 0, bz = 0;
+          for (let k = 0; k < n - 1; k++) {
+            const ax = p[k * 2], az = p[k * 2 + 1];
+            const dx = p[k * 2 + 2] - ax, dz = p[k * 2 + 3] - az;
+            const L2 = dx * dx + dz * dz || 1;
+            const t = Math.max(0, Math.min(1, ((j.x - ax) * dx + (j.z - az) * dz) / L2));
+            const d = Math.hypot(j.x - ax - dx * t, j.z - az - dz * t);
+            if (d < bd) { bd = d; bx = ax + dx * t; bz = az + dz * t; }
+          }
+          if (j.poly ? polyOut(j.poly, bx, bz) > 0.5 : bd > j.r) continue;
+          seenR.add(a[q]);
+          const end = Math.hypot(bx - p[0], bz - p[1]) < 2.5
+                   || Math.hypot(bx - p[n * 2 - 2], bz - p[n * 2 - 1]) < 2.5;
+          arms += end ? 1 : 2;
+        }
+      }
+    if (arms < 3) continue;
+    const RR = j.r + 18;
+    for (let cx = Math.floor((j.x - RR) / JRC); cx <= Math.floor((j.x + RR) / JRC); cx++)
+      for (let cz = Math.floor((j.z - RR) / JRC); cz <= Math.floor((j.z + RR) / JRC); cz++) {
+        const key = cx * 100003 + cz;
+        let a = jreal.get(key); if (!a) jreal.set(key, a = []);
+        a.push(j);
+      }
+  }
+  // Сколько метров от точки до пятна ближайшего настоящего перекрёстка
+  // (отрицательное — внутри). Для выпуклого пятна вынос за рёбра вдоль улицы
+  // растёт линейно, так что между вершинами полотна он интерполируется честно
+  // и разметка обрывается ровно поперёк.
+  const JFAR = 60;
+  const junctionDist = (x, z) => {
+    const a = jreal.get(Math.floor(x / JRC) * 100003 + Math.floor(z / JRC));
+    let best = JFAR;
+    if (a) for (const j of a) {
+      const d = j.poly ? polyOut(j.poly, x, z) : Math.hypot(x - j.x, z - j.z) - j.r;
+      if (d < best) best = d;
+    }
+    return best;
+  };
+  const nearestJunction = (x, z) => {
+    const a = jreal.get(Math.floor(x / JRC) * 100003 + Math.floor(z / JRC));
+    let best = null, bd = 1e9;
+    if (a) for (const j of a) {
+      const d = j.poly ? polyOut(j.poly, x, z) : Math.hypot(x - j.x, z - j.z) - j.r;
+      if (d < bd) { bd = d; best = j; }
+    }
+    return bd < 16 ? best : null;
+  };
+  yield;
 
   // ---------------------------------------------------- обрезка полотен
   // Осевые линии OSM у крупных улиц идут парой (по проезжей части в каждую
@@ -1790,6 +1952,14 @@ export function* buildRoads(world, terrain, chunk = 500) {
     const c = cellOf(x, z);
     return c >= 0 && walkOwn[c] >= 0 && walkOwn[c] !== own;
   };
+  // Тротуар теперь идёт вдоль общей кромки, и «занято ли место тротуаром»
+  // отвечает само поле: полоса от бордюра наружу у улицы, которой он положен.
+  const walkRoad = ri => { const r = ALL[ri]; return !!r && r.c <= 3 && r.w >= 5 && !r.br && !r.tn; };
+  const onSidewalk = (x, z) => {
+    if (!FLD) return false;
+    const f = FLD.at(x, z);
+    return f > KERB_ISO && f < SIDEWALK + KERB_ISO + 0.3 && walkRoad(FLD.own(x, z));
+  };
   const order = world.roads.map((r, i) => ({ r, i })).sort((a, b2) => (a.r.c > 3 ? 1 : 0) - (b2.r.c > 3 ? 1 : 0));
 
   let work = 0;
@@ -1822,6 +1992,41 @@ export function* buildRoads(world, terrain, chunk = 500) {
         }
       }
     }
+    // Торец полотна — прямоугольник, вытянутый за узел на полуширину, и на
+    // косом примыкании его угол вылезал за дальнюю кромку главной улицы
+    // рубленым клином. Ужимаем каждую вершину до расчётной кромки асфальта:
+    // всё, что за ней, — не дорога. За пределами решётки не режем: там поля нет.
+    if (FLD && r.c <= 3 && !r.br && !r.tn) {
+      if (!cut) cut = { offL: new Float64Array(mtR.n).fill(-hw), offR: new Float64Array(mtR.n).fill(hw) };
+      for (let i = 0; i < mtR.n; i++) {
+        const bx = ext[i * 2], bz = ext[i * 2 + 1];
+        if (!FLD.has(bx, bz)) continue;
+        const nx = mtR.NX[i] * mtR.S[i], nz = mtR.NZ[i] * mtR.S[i];
+        let axis = -1;
+        for (const sg of [1, -1]) {
+          let v = sg > 0 ? cut.offR[i] : -cut.offL[i];
+          if (v <= 0 || FLD.at(bx + nx * sg * v, bz + nz * sg * v) <= 0.12) continue;
+          if (axis < 0) axis = FLD.at(bx, bz) > 0.12 ? 1 : 0;
+          if (axis) v = 0;
+          else {
+            let lo = 0, hi = v;
+            for (let k = 0; k < 7; k++) {
+              const m = (lo + hi) / 2;
+              if (FLD.at(bx + nx * sg * m, bz + nz * sg * m) > 0.1) hi = m; else lo = m;
+            }
+            v = lo;
+          }
+          if (sg > 0) cut.offR[i] = v; else cut.offL[i] = -v;
+        }
+      }
+    }
+    // Разметке — расстояние до перекрёстка в каждой вершине осевой.
+    const lanesR = laneEnc(r);
+    let jn = null;
+    if (lanesR && r.c <= 2) {
+      jn = new Float32Array(mtR.n);
+      for (let i = 0; i < mtR.n; i++) jn[i] = junctionDist(ext[i * 2], ext[i * 2 + 1]);
+    }
     // Пешеходная дорожка декоративна: под ней и так либо асфальт улицы, либо
     // плитка тротуара. Проверять одну середину пролёта было мало — шестиметровая
     // pedestrian ложилась на тротуар боками. Смотрим весь квад, и если задета
@@ -1841,7 +2046,9 @@ export function* buildRoads(world, terrain, chunk = 500) {
           const sc = mtR.S[i] + (mtR.S[i + 1] - mtR.S[i]) * s2;
           for (const t of [-1, -0.5, 0, 0.5, 1]) {
             const o = t * hq * sc;
-            if (onOtherRoad(bx + nx * o, bz + nz * o, ri) || onWalkOther(bx + nx * o, bz + nz * o, ri)) { hit = true; break; }
+            const qx = bx + nx * o, qz = bz + nz * o;
+            if (onOtherRoad(qx, qz, ri) || onWalkOther(qx, qz, ri) || onSidewalk(qx, qz)
+                || (FLD && FLD.at(qx, qz) < -0.4)) { hit = true; break; }
           }
           if (hit) break;
         }
@@ -1860,7 +2067,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
       // рисовались обе внахлёст. Растр уже решил, чья это земля, — этого хватает.
       for (const [bx, bz] of pts3) if (!onOtherRoad(bx, bz, ri)) return false;
       return true;      // кусок целиком на чужой проезжей части
-    }, ri, laneEnc(r), r.sf || 0, bridgeH.get(ri) || H);
+    }, ri, lanesR, r.sf || 0, bridgeH.get(ri) || H, jn);
     if (r.c === 4) {
       // Дорожка метит свою полосу, чтобы параллельная соседка не легла сверху.
       // Метим ТОЛЬКО нарисованное: раньше снятый пролёт всё равно занимал
@@ -1880,37 +2087,187 @@ export function* buildRoads(world, terrain, chunk = 500) {
         }
       }
     }
-    // тротуары только у проезжих улиц и без вылета: иначе они лягут поперёк перекрёстка
-    if (r.c <= 3 && r.w >= 5 && !r.br && !r.tn) {
-      const dp = densify(r.pts);
-      const mt = miters(dp);
-      // бордюр и тротуар не строим там, где они попадают на чужую проезжую часть
-      strip(ch, dp, mt, hw, hw + SIDEWALK, KERB_H + 0.03, 5, SIDEWALK, true,
-            i => stripHitsRoad(dp, i, mt, hw - 0.2, hw + SIDEWALK + 0.4, ri), ri);
-      strip(ch, dp, mt, -hw - SIDEWALK, -hw, KERB_H + 0.03, 5, SIDEWALK, true,
-            i => stripHitsRoad(dp, i, mt, -hw + 0.2, -hw - SIDEWALK - 0.4, ri), ri);
-      kerb(ch, dp, mt, hw, ROAD_Y, KERB_H + 0.03,
-           i => stripHitsRoad(dp, i, mt, hw - 0.2, hw + 0.8, ri), ri);
-      kerb(ch, dp, mt, -hw, ROAD_Y, KERB_H + 0.03,
-           i => stripHitsRoad(dp, i, mt, -hw + 0.2, -hw - 0.8, ri), ri);
-      // Метим полосу тротуара, чтобы пешеходные дорожки её не перекрывали.
-      // Шаг вдоль был в треть пролёта (3 м при клетке в 2 м) — между пробами
-      // оставались непомеченные клетки, и дорожка проходила сквозь них.
-      for (let i = 0; i < mt.n - 1; i++) {
-        const seg = Math.hypot(dp[i * 2 + 2] - dp[i * 2], dp[i * 2 + 3] - dp[i * 2 + 1]);
-        const steps = Math.max(2, Math.ceil(seg / 1.2));
-        for (let k = 0; k <= steps; k++) {
-          const s2 = k / steps;
-          const bx = dp[i * 2] + (dp[i * 2 + 2] - dp[i * 2]) * s2;
-          const bz = dp[i * 2 + 1] + (dp[i * 2 + 3] - dp[i * 2 + 1]) * s2;
-          const nx = mt.NX[i], nz = mt.NZ[i], sc = mt.S[i];
-          for (const sg of [1, -1])
-            for (let o = hw + 0.3; o <= hw + SIDEWALK + 1e-6; o += 0.7)
-              claimWalk(bx + nx * sg * o * sc, bz + nz * sg * o * sc, ri);
+  }
+  // ------------------------------------------------ бордюр, тротуар, островки
+  // Всё это строится вдоль ОДНОЙ линии — кромки асфальта из поля расстояний.
+  // Линия замкнута вокруг квартала сама собой, поэтому тротуар огибает угол
+  // без обрыва, а островок посреди площади получает бордюр по всему контуру.
+  if (FLD) {
+    yield;
+    const chains = traceContours(FLD, ctx.x0, ctx.z0, ctx.x1, ctx.z1, KERB_ISO);
+    yield;
+    const LAWN = [0.345, 0.431, 0.235];
+    const TOP = KERB_H + 0.03;
+    // Заливка многоугольника с дроблением: крупный треугольник лёг бы хордой
+    // поверх рельефа и утонул в нём посередине.
+    const fillPoly = (ch, loop, lift, cls, col) => {
+      const n = loop.length / 2;
+      const v2 = [];
+      for (let i = 0; i < n; i++) v2.push(new THREE.Vector2(loop[i * 2], loop[i * 2 + 1]));
+      const tris = THREE.ShapeUtils.triangulateShape(v2, []);
+      const idx = new Map();
+      const vert = (x, z) => {
+        const key = Math.round(x * 50) * 4000037 + Math.round(z * 50);
+        let k = idx.get(key);
+        if (k === undefined) {
+          k = ch.base++;
+          idx.set(key, k);
+          ch.P.push(x, H(x, z) + lift, z);
+          ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
+          // плитке — мировые метры: рисунок не зависит от того, как легли треугольники
+          ch.R.push(x, z, 2, 0); ch.K.push(cls); ch.O.push(-1); ch.S.push(0);
+        }
+        return k;
+      };
+      const stack = [];
+      for (const t of tris)
+        stack.push([loop[t[0] * 2], loop[t[0] * 2 + 1], loop[t[1] * 2], loop[t[1] * 2 + 1], loop[t[2] * 2], loop[t[2] * 2 + 1]]);
+      while (stack.length) {
+        const q = stack.pop();
+        const la = (q[2] - q[0]) ** 2 + (q[3] - q[1]) ** 2;
+        const lb = (q[4] - q[2]) ** 2 + (q[5] - q[3]) ** 2;
+        const lc = (q[0] - q[4]) ** 2 + (q[1] - q[5]) ** 2;
+        const lm = Math.max(la, lb, lc);
+        if (lm > 49) {
+          // делим самую длинную сторону пополам
+          const o = lm === la ? 0 : lm === lb ? 2 : 4;
+          const ax = q[o], az = q[o + 1], bx = q[(o + 2) % 6], bz = q[(o + 3) % 6];
+          const cx = q[(o + 4) % 6], cz = q[(o + 5) % 6];
+          const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+          stack.push([ax, az, mx, mz, cx, cz], [mx, mz, bx, bz, cx, cz]);
+          continue;
+        }
+        const up = (q[3] - q[1]) * (q[4] - q[0]) - (q[2] - q[0]) * (q[5] - q[1]) > 0;
+        const a = vert(q[0], q[1]), b = vert(q[2], q[3]), c = vert(q[4], q[5]);
+        if (up) ch.I.push(a, b, c); else ch.I.push(a, c, b);
+      }
+    };
+    const insideAny = (loop, bb) => {
+      for (const list of [world.buildings, world.areas])
+        for (const o of list || []) {
+          const q = o.poly;
+          if (!q || q[0] < bb[0] || q[0] > bb[2] || q[1] < bb[1] || q[1] > bb[3]) continue;
+          if (pointInPoly(q[0], q[1], loop)) return true;
+        }
+      return false;
+    };
+
+    let cwork = 0;
+    for (const chn of chains) {
+      if ((cwork += chn.pts.length) > 3000) { cwork = 0; yield; }
+      let sp = simplifyChain(chn.pts, chn.closed);
+      let n = sp.length / 2;
+      if (n < 2 || (chn.closed && n < 3)) continue;
+      let area = 0, per = 0;
+      if (chn.closed) {
+        for (let i = 0; i < n; i++) {
+          const k = (i + 1) % n;
+          area += sp[i * 2] * sp[k * 2 + 1] - sp[k * 2] * sp[i * 2 + 1];
+          per += Math.hypot(sp[k * 2] - sp[i * 2], sp[k * 2 + 1] - sp[i * 2 + 1]);
+        }
+        area /= 2;
+        if (per < 5) continue;                      // соринка растра
+        // Шов замкнутой цепочки ставим в середину самой длинной стороны: там
+        // кромка прямая, и нормали начала и конца совпадают.
+        let bi = 0, bl = -1;
+        for (let i = 0; i < n; i++) {
+          const k = (i + 1) % n;
+          const l = Math.hypot(sp[k * 2] - sp[i * 2], sp[k * 2 + 1] - sp[i * 2 + 1]);
+          if (l > bl) { bl = l; bi = i; }
+        }
+        const k0 = (bi + 1) % n;
+        const mx = (sp[bi * 2] + sp[k0 * 2]) / 2, mz = (sp[bi * 2 + 1] + sp[k0 * 2 + 1]) / 2;
+        const rot = [mx, mz];
+        for (let q = 0; q < n; q++) { const i = (k0 + q) % n; rot.push(sp[i * 2], sp[i * 2 + 1]); }
+        rot.push(mx, mz);
+        sp = rot; n = sp.length / 2;
+      }
+      // Чья это кромка: смотрим на полметра ВНУТРЬ асфальта от середины
+      // стороны. Бордюр с тротуаром положены улице, а не дворовому проезду.
+      const on = new Uint8Array(n - 1);
+      let onLen = 0, allLen = 0;
+      for (let i = 0; i < n - 1; i++) {
+        const dx = sp[i * 2 + 2] - sp[i * 2], dz = sp[i * 2 + 3] - sp[i * 2 + 1];
+        const L = Math.hypot(dx, dz) || 1;
+        const mx = (sp[i * 2] + sp[i * 2 + 2]) / 2 + dz / L * 0.5;
+        const mz = (sp[i * 2 + 1] + sp[i * 2 + 3]) / 2 - dx / L * 0.5;
+        on[i] = walkRoad(FLD.own(mx, mz)) ? 1 : 0;
+        allLen += L; if (on[i]) onLen += L;
+      }
+      if (!onLen) continue;
+
+      // ОСТРОВОК: замкнутая кромка, внутри которой не асфальт, небольшая, без
+      // домов и площадок, и вокруг — улицы, а не дворовые проезды. Центр
+      // кольца, треугольник между съездами, разделитель у светофора. Раньше
+      // это была та же голая земля, что на пустыре.
+      // Щель тоньше метра между двумя почти касающимися полотнами — это не
+      // островок, а недоразумение растра: заливаем асфальтом, без бордюра.
+      if (chn.closed && area > 0 && 2 * area / per < 0.9) {
+        fillPoly(bucket(sp[0], sp[1]), sp.slice(0, sp.length - 2), ROAD_Y - 0.03, 1, ROAD_COLORS[1]);
+        continue;
+      }
+      if (chn.closed && area > 0 && area < 2200 && onLen > allLen * 0.7) {
+        let bb = [1e9, 1e9, -1e9, -1e9];
+        for (let i = 0; i < n; i++) {
+          bb[0] = Math.min(bb[0], sp[i * 2]); bb[1] = Math.min(bb[1], sp[i * 2 + 1]);
+          bb[2] = Math.max(bb[2], sp[i * 2]); bb[3] = Math.max(bb[3], sp[i * 2 + 1]);
+        }
+        if (!insideAny(sp, bb)) {
+          const dpts = densify(sp);
+          const mt = miters(dpts);
+          const ch = bucket(dpts[0], dpts[1]);
+          kerb(ch, dpts, mt, 0, ROAD_Y - 0.04, TOP, null, -1, false, true);
+          // Узкий островок мостим целиком; на широком — камень по кромке и газон.
+          const wide = area > 30 && 2 * area / per > 1.7;
+          const BAND = wide ? 0.32 : 0;
+          if (wide) strip(ch, dpts, mt, 0, BAND, TOP, 6, 0.3, false, null);
+          const inner = [];
+          for (let i = 0; i < mt.n - 1; i++)
+            inner.push(dpts[i * 2] + mt.NX[i] * mt.S[i] * BAND, dpts[i * 2 + 1] + mt.NZ[i] * mt.S[i] * BAND);
+          // газон ниже пешеходных дорожек (0.144+): аллеи через сквер видны поверх
+          if (wide) fillPoly(ch, inner, ROAD_Y - 0.06, 9, LAWN);
+          else fillPoly(ch, inner, TOP, 4, ROAD_COLORS[5]);
+          continue;
         }
       }
+
+      // Обычная кромка: режем на непрерывные участки, которым положен тротуар.
+      for (let i = 0; i < n - 1;) {
+        if (!on[i]) { i++; continue; }
+        let j = i;
+        while (j < n - 1 && on[j]) j++;
+        const run = sp.slice(i * 2, j * 2 + 2);
+        i = j;
+        let rl = 0;
+        for (let q = 0; q < run.length / 2 - 1; q++)
+          rl += Math.hypot(run[q * 2 + 2] - run[q * 2], run[q * 2 + 3] - run[q * 2 + 1]);
+        if (rl < 1.5) continue;
+        const dpts = densify(run);
+        const mt = miters(dpts);
+        // Ширина тротуара в каждой вершине. Полные 2.6 м он получает, только
+        // если есть куда: на узком разделителе встречные тротуары сходятся
+        // посередине, а в стену дома полоса не заходит.
+        const wd = new Float64Array(mt.n), zero = new Float64Array(mt.n);
+        for (let q = 0; q < mt.n; q++) {
+          const px = dpts[q * 2], pz = dpts[q * 2 + 1];
+          const nx = mt.NX[q] * mt.S[q], nz = mt.NZ[q] * mt.S[q];
+          let w = 0;
+          for (let t = 0.4; t <= SIDEWALK + 1e-6; t += 0.44) {
+            // поле в точке меньше, чем наш отступ, — значит, чужая кромка ближе своей
+            if (FLD.at(px + nx * t, pz + nz * t) < t + KERB_ISO - 0.25) break;
+            w = t;
+          }
+          while (w > 0.5 && (inBuilding(px + nx * w, pz + nz * w) || inBuilding(px + nx * w * 0.5, pz + nz * w * 0.5))) w -= 0.7;
+          wd[q] = w > 0.5 ? w : 0;
+        }
+        const ch = bucket(dpts[0], dpts[1]);
+        strip(ch, dpts, mt, zero, wd, TOP, 5, SIDEWALK, false, q => wd[q] < 0.1 && wd[q + 1] < 0.1);
+        kerb(ch, dpts, mt, 0, ROAD_Y - 0.04, TOP, null, -1, false, true);
+      }
     }
+    yield;
   }
+
   // РЕЛЬСЫ. Подъём 5 см меньше ошибки триангуляции рельефа: сетка 8.67 м, и
   // земля протыкала полотно пути — 57 007 м² конфликта по замеру, худшее
   // место города. Поднимаем на ту же высоту, что и улицы, и кладём сверху
@@ -1957,112 +2314,133 @@ export function* buildRoads(world, terrain, chunk = 500) {
     }
   }
 
-  // Пятно перекрёстка. Кладём ЧУТЬ НИЖЕ полотен и ровно в их цвет: его задача —
-  // закрыть щель между сходящимися улицами, а не рисоваться поверх них кругом.
-  // Раньше оно лежало сверху и читалось как круглая заплата другого оттенка.
-  // У склеенного кластера (площадь) вместо круга приходит выпуклый контур:
-  // шесть независимых кругов на площади Ушакова спорили друг с другом за
-  // глубину и читались ступенями. Один контур — одно ровное пятно.
-  for (const j of world.junctions || []) {
+  // ПОДЛОЖКА ПЕРЕКРЁСТКА. Раньше это было «пятно»: выпуклая оболочка узла,
+  // положенная ПОВЕРХ полотен. Оболочка шире самих улиц — её углы торчали
+  // многоугольной заплатой на газон, а полотна, приподнятые поправкой на
+  // провисание, протыкали её снизу обрывками своей разметки.
+  // Теперь наоборот: полотна сверху, а под ними — веер, который только
+  // закрывает возможную щель между торцами. Лучи веера упираются в кромку
+  // асфальта, так что за бордюр он не выходит. Тон у него тот же, что у
+  // полотна (один асфальт на всех), и там, где он виден, шва нет.
+  // Рисует его тот квадрат, в котором лежит центр узла: перекрёстки
+  // приезжают в каждый чанк, и на шве их было бы два.
+  if (FLD) for (const j of world.junctions || []) {
+    if (j.x < ctx.x0 || j.x >= ctx.x1 || j.z < ctx.z0 || j.z >= ctx.z1) continue;
+    if (FLD.at(j.x, j.z) > -0.3) continue;              // центр не на асфальте
     const ch = bucket(j.x, j.z);
-    const col = ROAD_COLORS[j.c ?? 1];   // цвет самой широкой улицы узла
+    const col = ROAD_COLORS[1];
     const start = ch.base;
-    const ring = [];
-    if (j.poly) {
-      const n = j.poly.length / 2;
-      for (let k = 0; k < n; k++) {
-        const x = j.poly[k * 2], z = j.poly[k * 2 + 1];
-        const dx = x - j.x, dz = z - j.z, L = Math.hypot(dx, dz) || 1;
-        // те же 0.8 м внутрь, что и у круга: пятно не должно вылезать из полотен
-        ring.push([x - dx / L * 0.8, z - dz / L * 0.8]);
+    const SEG = 16, ring = [];
+    let reach = 0;
+    for (let k = 0; k < SEG; k++) {
+      const a = k / SEG * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
+      let rr = 0;
+      for (let t = 0.7; t <= j.r + 1; t += 0.7) {
+        const x = j.x + dx * t, z = j.z + dz * t;
+        if (FLD.at(x, z) > -0.05) break;
+        if (j.poly ? polyOut(j.poly, x, z) > 0 : t > j.r) break;
+        rr = t;
       }
-    } else {
-      const SEG = 16, r = j.r - 0.8;
-      if (r < 1.5) continue;
-      for (let k = 0; k < SEG; k++) {
-        const a = k / SEG * Math.PI * 2;
-        ring.push([j.x + Math.cos(a) * r, j.z + Math.sin(a) * r]);
-      }
+      if (rr > reach) reach = rr;
+      ring.push([j.x + dx * rr, j.z + dz * rr]);
     }
-    // Ширину в атрибут даём НАСТОЯЩУЮ: по ней шейдер кладёт крошку асфальта и
-    // накат от колёс. С фиктивными 0.5 м пятно выходило гладким и читалось
-    // тёмной заплатой другого материала посреди фактурной улицы.
-    // Крошку асфальта шейдер считает по (m, v) — метрам поперёк и вдоль. У
-    // пятна они были нулевыми у ВСЕХ вершин: шум брался один раз на всё пятно
-    // и, попав в тёмный край диапазона, красил перекрёсток равномерно тёмным
-    // пятном другого материала. Даём вершинам настоящие координаты от центра.
-    const jw = Math.max(6, j.r * 2);
-    ch.P.push(j.x, H(j.x, j.z) + ROAD_Y + 0.045, j.z);
+    if (reach < 1.4) continue;
+    const lift = ROAD_Y - 0.03;
+    ch.P.push(j.x, H(j.x, j.z) + lift, j.z);
     ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-    ch.R.push(0, 0, jw, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);   // без этого aOwn съезжал на вершину
+    ch.R.push(0, 0, 6, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);
     for (const [x, z] of ring) {
-      ch.P.push(x, H(x, z) + ROAD_Y + 0.045, z);
+      ch.P.push(x, H(x, z) + lift, z);
       ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-      ch.R.push((x - j.x) / (jw * 0.5), z - j.z, jw, 0);
-      ch.K.push(1); ch.O.push(-1); ch.S.push(0);
+      ch.R.push(0, 0, 6, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);
     }
-    for (let k = 0; k < ring.length; k++)
-      ch.I.push(start, start + 1 + (k + 1) % ring.length, start + 1 + k);
-    ch.base += ring.length + 1;
+    for (let k = 0; k < SEG; k++)
+      ch.I.push(start, start + 1 + (k + 1) % SEG, start + 1 + k);
+    ch.base += SEG + 1;
   }
 
-  // Порядок высот на асфальте теперь строго монотонный и объяснимый:
-  //   полотно улицы   ROAD_Y + ширина*0.0016  (0.146 .. 0.162)
-  //   пятно перекрёстка ROAD_Y + 0.045         (0.185)
-  //   зебра            ROAD_Y + 0.055          (0.195)
-  // Раньше пятно лежало на 2.5 см НИЖЕ полотна: разница внутри точности
-  // буфера глубины, и на дистанции они спорили пятнами — 105 664 м² по
-  // замеру. Теперь пятно накрывает концы улиц, как и положено перекрёстку.
+  // Порядок высот на асфальте:
+  //   подложка узла    ROAD_Y − 0.03           (0.110)
+  //   полотно улицы    ROAD_Y + ширина*0.0016  (0.146 .. 0.162)
+  //   зебра, стоп-линия ROAD_Y + 0.055         (0.195)
+  //   тротуар, бордюр  KERB_H + 0.03           (0.200)
 
-  // Зебра на подходах. Полосы идут вдоль движения, в России чередуются белая и жёлтая.
+  // ЗЕБРЫ И СТОП-ЛИНИИ. Зебра в данных — точка и угол, снятый с того пролёта
+  // OSM, где её поставил сборщик. Этого мало: угол брался с короткого
+  // пролёта у самого узла, ширина — с тега, и зебра ложилась наискось,
+  // вылезала на тротуар или повисала на островке. Теперь ищем улицу под
+  // зеброй, ставим строго поперёк ЕЁ оси и тянем от бордюра до бордюра по
+  // расчётной кромке асфальта.
   for (const c of world.crossings || []) {
-    // зебра ставится в отступе от центра перекрёстка и на кривой улице
-    // иногда съезжает с полотна — рисуем только там, где под ней асфальт
-    const cc = cellOf(c.x, c.z);
-    if (!(cc >= 0 && cover[cc] >= 0)) continue;
-    const ux = Math.sin(c.a), uz = Math.cos(c.a);      // вдоль улицы
+    let ux = Math.sin(c.a), uz = Math.cos(c.a);        // вдоль улицы
+    let x0 = c.x, z0 = c.z, half = c.w * 0.5, rd = null;
+    const ns = nearestSeg(c.x, c.z, 5);
+    if (ns) {
+      rd = ns.r; ux = ns.ux; uz = ns.uz; x0 = ns.qx; z0 = ns.qz; half = rd.w * 0.5;
+      if (ring.has(rd)) continue;                      // на кольце зебр не бывает
+      // И на крутой дуге съезда тоже: меряем поворот оси на 24 м.
+      const h0 = headingAt(rd.pts, ns.k, ns.t, -12), h1 = headingAt(rd.pts, ns.k, ns.t, 12);
+      if (h0[0] * h1[0] + h0[1] * h1[1] < 0.866) continue;      // круче 30°
+    }
     const nx = -uz, nz = ux;                            // поперёк
-    // Ширину зебры брали из ширины улицы по OSM, а полотно ужимается растром
-    // покрытия: 484 зебры из 3475 не доходили до кромки или наоборот вылезали
-    // на тротуар, а 122 висели меньше чем на трёх четвертях асфальта — те самые
-    // «застрявшие наполовину». Меряем настоящую кромку под самой зеброй и
-    // рисуем ровно по ней; если асфальта нет вовсе, зебру не рисуем.
-    const onAsp = (x, z) => { const k = cellOf(x, z); return k >= 0 && cover[k] >= 0; };
     let eL = 0, eR = 0;
-    const LIM = c.w * 0.5 + 3.0;
-    for (let t = 0.1; t <= LIM; t += 0.25) {
-      if (onAsp(c.x - nx * t, c.z - nz * t)) eL = t; else break;
-    }
-    for (let t = 0.1; t <= LIM; t += 0.25) {
-      if (onAsp(c.x + nx * t, c.z + nz * t)) eR = t; else break;
-    }
-    if (eL + eR < 3.2) continue;                        // под зеброй нет дороги
-    // центр смещаем в середину найденной полосы, ширину берём по ней
-    const shift = (eR - eL) / 2;
-    const cx0 = c.x + nx * shift, cz0 = c.z + nz * shift;
-    const ch = bucket(cx0, cz0);
-    const hw = (eL + eR) / 2 - 0.12, hd = c.d / 2, start = ch.base;
-    const col = ROAD_COLORS[1];
-    for (const sd of [-1, 1])
-      for (const sw of [-1, 1]) {
-        const x = cx0 + ux * hd * sd + nx * hw * sw;
-        const z = cz0 + uz * hd * sd + nz * hw * sw;
-        // Полотно поднимается тем выше, чем ШИРЕ улица (ROAD_Y + w*0.0016 —
-        // так снимается борьба за глубину между широкой и узкой). Зебра же
-        // лежала на постоянных ROAD_Y + 0.02, и на четырнадцатиметровой
-        // Большой Морской оказывалась НИЖЕ асфальта на 2.4 мм — отсюда
-        // «проваленные переходы». Поднимаем её над ЕЁ улицей.
-        // Ширина улицы под зеброй бывает не той, что у соседней на том же
-        // перекрёстке, и по своей ширине зебра всё равно ныряла под чужой,
-        // более широкий асфальт. Берём запас над САМЫМ высоким полотном
-        // города: 14 м * 0.0016 = 2.2 см, кладём 5.5 см — этого хватает всем.
-        ch.P.push(x, H(x, z) + ROAD_Y + 0.055, z);
-        ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-        ch.R.push(sw, hd * sd, hw * 2, 0); ch.K.push(7); ch.O.push(-1); ch.S.push(0);
+    if (FLD && FLD.has(x0, z0)) {
+      if (FLD.at(x0, z0) > KERB_ISO) continue;         // под зеброй нет асфальта
+      for (let t = 0.2; t <= half + 1e-6; t += 0.2) {
+        if (FLD.at(x0 - nx * t, z0 - nz * t) > KERB_ISO - 0.08) break; eL = t;
       }
-    ch.I.push(start, start + 1, start + 2, start + 1, start + 3, start + 2);
-    ch.base += 4;
+      for (let t = 0.2; t <= half + 1e-6; t += 0.2) {
+        if (FLD.at(x0 + nx * t, z0 + nz * t) > KERB_ISO - 0.08) break; eR = t;
+      }
+    } else {
+      // вне решётки поля (улица ушла в соседний квадрат) — по растру покрытия
+      const onAsp = (x, z) => { const k = cellOf(x, z); return k >= 0 && cover[k] >= 0; };
+      if (!onAsp(x0, z0)) continue;
+      for (let t = 0.1; t <= half; t += 0.25) { if (onAsp(x0 - nx * t, z0 - nz * t)) eL = t; else break; }
+      for (let t = 0.1; t <= half; t += 0.25) { if (onAsp(x0 + nx * t, z0 + nz * t)) eR = t; else break; }
+      eL = Math.max(0, eL - 0.12); eR = Math.max(0, eR - 0.12);
+    }
+    if (eL + eR < 3.2) continue;                        // обрубок — не переход
+    const ch = bucket(x0, z0);
+    const col = ROAD_COLORS[1];
+    const hd = c.d / 2, W2 = eL + eR;
+    // Прямоугольник поперёк улицы: вдоль от a0 до a1, поперёк от b0 до b1.
+    const quad = (a0, a1, b0, b1, cls) => {
+      const st = ch.base;
+      const xa = x0 + ux * a0 + nx * b0, za = z0 + uz * a0 + nz * b0;
+      const xb = x0 + ux * a1 + nx * b1, zb = z0 + uz * a1 + nz * b1;
+      const xc = x0 + ux * a0 + nx * b1, zc = z0 + uz * a0 + nz * b1;
+      const xd = x0 + ux * a1 + nx * b0, zd = z0 + uz * a1 + nz * b0;
+      const lift2 = upNear(Math.min(xa, xb, xc, xd), Math.min(za, zb, zc, zd),
+                           Math.max(xa, xb, xc, xd), Math.max(za, zb, zc, zd));
+      for (const a of [a0, a1])
+        for (const b of [b0, b1]) {
+          const x = x0 + ux * a + nx * b, z = z0 + uz * a + nz * b;
+          // Запас над САМЫМ высоким полотном города: 14 м * 0.0016 = 2.2 см,
+          // кладём 5.5 см — иначе переход ныряет под широкий асфальт.
+          ch.P.push(x, H(x, z) + ROAD_Y + 0.055 + lift2, z);
+          ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
+          ch.R.push(b / (W2 * 0.5), a, W2, 0); ch.K.push(cls); ch.O.push(-1); ch.S.push(0);
+        }
+      ch.I.push(st, st + 1, st + 2, st + 1, st + 3, st + 2);
+      ch.base += 4;
+    };
+    quad(-hd, hd, -eL, eR, 7);
     zebras++;
+    // Стоп-линия — перед зеброй со стороны подъезжающих, на их половине
+    // проезжей части, и только у пересечения проезжих улиц.
+    const j = rd ? nearestJunction(x0, z0) : null;
+    if (j && (j.mw || 0) >= 8 && rd.w >= 6) {
+      const dj = (j.x - x0) * ux + (j.z - z0) * uz > 0 ? 1 : -1;   // к узлу — вдоль оси или против
+      let b0 = 0, b1 = 0;
+      if (rd.ow) { if (dj > 0) { b0 = -eL; b1 = eR; } }            // односторонняя: едут по ходу точек
+      else if (dj > 0) { b0 = 0.15; b1 = eR; }                     // правая сторона по ходу к узлу
+      else { b0 = -eL; b1 = -0.15; }
+      if (b1 - b0 > 2) {
+        const a = -dj * (hd + 1.0);
+        quad(a - 0.2, a + 0.2, b0, b1, 8);
+      }
+    }
   }
 
   yield;
@@ -2083,6 +2461,10 @@ export function* buildRoads(world, terrain, chunk = 500) {
     geo.setAttribute('aCls', new THREE.Float32BufferAttribute(ch.K, 1));
     geo.setAttribute('aSurf', new THREE.Float32BufferAttribute(ch.S, 1));
     geo.setAttribute('aOwn', new THREE.Float32BufferAttribute(ch.O, 1));
+    // расстояние до перекрёстка есть только у вершин полотна; остальным — «далеко»
+    const jn = new Float32Array(ch.base).fill(JFAR);
+    for (let k = 0; k < ch.JI.length; k++) jn[ch.JI[k]] = ch.JV[k];
+    geo.setAttribute('aJn', new THREE.BufferAttribute(jn, 1));
     geo.setIndex(ch.I);
     geo.computeVertexNormals();
     const m = new THREE.Mesh(geo, mat);
