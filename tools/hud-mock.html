@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUD — макет</title>
+<!-- Макет нового интерфейса поверх настоящего кадра игры.
+     Кадр и состояние сцены снимает tools/hud-capture.mjs в shots-ui/scenes/.
+       ?v=A|B        — вариант: A «Циферблат», B «Угол»
+       ?s=car0|car120|walk|fly — сцена
+       ?keys=1       — первый запуск: подсказка клавиш на 8 с
+     Ничего из игры не импортирует: этап 1 — только на утверждение. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sofia+Sans+Condensed:wght@500;600;700;800&family=Unbounded:wght@500;600;700&family=Golos+Text:wght@500;600;700&display=block" rel="stylesheet">
+<style>
+  :root{
+    --white:#fff; --red:#ff3b30;
+    --shade:0 1px 2px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#000;color:#fff}
+  #bg{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
+  #hud{position:fixed;inset:0;pointer-events:none}
+
+  /* ---------- общее для обоих вариантов ---------- */
+  #mini{position:absolute}
+  #gauge{position:absolute}
+  #place{position:absolute;text-shadow:var(--shade)}
+  #help{position:absolute;top:26px;right:28px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+        font-weight:700;font-size:15px;color:#fff;text-shadow:none}
+  #dot{position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;
+       background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.5);display:none}
+  body.walk #dot{display:block}
+  #prompt{position:absolute;left:50%;bottom:21%;transform:translateX(-50%);display:none;align-items:center;gap:10px}
+  body.near #prompt{display:flex}
+  #credit{position:absolute;left:50%;bottom:7px;transform:translateX(-50%);white-space:nowrap;
+          font:500 9.5px/1 "Golos Text",sans-serif;letter-spacing:.02em;color:rgba(255,255,255,.42)}
+  .kc{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 7px;
+      font-weight:700;font-size:12px;letter-spacing:.02em}
+  #keys{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);display:none;flex-direction:column;align-items:center;gap:12px}
+  body.keys #keys{display:flex}
+  #keys .row{display:flex;gap:22px;align-items:center}
+  #keys .g{display:flex;align-items:center;gap:7px;font-size:13px;white-space:nowrap}
+  #keys .g .kc+.kc{margin-left:-3px}
+  #keys .t{width:100%;height:2px;background:rgba(255,255,255,.22);position:relative}
+  #keys .t i{position:absolute;left:0;top:0;bottom:0;width:62%;background:#fff}
+
+  /* ---------- A «Циферблат»: тёмная круглая карта, круглый прибор ---------- */
+  body.vA{font-family:"Sofia Sans Condensed",sans-serif}
+  .vA #mini{left:30px;bottom:28px}
+  .vA #gauge{right:30px;bottom:26px}
+  .vA #place{top:24px;left:30px;padding-left:13px;border-left:3px solid var(--red)}
+  .vA #place .city{font-weight:600;font-size:12px;letter-spacing:.24em;text-transform:uppercase;opacity:.82}
+  .vA #place .street{font-weight:700;font-size:25px;line-height:1.05;margin-top:3px;letter-spacing:.005em}
+  .vA #help{border:1.6px solid rgba(255,255,255,.85);border-radius:50%;background:rgba(10,12,14,.45)}
+  .vA .kc{border:1.5px solid rgba(255,255,255,.9);border-radius:5px;background:rgba(10,12,14,.62);font-family:"Sofia Sans Condensed",sans-serif;font-size:13px}
+  .vA #keys .g{font-weight:600;font-size:15px;text-shadow:var(--shade)}
+
+  /* ---------- B «Угол»: светлая квадратная карта, веер оборотов в углу ---------- */
+  body.vB{font-family:"Golos Text",sans-serif}
+  .vB #mini{left:26px;bottom:24px}
+  .vB #gauge{right:22px;bottom:16px}
+  .vB #place{top:22px;left:50%;transform:translateX(-50%);text-align:center}
+  .vB #place .city{font-weight:600;font-size:10.5px;letter-spacing:.34em;text-transform:uppercase;opacity:.8;margin-right:-.34em}
+  .vB #place .street{font-weight:700;font-size:19px;letter-spacing:.06em;text-transform:uppercase;margin-top:5px}
+  .vB #place .street:empty{display:none}
+  .vB #help{border-radius:7px;background:#fff;color:#14171a;font-size:13px;font-family:Unbounded,sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .vB .kc{border-radius:5px;background:#fff;color:#14171a;font-size:11px;font-family:Unbounded,sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+  .vB #keys .g{font-weight:600;font-size:13px;text-shadow:var(--shade)}
+</style>
+</head>
+<body>
+<img id="bg" alt="">
+<div id="hud">
+  <div id="place"><div class="city">Севастополь</div><div class="street"></div></div>
+  <canvas id="mini"></canvas>
+  <div id="gauge"></div>
+  <div id="help">?</div>
+  <div id="dot"></div>
+  <div id="prompt"><span class="kc">E</span><span id="carIcon"></span></div>
+  <div id="keys">
+    <div class="row">
+      <span class="g"><span class="kc">W</span><span class="kc">A</span><span class="kc">S</span><span class="kc">D</span>ехать</span>
+      <span class="g"><span class="kc">Space</span>ручник</span>
+      <span class="g"><span class="kc">E</span>выйти</span>
+      <span class="g"><span class="kc">F</span>полёт</span>
+      <span class="g"><span class="kc">C</span>камера</span>
+    </div>
+    <div class="row">
+      <span class="g"><span class="kc">Tab</span>карта</span>
+      <span class="g"><span class="kc">M</span>места</span>
+      <span class="g"><span class="kc">R</span>на дорогу</span>
+      <span class="g"><span class="kc">B</span>привод</span>
+      <span class="g"><span class="kc">?</span>все клавиши</span>
+    </div>
+    <div class="t"><i></i></div>
+  </div>
+  <div id="credit">© OpenStreetMap, ODbL · рельеф Terrarium · Mercedes-AMG E 63 S — Mona x Supercars, CC BY 4.0</div>
+</div>
+
+<script type="module">
+const Q = new URLSearchParams(location.search);
+const V = Q.get('v') || 'A', SCENE = Q.get('s') || 'car0';
+document.body.classList.add('v' + V);
+if (Q.get('keys')) document.body.classList.add('keys');
+
+const scene = await fetch(`../shots-ui/scenes/${SCENE}.json`).then(r => r.json());
+await new Promise(res => { const im = document.getElementById('bg'); im.onload = res; im.src = `../shots-ui/scenes/${SCENE}.png`; });
+await document.fonts.ready;
+
+const mode = scene.mode;
+document.body.classList.toggle('walk', mode === 'walk');
+document.body.classList.toggle('near', !!scene.nearCar);
+document.querySelector('#place .street').textContent = scene.street || '';
+
+// ---------------------------------------------------------------- геометрия
+const rad = d => d * Math.PI / 180;
+const pol = (cx, cy, r, a) => [cx + r * Math.cos(rad(a)), cy + r * Math.sin(rad(a))];
+const f1 = v => Math.round(v * 10) / 10;
+function arc(cx, cy, r, a0, a1) {
+  const [x0, y0] = pol(cx, cy, r, a0), [x1, y1] = pol(cx, cy, r, a1);
+  return `M${f1(x0)} ${f1(y0)}A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${f1(x1)} ${f1(y1)}`;
+}
+const line = (cx, cy, r0, r1, a, st) => {
+  const [x0, y0] = pol(cx, cy, r0, a), [x1, y1] = pol(cx, cy, r1, a);
+  return `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" ${st}/>`;
+};
+
+// Значок привода: шасси сверху, ведущие колёса залиты, ведомые — контуром.
+function driveIcon(x, y, drive, col = '#fff', dim = 'rgba(255,255,255,.4)') {
+  const front = drive !== 'rwd', w = 4, h = 7;
+  const wheel = (wx, wy, on) => on
+    ? `<rect x="${wx}" y="${wy}" width="${w}" height="${h}" rx="1.2" fill="${col}"/>`
+    : `<rect x="${wx + .6}" y="${wy + .6}" width="${w - 1.2}" height="${h - 1.2}" rx="1" fill="none" stroke="${dim}" stroke-width="1.2"/>`;
+  return `<g transform="translate(${x} ${y})">
+    <path d="M4 3.5H12M8 3.5V20.5M4 20.5H12" stroke="${col}" stroke-width="1.6" fill="none" opacity=".9"/>
+    ${wheel(0, 0, front)}${wheel(12, 0, front)}${wheel(0, 17, true)}${wheel(12, 17, true)}</g>`;
+}
+
+const T = scene.telemetry;
+const RPM_MAX = T.rpmMax || 8000, RED = T.redline || 7000;
+const rpm = Math.max(0, Math.min(T.rpm, RPM_MAX));
+const kmh = Math.abs(Math.round(T.speedKmh));
+const gear = String(T.gear);
+// курс в градусах компаса: мир смотрит в +(sin yaw, cos yaw), z — на юг
+const heading = ((180 - scene.yaw * 180 / Math.PI) % 360 + 360) % 360;
+
+// ---------------------------------------------------------------- A: прибор
+function gaugeA() {
+  if (mode === 'walk') return '';          // пешком прибор не нужен
+  const S = 252, c = S / 2;
+  const ang = r => 135 + 270 * r / RPM_MAX;
+  let s = `<svg width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" fill="#fff" style="overflow:visible">
+    <circle cx="${c}" cy="${c}" r="${c - 2}" fill="rgba(10,12,14,.6)"/>`;
+  if (mode === 'car') {
+    s += `<path d="${arc(c, c, 116.5, ang(RED), ang(RPM_MAX))}" stroke="var(--red)" stroke-width="3.5" fill="none"/>`;
+    for (let r = 0; r <= RPM_MAX; r += 250) {
+      const maj = r % 1000 === 0, mid = r % 500 === 0, red = r >= RED;
+      const col = red ? 'var(--red)' : maj ? '#fff' : 'rgba(255,255,255,.55)';
+      s += line(c, c, maj ? 101 : mid ? 106 : 109, 114, ang(r), `stroke="${col}" stroke-width="${maj ? 2.6 : mid ? 1.7 : 1.1}"`);
+    }
+    for (let k = 0; k <= RPM_MAX / 1000; k++) {
+      const [x, y] = pol(c, c, 82, ang(k * 1000));
+      s += `<text x="${f1(x)}" y="${f1(y + 5.5)}" text-anchor="middle" font-size="16" font-weight="700"
+        fill="${k * 1000 >= RED ? 'var(--red)' : 'rgba(255,255,255,.88)'}">${k}</text>`;
+    }
+    // обороты — заливка дорожки и стрелка-указатель по краю шкалы
+    s += `<path d="${arc(c, c, 95, ang(0), ang(RPM_MAX))}" stroke="rgba(255,255,255,.13)" stroke-width="4" fill="none"/>`;
+    s += `<path d="${arc(c, c, 95, ang(0), ang(Math.min(rpm, RED)))}" stroke="#fff" stroke-width="4" fill="none"/>`;
+    if (rpm > RED) s += `<path d="${arc(c, c, 95, ang(RED), ang(rpm))}" stroke="var(--red)" stroke-width="4" fill="none"/>`;
+    s += line(c, c, 74, 119, ang(rpm), `stroke="var(--red)" stroke-width="3.6" stroke-linecap="round"`);
+    // скорость, передача, привод
+    s += `<text x="${c}" y="${c + 17}" text-anchor="middle" font-size="70" font-weight="800" letter-spacing="-1"
+            style="font-variant-numeric:tabular-nums">${kmh}</text>
+          <text x="${c}" y="${c + 35}" text-anchor="middle" font-size="12" font-weight="600" letter-spacing="2.2"
+            fill="rgba(255,255,255,.7)">КМ/Ч</text>`;
+    const red = rpm >= RED;
+    s += `<rect x="${c - 17}" y="${c + 49}" width="34" height="34" rx="6" fill="${red ? 'var(--red)' : 'none'}"
+            stroke="${red ? 'var(--red)' : '#fff'}" stroke-width="1.6"/>
+          <text x="${c}" y="${c + 75}" text-anchor="middle" font-size="27" font-weight="800">${gear}</text>`;
+    s += driveIcon(c - 8, c - 66, T.drive);
+  } else if (mode === 'fly') {
+    // компас: картушка вращается, указатель курса неподвижен сверху
+    s += `<g transform="rotate(${-heading} ${c} ${c})">`;
+    for (let a = 0; a < 360; a += 5) {
+      const maj = a % 30 === 0;
+      s += line(c, c, maj ? 101 : 107, 114, a - 90, `stroke="${a === 0 ? 'var(--red)' : maj ? '#fff' : 'rgba(255,255,255,.5)'}" stroke-width="${maj ? 2.4 : 1.1}"`);
+    }
+    [['С', 0], ['В', 90], ['Ю', 180], ['З', 270]].forEach(([n, a]) => {
+      const [x, y] = pol(c, c, 85, a - 90);
+      // буквы стоят прямо: поворачиваем только их место на картушке
+      s += `<text x="${f1(x)}" y="${f1(y + 6)}" text-anchor="middle" font-size="17" font-weight="800"
+        fill="${a === 0 ? 'var(--red)' : '#fff'}" transform="rotate(${heading} ${f1(x)} ${f1(y)})">${n}</text>`;
+    });
+    s += `</g><path d="M${c} ${c - 124}l-7 -11h14z" fill="#fff" transform="rotate(180 ${c} ${c - 129})"/>`;
+    s += `<text x="${c}" y="${c + 17}" text-anchor="middle" font-size="70" font-weight="800" letter-spacing="-1"
+            style="font-variant-numeric:tabular-nums">${Math.round(scene.alt - scene.ground)}</text>
+          <text x="${c}" y="${c + 35}" text-anchor="middle" font-size="12" font-weight="600" letter-spacing="2.2"
+            fill="rgba(255,255,255,.7)">М НАД ЗЕМЛЁЙ</text>`;
+  }
+  return s + '</svg>';
+}
+
+// ---------------------------------------------------------------- B: веер в углу
+function gaugeB() {
+  const Wd = 330, Ht = 250, Cx = 308, Cy = 230, R0 = 194, N = 46;
+  let s = `<svg width="${Wd}" height="${Ht}" viewBox="0 0 ${Wd} ${Ht}" fill="#fff" style="overflow:visible;font-family:Unbounded,sans-serif">`;
+  const sh = 'filter="url(#sh)"';
+  s += `<defs><filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-opacity=".45"/></filter></defs>`;
+  if (mode === 'car') {
+    const step = 90 / N;
+    let bars = '';
+    for (let k = 0; k < N; k++) {
+      const a = 180 + step * (k + .5), hw = step * .32;
+      const top = RPM_MAX * (k + 1) / N, lit = rpm >= top - RPM_MAX / N * .5, red = top > RED;
+      const L = 7 + 19 * Math.pow(k / (N - 1), 1.4);
+      const p = [pol(Cx, Cy, R0, a - hw), pol(Cx, Cy, R0 + L, a - hw * 1.08), pol(Cx, Cy, R0 + L, a + hw * 1.08), pol(Cx, Cy, R0, a + hw)];
+      const col = red ? (lit ? 'var(--red)' : 'rgba(255,59,48,.5)') : (lit ? '#fff' : 'rgba(255,255,255,.34)');
+      bars += `<path d="M${p.map(q => f1(q[0]) + ' ' + f1(q[1])).join('L')}Z" fill="${col}"/>`;
+    }
+    s += `<g ${sh}>${bars}</g>`;
+    for (let k = 1; k <= RPM_MAX / 1000; k++) {
+      const [x, y] = pol(Cx, Cy, R0 - 15, 180 + 90 * k / (RPM_MAX / 1000) - 1.2);
+      s += `<text x="${f1(x)}" y="${f1(y + 4.5)}" text-anchor="middle" font-size="12.5" font-weight="600" ${sh}
+        fill="${k * 1000 > RED ? 'var(--red)' : 'rgba(255,255,255,.8)'}">${k}</text>`;
+    }
+    s += `<g ${sh}>
+      <text x="${Cx}" y="${Cy - 10}" text-anchor="end" font-size="64" font-weight="700" letter-spacing="-1.5"
+        style="font-variant-numeric:tabular-nums" fill="#fff">${kmh}</text>
+      <text x="${Cx}" y="${Cy + 10}" text-anchor="end" font-size="11" font-weight="600" letter-spacing="2" fill="rgba(255,255,255,.82)">КМ/Ч</text>
+    </g>`;
+    const red = rpm >= RED;
+    s += `<rect x="${Cx - 44}" y="${Cy - 136}" width="44" height="50" rx="7" fill="${red ? 'var(--red)' : '#fff'}" ${sh}/>
+          <text x="${Cx - 22}" y="${Cy - 100}" text-anchor="middle" font-size="29" font-weight="700" fill="${red ? '#fff' : '#14171a'}">${gear}</text>`;
+    s += `<g ${sh}>${driveIcon(Cx - 72, Cy - 123, T.drive)}</g>`;
+  } else if (mode === 'fly') {
+    // лента курса над высотой
+    const tw = 210, x0 = Cx - tw, y = Cy - 132, pxPerDeg = tw / 90;
+    let tape = '';
+    for (let a = Math.floor((heading - 50) / 5) * 5; a <= heading + 50; a += 5) {
+      const x = Cx - tw / 2 + (a - heading) * pxPerDeg;
+      if (x < x0 || x > Cx) continue;
+      const n = ((a % 360) + 360) % 360, maj = n % 45 === 0;
+      tape += `<line x1="${f1(x)}" y1="${y}" x2="${f1(x)}" y2="${y + (maj ? 12 : 6)}" stroke="#fff" stroke-width="${maj ? 2 : 1.2}" opacity="${maj ? 1 : .6}"/>`;
+      const lbl = { 0: 'С', 45: 'СВ', 90: 'В', 135: 'ЮВ', 180: 'Ю', 225: 'ЮЗ', 270: 'З', 315: 'СЗ' }[n];
+      if (lbl) tape += `<text x="${f1(x)}" y="${y + 28}" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">${lbl}</text>`;
+    }
+    s += `<g ${sh}>${tape}<path d="M${Cx - tw / 2} ${y - 3}l-6 -9h12z" fill="#fff"/></g>`;
+    s += `<g ${sh}>
+      <text x="${Cx}" y="${Cy - 10}" text-anchor="end" font-size="64" font-weight="700" letter-spacing="-1.5" fill="#fff">${Math.round(scene.alt - scene.ground)}</text>
+      <text x="${Cx}" y="${Cy + 10}" text-anchor="end" font-size="11" font-weight="600" letter-spacing="2" fill="rgba(255,255,255,.82)">М НАД ЗЕМЛЁЙ</text></g>`;
+  }
+  return s + '</svg>';
+}
+
+// ---------------------------------------------------------------- миникарта
+const PAL = {
+  A: { land: '#23292e', green: '#27342b', sea: '#163140', build: '#363f46', path: '#3a434a',
+       road: ['#a3adb5', '#a3adb5', '#85909a', '#6b757e', '#3f484f'], cur: '#d9dfe4', casing: null,
+       label: '#fff', halo: 'rgba(16,19,22,.92)', arrow: '#ff3b30', arrowEdge: '#fff' },
+  B: { land: '#e7e3da', green: '#cfdcbd', sea: '#9fc6d8', build: '#cbc3b3', path: '#d9d3c6',
+       road: ['#fff', '#fff', '#fff', '#fff', '#f6f3ee'], cur: '#fff', casing: '#b7ae9e', curCasing: '#6f675b',
+       label: '#1b1f23', halo: 'rgba(255,255,255,.95)', arrow: '#ff5b1a', arrowEdge: '#fff' },
+};
+const SCALE = { car0: 1.25, car120: 1.9, walk: 0.8, fly: 4.2 };   // метров на пиксель
+
+function seaLayer(sea, fill) {
+  // сетка «вода/суша» → гладкий берег: растягиваем с билинейной
+  // интерполяцией и режем по половине — ступенек сетки не видно
+  const { N, bits } = sea, k = 6;
+  const a = document.createElement('canvas'); a.width = a.height = N;
+  const ga = a.getContext('2d'), id = ga.createImageData(N, N);
+  for (let i = 0; i < N * N; i++) if (bits[i] === '1') id.data[i * 4 + 3] = 255;
+  ga.putImageData(id, 0, 0);
+  const b = document.createElement('canvas'); b.width = b.height = N * k;
+  const gb = b.getContext('2d');
+  gb.imageSmoothingEnabled = true; gb.imageSmoothingQuality = 'high';
+  gb.drawImage(a, 0, 0, N * k, N * k);
+  const im = gb.getImageData(0, 0, N * k, N * k), d = im.data;
+  const [r, g, bl] = [1, 3, 5].map(o => parseInt(fill.slice(o, o + 2), 16));
+  for (let i = 0; i < d.length; i += 4) {
+    const on = d[i + 3] >= 128;
+    d[i] = r; d[i + 1] = g; d[i + 2] = bl; d[i + 3] = on ? 255 : 0;
+  }
+  gb.putImageData(im, 0, 0);
+  return b;
+}
+
+const SHORT = [[/^улица /, 'ул. '], [/ улица$/, ' ул.'], [/^проспект /, 'пр-т '], [/ проспект$/, ' пр-т'],
+  [/^площадь /, 'пл. '], [/ площадь$/, ' пл.'], [/^переулок /, 'пер. '], [/ переулок$/, ' пер.'],
+  [/^бульвар /, 'б-р '], [/ бульвар$/, ' б-р'], [/^шоссе /, 'ш. '], [/ шоссе$/, ' ш.']];
+const short = n => SHORT.reduce((s, [a, b]) => s.replace(a, b), n);
+
+function drawMini(cv, pal, shape) {
+  const size = shape === 'circle' ? 216 : 224, dpr = 2;
+  cv.width = cv.height = size * dpr; cv.style.width = cv.style.height = size + 'px';
+  const g = cv.getContext('2d');
+  g.scale(dpr, dpr);
+  const mpp = SCALE[SCENE] || 1.3;
+  const ox = size / 2, oy = shape === 'circle' ? size / 2 : size * 0.63;   // где стоит игрок
+  const clip = () => {
+    g.beginPath();
+    if (shape === 'circle') g.arc(ox, size / 2, size / 2 - 1, 0, Math.PI * 2);
+    else g.roundRect(1.5, 1.5, size - 3, size - 3, 20);
+  };
+  g.save(); clip(); g.clip();
+  g.fillStyle = pal.land; g.fillRect(0, 0, size, size);
+  g.translate(ox, oy);
+  g.rotate(scene.yaw + Math.PI);          // курс — вверх
+  g.scale(1 / mpp, 1 / mpp);
+  const R = scene.R;
+  g.imageSmoothingEnabled = true;
+  g.drawImage(seaLayer(scene.sea, pal.sea), -R, -R, scene.sea.N * scene.sea.S, scene.sea.N * scene.sea.S);
+  const poly = (p, col) => {
+    g.fillStyle = col; g.beginPath(); g.moveTo(p[0], p[1]);
+    for (let i = 2; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]);
+    g.closePath(); g.fill();
+  };
+  const path = p => { g.beginPath(); g.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]); };
+  for (const p of scene.water) poly(p, pal.sea);
+  for (const p of scene.green) poly(p, pal.green);
+  for (const p of scene.builds) poly(p, pal.build);
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  const minW = 2.2 * mpp;
+  const width = r => r.c >= 4 ? Math.max(1.6, 1.1 * mpp) : Math.max(r.w || 6, minW) + (r.c <= 1 ? 1.5 : 0);
+  const order = [...scene.roads].sort((a, b) => (b.c ?? 3) - (a.c ?? 3));
+  const isCur = r => scene.street && r.n === scene.street;
+  if (pal.casing) for (const r of order) {
+    if (r.c >= 4) continue;
+    g.strokeStyle = isCur(r) ? pal.curCasing : pal.casing; g.lineWidth = width(r) + 2.4 * mpp; path(r.pts); g.stroke();
+  }
+  for (const r of order) {
+    g.strokeStyle = r.c >= 4 ? pal.path : isCur(r) ? pal.cur : pal.road[Math.min(4, r.c ?? 3)];
+    g.lineWidth = width(r); path(r.pts); g.stroke();
+  }
+  g.restore();
+
+  // название ТЕКУЩЕЙ улицы — одна строка внизу карты, за спиной игрока:
+  // там карта нужна меньше всего. Вдоль дороги подпись вставала стоймя.
+  if (scene.street) {
+    g.save(); clip(); g.clip();
+    g.font = V === 'A' ? '700 14px "Sofia Sans Condensed"' : '600 11.5px "Golos Text"';
+    if ('letterSpacing' in g) g.letterSpacing = V === 'A' ? '0.4px' : '0.3px';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    let txt = short(scene.street);
+    const max = shape === 'circle' ? 128 : size - 40;
+    while (g.measureText(txt).width > max && txt.length > 4) txt = txt.slice(0, -2) + '…';
+    const y = shape === 'circle' ? size - 38 : size - 26;
+    g.lineWidth = 4; g.strokeStyle = pal.halo; g.lineJoin = 'round'; g.strokeText(txt, ox, y);
+    g.fillStyle = pal.label; g.fillText(txt, ox, y);
+    g.restore();
+  }
+
+  // обод, север, игрок
+  g.save();
+  if (shape === 'circle') {
+    g.beginPath(); g.arc(ox, size / 2, size / 2 - 1.5, 0, Math.PI * 2);
+    g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.92)'; g.stroke();
+  } else {
+    g.beginPath(); g.roundRect(1.5, 1.5, size - 3, size - 3, 20);
+    g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke();
+  }
+  // направление на север на экране: вектор (0,−1) мира, повёрнутый как карта
+  const th = scene.yaw + Math.PI;
+  const nx = Math.sin(th), ny = -Math.cos(th);           // R(th)·(0,−1)
+  let ex, ey;
+  if (shape === 'circle') { ex = ox + nx * (size / 2 - 1.5); ey = size / 2 + ny * (size / 2 - 1.5); }
+  else {
+    const k = Math.min((size / 2 - 2) / Math.abs(nx || 1e-6), (oy - 2) / Math.max(1e-6, ny < 0 ? -ny : 0) || 1e9,
+                       ny > 0 ? (size - oy - 2) / ny : 1e9);
+    ex = ox + nx * k; ey = oy + ny * k;
+  }
+  g.translate(ex, ey); g.rotate(Math.atan2(ny, nx) + Math.PI / 2);
+  g.beginPath(); g.moveTo(0, -7); g.lineTo(6.5, 5); g.lineTo(-6.5, 5); g.closePath();
+  g.fillStyle = V === 'A' ? '#fff' : '#14171a'; g.fill();
+  g.lineWidth = 1.5; g.strokeStyle = V === 'A' ? 'rgba(0,0,0,.55)' : '#fff'; g.stroke();
+  g.restore();
+
+  g.save(); g.translate(ox, oy);
+  g.beginPath(); g.moveTo(0, -11); g.lineTo(8, 9); g.lineTo(0, 4.5); g.lineTo(-8, 9); g.closePath();
+  g.lineJoin = 'round'; g.lineWidth = 3; g.strokeStyle = pal.arrowEdge; g.stroke();
+  g.fillStyle = pal.arrow; g.fill();
+  g.restore();
+}
+
+// ---------------------------------------------------------------- сборка
+document.getElementById('gauge').innerHTML = V === 'A' ? gaugeA() : gaugeB();
+drawMini(document.getElementById('mini'), PAL[V], V === 'A' ? 'circle' : 'square');
+// значок машины для приглашения сесть — силуэт сбоку
+document.getElementById('carIcon').innerHTML =
+  `<svg width="44" height="20" viewBox="0 0 44 20" style="filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.5))">
+     <path d="M3 13.5c0-2.2 1.4-3.6 3.6-4l5.6-1.1L17.6 4c1-.7 2.2-1 3.4-1h7.4c1.6 0 3.1.6 4.2 1.7l3.6 3.7 3 .6c1.9.4 3.2 2 3.2 3.9v2.6H3z"
+       fill="#fff"/><circle cx="11.5" cy="15.5" r="3.6" fill="#14171a" stroke="#fff" stroke-width="1.6"/>
+     <circle cx="33" cy="15.5" r="3.6" fill="#14171a" stroke="#fff" stroke-width="1.6"/></svg>`;
+window.READY = true;
+</script>
+</body>
+</html>
