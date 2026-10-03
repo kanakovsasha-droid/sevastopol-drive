@@ -1,5 +1,9 @@
-// Звук E63 S: V8 битурбо 4.0, синтезом в WebAudio — без сэмплов и без
-// зависимостей.
+// Звук E63 S. Основной голос мотора — записи настоящего V8 (data/audio,
+// собираются tools/build-audio.mjs из Freesound, CC0): набор петель на разных
+// оборотах, кроссфейд между двумя ближайшими и подстройка высоты под обороты
+// физики. Хлопки и выстрелы — записями со случайным выбором, визг шин —
+// записью по скольжению. Синтез ниже — запасной голос на те секунды, пока
+// записи грузятся (и если не загрузились): владельцу он показался писклявым.
 //
 // Главный поток только раз в кадр ставит цели параметрам (обороты, газ,
 // скольжение) через setTargetAtTime — всё, что звучит, считают узлы
@@ -168,6 +172,43 @@ export class E63Sound {
     return c;
   }
 
+  // Записи приехали: строим второй голос мотора и плавно отдаём ему звук.
+  // bufs: { eng_idle: AudioBuffer, …, pop_1…, bang_1…, tyre_squeal }, meta —
+  // sounds.json (обороты каждой петли).
+  useSamples(bufs, meta) {
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const g = (v = 0) => { const n = ctx.createGain(); n.gain.value = v; return n; };
+    // общий путь петель: сброс газа — темнее (фильтр), низ — подчёркнут полкой
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 9000; lp.Q.value = 0.6;
+    const shelf = ctx.createBiquadFilter(); shelf.type = 'lowshelf'; shelf.frequency.value = 180; shelf.gain.value = 8;
+    const bus = g(0);
+    lp.connect(shelf).connect(bus).connect(this.master);
+    const loops = Object.entries(meta.loops).filter(([n]) => n.startsWith('eng_') && bufs[n])
+      .map(([n, m]) => {
+        const src = ctx.createBufferSource(); src.buffer = bufs[n]; src.loop = true;
+        const gg = g(0); src.connect(gg).connect(lp);
+        // петли запускаем вразбег — иначе одинаковые фазы складываются в «эхо»
+        src.start(t0, Math.random() * bufs[n].duration);
+        return { name: n, rpm: m.rpm, src, g: gg };
+      }).sort((a, b) => a.rpm - b.rpm);
+    let squeal = null;
+    if (bufs.tyre_squeal) {
+      const src = ctx.createBufferSource(); src.buffer = bufs.tyre_squeal; src.loop = true;
+      const gg = g(0); src.connect(gg).connect(this.master); src.start(t0);
+      squeal = { src, g: gg };
+    }
+    const pick = pre => Object.keys(bufs).filter(k => k.startsWith(pre)).map(k => bufs[k]);
+    this.smp = { loops, lp, bus, squeal, pops: pick('pop_'), bangs: pick('bang_'), mix: 0, t0 };
+  }
+
+  _pop(big, t, gain, rate) {
+    const S = this.smp;
+    const list = S && (big ? S.bangs : S.pops);
+    if (list && list.length) {
+      this._shot(list[Math.floor(Math.random() * list.length)], t, gain * (big ? 0.9 : 1.1), rate);
+    } else this._shot(big ? this.popBig : this.popSmall, t, gain, rate);
+  }
+
   _shot(buf, t, gain, rate = 1) {
     const ctx = this.ctx, s = ctx.createBufferSource(), g = ctx.createGain();
     s.buffer = buf; s.playbackRate.value = rate; g.gain.value = gain;
@@ -193,7 +234,7 @@ export class E63Sound {
 
     P(this.oscA.frequency, fc, 0.012);
     P(this.oscB.frequency, fc * 1.0035, 0.012);
-    P(this.sub.frequency, rpm / 15, 0.012);
+    if (!this.smp) P(this.sub.frequency, rpm / 15, 0.012);
     // неровность холостых: плавание на 1.5% только внизу
     P(this.wobDepth.gain, fc * 0.015 * Math.max(0, 1 - r * 3), 0.2);
     P(this.preDrive.gain, 0.6 + load * 1.6, 0.03);
@@ -204,15 +245,42 @@ export class E63Sound {
       st.shift = s.shiftCount || 0;
       if (thr > 0.5) {
         st.dipUntil = t + 0.11;
-        this._shot(this.popSmall, t + 0.1, 0.5 * thr, 0.9);
+        this._pop(false, t + 0.1, 0.5 * thr, 0.9);
       }
     }
     const dip = t < (st.dipUntil || 0) ? 0.35 : 1;
+    // записи: доля их голоса нарастает за полсекунды после загрузки
+    const S = this.smp;
+    if (S) S.mix = Math.min(1, (t - S.t0) / 0.5);
+    const syn = S ? 1 - S.mix : 1;
     const engV = (0.20 + 0.42 * r) * (0.45 + 0.55 * load) + 0.06;
-    P(this.engGain.gain, engV * (cut ? 0.55 : 1) * dip, cut || dip < 1 ? 0.008 : 0.025);
-    P(this.subGain.gain, (0.10 + 0.25 * load) * (1 - r * 0.6), 0.04);
+    P(this.engGain.gain, engV * (cut ? 0.55 : 1) * dip * syn, cut || dip < 1 ? 0.008 : 0.025);
+    // бас: синус на полупорядке вспышек (кроссплейн-V8 «бубнит» на rpm/30) —
+    // он остаётся и при записях: на высоких оборотах вспышки уходят за 300 Гц,
+    // а низ должен давить в любой момент
+    if (S) P(this.sub.frequency, rpm / 30, 0.012);
+    P(this.subGain.gain, S ? (0.08 + 0.22 * load) * (0.6 + 0.4 * r) * S.mix + (0.10 + 0.25 * load) * (1 - r * 0.6) * syn
+      : (0.10 + 0.25 * load) * (1 - r * 0.6), 0.04);
     P(this.intakeBP.frequency, 500 + rpm * 0.35, 0.05);
-    P(this.intakeGain.gain, 0.012 + 0.07 * load * r, 0.04);
+    P(this.intakeGain.gain, (0.012 + 0.07 * load * r) * syn, 0.04);
+    if (S) {
+      // две ближайшие по оборотам петли, равномощный переход по логарифму
+      // оборотов; высота — отношение оборотов к оборотам записи
+      const L = S.loops;
+      let i = 0;
+      while (i < L.length - 2 && rpm > L[i + 1].rpm) i++;
+      const a = L[i], b = L[i + 1] || a;
+      const k = b === a ? 0 : Math.min(1, Math.max(0, Math.log(rpm / a.rpm) / Math.log(b.rpm / a.rpm)));
+      for (const lp of L) {
+        const w = lp === a ? Math.cos(k * Math.PI / 2) : lp === b ? Math.sin(k * Math.PI / 2) : 0;
+        P(lp.g.gain, w, 0.03);
+        P(lp.src.playbackRate, Math.min(2.2, Math.max(0.45, rpm / lp.rpm)), 0.012);
+      }
+      // газ — громко и открыто, сброс — тише и глуше (выхлоп «булькает»)
+      const vol = 1.5 * (0.45 + 0.35 * r) * (0.5 + 0.5 * load) * (cut ? 0.4 : 1) * dip * S.mix;
+      P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.03);
+      P(S.lp.frequency, 900 + 8000 * Math.max(load, r * 0.3), 0.04);
+    }
 
     // турбины
     const boost = s.boost || 0;
@@ -236,14 +304,14 @@ export class E63Sound {
       if (rpm > 3000) {
         st.popUntil = t + 0.5 + rpm / 7000 * 1.1;
         st.nextPop = t + 0.04;
-        this._shot(this.popBig, t + 0.03, 0.85, 0.95 + Math.random() * 0.1);
+        this._pop(true, t + 0.03, 0.85, 0.95 + Math.random() * 0.1);
       }
     }
     if (thr > 0.2) st.popUntil = 0;
     while (thr < 0.15 && t < st.popUntil && st.nextPop < t + 0.05) {
       const big = Math.random() < 0.18;
       const left = (st.popUntil - st.nextPop) / 1.5;
-      this._shot(big ? this.popBig : this.popSmall, Math.max(t, st.nextPop),
+      this._pop(big, Math.max(t, st.nextPop),
         (big ? 0.6 : 0.35) * (0.4 + Math.min(1, left)) * (0.6 + Math.random() * 0.4), 0.85 + Math.random() * 0.35);
       st.nextPop += 0.035 + Math.random() * Math.random() * 0.22;
     }
@@ -251,7 +319,11 @@ export class E63Sound {
 
     // шины: визг растёт со скольжением пятна (2–12 м/с), бёрнаут — ещё шорох
     const skid = Math.max(0, Math.min(1, ((s.skid || 0) - 2) / 10));
-    P(this.squealGain.gain, 0.05 * skid * skid, 0.05);
+    P(this.squealGain.gain, 0.05 * skid * skid * syn, 0.05);
+    if (S && S.squeal) {
+      P(S.squeal.g.gain, 0.5 * skid * skid * S.mix, 0.05);
+      P(S.squeal.src.playbackRate, 0.9 + skid * 0.2 - (s.burnout ? 0.1 : 0), 0.1);
+    }
     P(this.squeal.frequency, 900 + skid * 250 + (s.burnout ? -120 : 0), 0.1);
     P(this.scrubGain.gain, 0.16 * skid + (s.burnout ? 0.12 : 0), 0.06);
     P(this.scrubLP.frequency, 500 + skid * 900, 0.1);
