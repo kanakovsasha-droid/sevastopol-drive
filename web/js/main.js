@@ -184,7 +184,7 @@ async function boot() {
     carMesh = createCarMesh();
     scene.add(carMesh);
     // настоящая модель приезжает позже, коробочная стоит до неё
-    loadCarModel().then(m => { scene.remove(carMesh); carMesh = m; scene.add(m); })
+    loadCarModel(undefined, renderer).then(m => { scene.remove(carMesh); carMesh = m; scene.add(m); })
       .catch(e => console.warn('модель машины не загрузилась, остаётся коробочная:', e.message));
     car.reset(SPAWN.x, SPAWN.z, 0);
     walk.x = SPAWN.x; walk.z = SPAWN.z;

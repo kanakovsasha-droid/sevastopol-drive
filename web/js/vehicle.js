@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js?v=6ce88c24';
+import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=6ce88c24';
 
 // Физика машины. Третий заход.
 //
@@ -819,7 +820,21 @@ export function mountCarModel(body, wheels) {
 // колёс начало в центре. Центры колёс в файле стоят не на одной высоте
 // (передние приподняты на 4 см — так была выставлена подвеска у автора), а
 // мы их ставим туда, где колесо касается дороги, — по CAR.
-export function loadCarModel(url = '../data/models/e63.glb') {
+// Лак без отражений. У сцены нет карты окружения, и лакированный кузов под
+// одним солнцем выходит матово-бурым — так красят пластилин, а не машину.
+// Даём отражения только машине: студийное окружение, свёрнутое в PMREM один
+// раз. Городу его не даём — у домов своё освещение, и оно подобрано.
+let carEnv = null;
+function envFor(renderer) {
+  if (!carEnv && renderer) {
+    const pm = new THREE.PMREMGenerator(renderer);
+    carEnv = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+    pm.dispose();
+  }
+  return carEnv;
+}
+
+export function loadCarModel(url = '../data/models/e63.glb', renderer = null) {
   const v = document.querySelector('meta[name="build"]')?.content || '';
   return new GLTFLoader().loadAsync(url + (v ? '?v=' + v : '')).then(g => {
     const root = g.scene;
@@ -829,7 +844,19 @@ export function loadCarModel(url = '../data/models/e63.glb') {
     for (const w of wheels) { w.removeFromParent(); w.position.set(0, 0, 0); }
     body.removeFromParent();
     const car = mountCarModel(body, wheels);
-    car.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    const env = envFor(renderer);
+    car.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = true;
+      const ms = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of ms) {
+        if (!m.isMeshStandardMaterial) continue;
+        if (env) { m.envMap = env; m.envMapIntensity = 0.9; }
+        // кузов, двери и бамперы в файле — матовые (шероховатость 0.5–1):
+        // лаку нужна гладкость, иначе отражения размазываются в серость
+        if (/chassis|door|bump|hood|trunk/i.test(m.name)) { m.roughness = 0.22; m.metalness = 0.35; }
+      }
+    });
     return car;
   });
 }
