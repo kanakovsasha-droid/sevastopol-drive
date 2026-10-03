@@ -4,7 +4,7 @@ import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildB
 import { buildStreetProps } from './props.js?v=6ce88c24';
 import { buildYards, buildStructures } from './yards.js?v=6ce88c24';
 import { buildFurniture } from './furniture.js?v=6ce88c24';
-import { buildLandmarks } from './landmarks.js?v=6ce88c24';
+import { buildLandmarks, setModelWarm } from './landmarks.js?v=6ce88c24';
 import { buildSigns } from './signs.js?v=6ce88c24';
 import { buildCemeteries } from './cemetery.js?v=6ce88c24';
 import { audit } from './audit.js?v=6ce88c24';
@@ -12,6 +12,7 @@ import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=6ce88
 import { ChunkManager } from './chunks.js?v=6ce88c24';
 import { Collider, RoadIndex } from './collision.js?v=6ce88c24';
 import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=6ce88c24';
+import { precompile } from './warm.js?v=6ce88c24';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -184,14 +185,21 @@ async function boot() {
     car = new Car(terrain, collider);
     carMesh = createCarMesh();
     scene.add(carMesh);
-    // настоящая модель приезжает позже, коробочная стоит до неё
-    loadCarModel(undefined, renderer).then(m => { scene.remove(carMesh); carMesh = m; scene.add(m); })
+    // настоящая модель приезжает позже, коробочная стоит до неё. Меняем их,
+    // только когда шейдеры модели собраны в фоне: у E63 их с десяток (лак с
+    // клиркоутом, фары, текстуры), и сборка прямо в кадре — полсекунды стоп-кадра.
+    loadCarModel(undefined, renderer).then(m => {
+      cheapGlass(m);
+      return precompile(renderer, scene, camera, m, sun).then(() => m);
+    }).then(m => { scene.remove(carMesh); carMesh = m; scene.add(m); })
       .catch(e => console.warn('модель машины не загрузилась, остаётся коробочная:', e.message));
     car.reset(SPAWN.x, SPAWN.z, 0);
     walk.x = SPAWN.x; walk.z = SPAWN.z;
 
     chunks.onBuild = buildChunk;
     chunks.onDrop = dropChunk;
+    chunks.onBuilt = chunkBuilt;
+    setModelWarm(root => precompile(renderer, scene, camera, root, sun));
     chunks.canBuild = chunkTerrainReady;
     chunks.prof = chunkProf;
 
@@ -202,6 +210,10 @@ async function boot() {
     lap('первый квартал');
     respawn(SPAWN.x, SPAWN.z);
     walk.x = car.pos.x; walk.z = car.pos.z;
+
+    await step('собираю шейдеры…', 98);
+    await prewarm();
+    lap('шейдеры');
 
     await step('поехали', 100);
     buildMenu();
@@ -587,9 +599,11 @@ function* buildChunk(d, key) {
   const g = new THREE.Group();
   g.name = 'чанк ' + part;
   g.userData.part = part;
+  // Квартал прячем, пока он не собран целиком и его шейдеры не готовы:
+  // показанный по частям, он собирал программы прямо в кадре (см. reveal).
+  // До тех пор на его месте стоит дальний силуэт.
+  g.visible = false;
   scene.add(g);
-  const fc = farCells.get(key);
-  if (fc) fc.visible = false;       // под детальным кварталом силуэт не нужен
   // Группу отдаём менеджеру СРАЗУ, первым же yield: если сборка развалится на
   // середине, он всё равно будет знать, что снимать со сцены и из индексов.
   yield g;
@@ -670,6 +684,76 @@ function* buildChunk(d, key) {
   if (prof) console.log('чанк ' + part + ': ' + prof.join(' · ') + ' мс');
 }
 
+// Показ готового квартала. Сначала шейдеры: precompile отдаёт их сборку в фон
+// (KHR_parallel_shader_compile), и квартал появляется, только когда всё готово,
+// — вместо 150–600 мс стоп-кадра на каждой новой программе. Показываем не
+// больше одного квартала за кадр: в кадре показа его геометрия уезжает в
+// видеопамять, и два-три сразу — снова рывок.
+const reveals = [];
+// Зовёт менеджер, когда квартал (или пачка сирот) собран — и при ошибке в
+// сборщике тоже: показываем то, что успело собраться.
+function chunkBuilt(key, groups) {
+  for (const g of groups) if (g.isObject3D && !g.visible) queueReveal(g, key);
+}
+function queueReveal(g, key) {
+  const r = { g, key, ready: false };
+  try {
+    precompile(renderer, scene, camera, g, sun).then(() => { r.ready = true; }, () => { r.ready = true; });
+  } catch (e) { console.warn('прогрев шейдеров:', e); r.ready = true; }
+  reveals.push(r);
+}
+// Выгрузка в видеопамять. Three отправляет геометрию на GPU лениво — в кадре,
+// где предмет впервые попал в поле зрения. Квартал целиком в кадр не попадает,
+// и его «невиданные» части выгружались потом пачкой: взлёт над городом или
+// разворот камеры — и полтысячи буферов в одном кадре (bufferData 200+ мс).
+// Поэтому квартал показываем порциями по UPLOAD_BYTES за кадр, и каждую
+// порцию один кадр рисуем БЕЗ отсечения по пирамиде видимости — её буферы
+// уезжают на GPU сразу, по кусочку, а не тогда, когда на них посмотрят.
+const UPLOAD_BYTES = 3 << 20;
+let staging = null;                              // квартал, который сейчас выгружается
+const unculled = [];                             // нарисованы целиком в прошлом кадре
+const bytesOf = o => {
+  const g = o.geometry;
+  let b = 0;
+  for (const k in g.attributes) b += g.attributes[k].array?.byteLength || 0;
+  if (g.index) b += g.index.array.byteLength;
+  if (o.isInstancedMesh) b += o.instanceMatrix.array.byteLength + (o.instanceColor ? o.instanceColor.array.byteLength : 0);
+  return b;
+};
+function revealSome() {
+  for (const o of unculled) o.frustumCulled = true;
+  unculled.length = 0;
+  if (!staging) {
+    const i = reveals.findIndex(r => r.ready);
+    if (i < 0) return;
+    const r = reveals.splice(i, 1)[0];
+    if (r.g.parent !== scene) return;            // квартал успели выгрузить
+    // прячем видимые листья и открываем их порциями; ровно их и вернём
+    const list = [];
+    r.g.traverse(o => { if (o.geometry && o.visible) { o.visible = false; list.push(o); } });
+    r.g.visible = true;
+    staging = { ...r, list, i: 0 };
+  }
+  const st = staging;
+  if (st.g.parent !== scene) {                   // выгрузили на середине
+    for (; st.i < st.list.length; st.i++) st.list[st.i].visible = true;
+    staging = null;
+    return;
+  }
+  let bytes = 0;
+  while (st.i < st.list.length && bytes < UPLOAD_BYTES) {
+    const o = st.list[st.i++];
+    o.visible = true;
+    if (o.frustumCulled) { o.frustumCulled = false; unculled.push(o); }
+    bytes += bytesOf(o);
+  }
+  if (st.i >= st.list.length) {
+    staging = null;
+    const fc = farCells.get(st.key);
+    if (fc) fc.visible = false;                  // под детальным кварталом силуэт не нужен
+  }
+}
+
 // Выгрузка. Геометрию освобождаем обязательно — без dispose видеопамять
 // растёт с каждым проездом. Материалы каждый сборщик создаёт свои, на чанк,
 // поэтому их тоже освобождаем; общие (рельеф, вода, силуэт) сюда не попадают.
@@ -700,14 +784,17 @@ function drainJunk(ms = 2) {
 }
 
 function dropChunk(g, key) {
+  const wasShown = g.visible;
   scene.remove(g);
   g.traverse(o => { if (o.geometry || o.material) junk.push(o); });
   const part = g.userData.part;
   roads.remove(part);
   collider.remove(part);
   if (deckParts.delete(part)) installDeck();
+  // Силуэт возвращаем, только если этот квартал его и прятал: пачка сирот
+  // хозяина выгружается вместе с ним, а недособранный квартал силуэт не трогал.
   const fc = farCells.get(key);
-  if (fc) fc.visible = true;
+  if (fc && wasShown) fc.visible = true;
 }
 
 // Мосты всех загруженных чанков одним полем: полотно ищем по всем частям и
@@ -737,6 +824,7 @@ async function warmup(x, z, timeout = 4000) {
   let tick = 0;
   while (performance.now() - t0 < timeout) {
     chunks.update(x, z);
+    revealSome();
     if (chunks.has(key)) break;                                  // под колёсами есть улица
     if (!chunks.cells.has(key) && !chunks.pending) break;         // здесь просто пусто
     if ((tick++ & 7) === 7) {
@@ -745,6 +833,46 @@ async function warmup(x, z, timeout = 4000) {
     } else await new Promise(r => setTimeout(r, 0));
   }
   chunks.radius = full;
+}
+
+// Шейдеры всего, что уже стоит на сцене, — до первого кадра, за экраном
+// загрузки. Без этого первый кадр собирал два-три десятка программ подряд, а
+// квартал, приехавший следом, — ещё по одной. Порядок важен: сперва основной
+// проход в фоне (параллельно), потом один кадр — он создаёт карту теней, —
+// и уже по ней варианты глубины для теней. Ждём не дольше limit: пустая
+// земля лучше вечного экрана загрузки.
+async function prewarm(limit = 6000) {
+  const t0 = performance.now();
+  const until = p => Promise.race([p, new Promise(r => setTimeout(r, Math.max(0, limit - (performance.now() - t0))))]);
+  updateCamera(1 / 60);
+  sun.target.position.copy(camera.position);
+  sun.position.copy(camera.position).addScaledVector(SUN, 420);
+  // кварталы, собранные за загрузку, — показать (их шейдеры уже в работе)
+  while ((reveals.length || staging) && performance.now() - t0 < limit) {
+    revealSome();
+    if (reveals.length) await new Promise(r => setTimeout(r, 16));
+  }
+  await until(precompile(renderer, scene, camera, scene, null));
+  renderer.render(scene, camera);
+  await until(precompile(renderer, scene, camera, scene, sun));
+}
+
+// Стекло E63 в файле — со «светопропусканием» (KHR_materials_transmission).
+// Ради одного такого материала three каждый кадр рисует ВСЮ непрозрачную
+// сцену второй раз, в отдельную текстуру: вызовов отрисовки вдвое больше, пока
+// машина в кадре, то есть всегда. Обычное полупрозрачное стекло с теми же
+// цветом и прозрачностью отличить на фонаре нельзя.
+function cheapGlass(root) {
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!(m.transmission > 0)) continue;
+      m.transmission = 0;
+      m.transparent = true;
+      m.depthWrite = false;
+      m.needsUpdate = true;
+    }
+  });
 }
 
 // Включить отбрасывание тени у пачек InstancedMesh. receiveShadow им не даём:
@@ -1398,6 +1526,7 @@ function loop(now) {
 
   updateCamera(dt);
   updateHUD(dt);
+  revealSome();
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
