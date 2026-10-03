@@ -30,7 +30,8 @@ const PORT = arg('port', '5191');
 const ONLY = arg('only', '');
 const JSON_OUT = arg('json', '');
 const START = (arg('start', '-398,484')).split(',').map(Number);
-const STICK = arg('stick', '');                 // переопределить CAR.stick (замер «до/после»)
+const STICK = arg('stick', '');
+const SKIP = arg('skip', '');                   // --skip hills — без долгих заездов по холмам                 // переопределить CAR.stick (замер «до/после»)
 
 async function loadPlaywright() {
   const tries = [process.env.PLAYWRIGHT, 'playwright',
@@ -52,7 +53,7 @@ await page.goto(`http://127.0.0.1:${PORT}/web/`, { waitUntil: 'domcontentloaded'
 await page.waitForFunction(() => window.G && window.G.car, null, { timeout: 180000 });
 
 // Всё, что ниже, исполняется в странице.
-const result = await page.evaluate(async ({ ONLY, START, STICK }) => {
+const result = await page.evaluate(async ({ ONLY, START, STICK, SKIP }) => {
   const G = window.G;
   if (STICK !== '') { const m = await import(document.querySelector('script[type=module]').src.replace(/main\.js.*/, 'vehicle.js') + '?v=' + (new URL(document.querySelector('script[type=module]').src).searchParams.get('v') || '')); if (m.CAR) m.CAR.stick = +STICK; }
   const Car = G.car.constructor;
@@ -411,7 +412,7 @@ const result = await page.evaluate(async ({ ONLY, START, STICK }) => {
     // над полотном. Съехал с полотна больше чем на секунду — заезд дальше не
     // считаем: это промах «водителя» стенда.
     const HILLS = [[-119, 1353], [111, 1025], [-240, 498], [768, 843], [-815, 780], [332, 1251]];
-    for (const kmh of [100, 130]) {
+    for (const kmh of (SKIP.includes('hills') ? [] : [100, 130])) {
       const res = { runs: 0, distM: 0, airS: 0, launches: 0, liftMaxM: 0, where: '' };
       for (const [hx, hz] of HILLS) for (const dirPref of [1, -1]) {
         G.jumpTo(hx, hz);
@@ -492,7 +493,7 @@ const result = await page.evaluate(async ({ ONLY, START, STICK }) => {
   }
   G.car.update = realUpdate;
   return out;
-}, { ONLY, START, STICK });
+}, { ONLY, START, STICK, SKIP });
 
 await browser.close();
 

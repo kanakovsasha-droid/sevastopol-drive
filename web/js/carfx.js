@@ -1,5 +1,6 @@
-import { E63Sound } from './engine-audio.js?v=8d345651';
-import { TireSmoke } from './smoke.js?v=8d345651';
+import { E63Sound } from './engine-audio.js?v=6fe82d29';
+import { RoadSurface } from './roadsurf.js?v=6fe82d29';
+import { TireSmoke } from './smoke.js?v=6fe82d29';
 
 // Всё, что машина делает «вокруг» физики: коробка и привод с клавиатуры,
 // звук мотора и шин, дым из-под колёс.
@@ -8,13 +9,60 @@ import { TireSmoke } from './smoke.js?v=8d345651';
 //   B — привод: 4MATIC+ ↔ только задний (режим Drift)
 //   P — паркинг ↔ D,  X — нейтраль ↔ D (N занята миникартой)
 //   G — коробка: автомат ↔ ручная; в ручной Shift — передача вверх, Q — вниз
-//   K — звук вкл/выкл
+//   K — звук вкл/выкл, J — следующий звуковой пакет (локальные моды → открытый CC0)
 //   W+S на месте — бёрнаут; из N в D на оборотах — старт с пробуксовкой
 //
 // Звук стартует по первому нажатию или щелчку: до жеста пользователя
 // браузер AudioContext не запускает.
 
 const KEY_SOUND = 'sev.sound';
+
+// ---- звуковые пакеты из модов (ТОЛЬКО локальная игра). Лежат в
+// data/audio-local/<машина>/<вариант>/Bank_NNN/sound_00N.wav — это чужие звуки,
+// папка в .gitignore, на сайт не попадает. Ищем её только на локальном
+// сервере и тихо: читаем листинг каталога data/ (python http.server его
+// отдаёт), а не стучимся в файлы — так на сайте и без папки нет ни одного 404.
+// Схема GTA: банк A — холостые (sound_002), банк B — петля под нагрузкой
+// (001), петля сброса (002), сброс оборотов с треском (003); Bonus — выстрелы.
+// Обороты, на которых записаны петли, — по частоте вспышек (4 на оборот).
+const MOD_CARS = {
+  w213: { a: 'Bank_096', b: 'Bank_097', base: { idle: 1125, load: 2400, off: 2550 } },
+  w212: { a: 'Bank_094', b: 'Bank_095', base: { idle: 1000, load: 1900, off: 2100 } },
+};
+const MOD_VARIANTS = ['tuning', 'stock', 'gta'];
+const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|.*\.localhost|.*\.test)$/.test(location.hostname);
+
+async function listing(url) {
+  try {
+    const r = await fetch(url, { cache: 'no-store' });
+    return r.ok ? await r.text() : '';
+  } catch { return ''; }
+}
+
+// Какие пакеты есть: ['w213-tuning', …]. На сайте — пусто, без запросов.
+export async function findModPacks(base = '../data/') {
+  if (!LOCAL) return [];
+  if (!(await listing(base)).includes('audio-local/')) return [];
+  const out = [];
+  const cars = await listing(base + 'audio-local/');
+  for (const car of Object.keys(MOD_CARS)) {
+    if (!cars.includes(car + '/')) continue;
+    const vars = await listing(base + `audio-local/${car}/`);
+    for (const v of MOD_VARIANTS) if (vars.includes(v.toUpperCase() + '/')) out.push(`${car}-${v}`);
+  }
+  return out;
+}
+
+export async function loadModPack(ctx, id, base = '../data/') {
+  const [car, v] = id.split('-');
+  const M = MOD_CARS[car], dir = `${base}audio-local/${car}/${v.toUpperCase()}/`;
+  const files = { idle: `${M.a}/sound_002.wav`, load: `${M.b}/sound_001.wav`, off: `${M.b}/sound_002.wav`, decel: `${M.b}/sound_003.wav` };
+  if ((await listing(dir)).includes('Bonus/')) files.bonus = `Bonus/${M.a}/sound_001.wav`;
+  const bufs = {};
+  await Promise.all(Object.entries(files).map(([k, f]) => fetch(dir + f).then(r => r.arrayBuffer())
+    .then(ab => ctx.decodeAudioData(ab)).then(b => { bufs[k] = b; })));
+  return { bufs, base: M.base };
+}
 
 // Записи мотора, хлопков и шин: data/audio/sounds.json перечисляет файлы.
 export async function loadCarSounds(ctx, base = '../data/audio/') {
@@ -36,6 +84,8 @@ export class CarFX {
     this.camera = camera;
     this.getCar = car; this.driving = driving; this.inside = inside;
     this.smoke = new TireSmoke(scene);
+    // колёса опираются на нарисованный асфальт, а не на профиль коридора
+    this.surface = new RoadSurface(scene);
     this.audio = null; this.ctx = null;
     let on = true;
     try { on = localStorage.getItem(KEY_SOUND) !== '0'; } catch { /* приватное окно */ }
@@ -48,6 +98,7 @@ export class CarFX {
       unlock();
       if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
       if (e.code === 'KeyK') this.toggleSound();
+      if (e.code === 'KeyJ' && !e.repeat) this.nextPack();
       if (!this.driving() || e.repeat) return;     // зажатая клавиша не листает передачи
       const c = this.getCar();
       if (e.code === 'KeyB') c.toggleDrive();
@@ -75,9 +126,45 @@ export class CarFX {
       this.ctx = new AC({ latencyHint: 'interactive' });
       this.audio = new E63Sound(this.ctx);
       this.ctx.resume();
-      loadCarSounds(this.ctx).then(r => r && this.audio.useSamples(r.bufs, r.meta))
-        .catch(e => console.warn('записи звука не загрузились, остаётся синтез:', e.message));
+      this._packs();
     } catch (e) { console.warn('звук не запустился:', e.message); this.ctx = null; this.audio = null; }
+  }
+
+  // Открытый набор CC0 грузится всегда (из него и визг шин); пакет мода —
+  // поверх, если он есть. ?snd=w213-stock | w212-gta | open … выбирает пакет.
+  async _packs() {
+    const ctx = this.ctx;
+    try { this.open = await loadCarSounds(ctx); } catch (e) { console.warn('записи звука не загрузились, остаётся синтез:', e.message); }
+    this.packs = ['open'];
+    try { this.packs = [...await findModPacks(), 'open']; } catch { /* нет — значит нет */ }
+    const want = new URLSearchParams(location.search).get('snd');
+    let saved = null;
+    try { saved = localStorage.getItem('sev.snd'); } catch { /* нет хранилища */ }
+    const pick = [want, saved, this.packs[0]].find(p => p && this.packs.includes(p)) || 'open';
+    await this.usePack(pick);
+  }
+
+  async usePack(id) {
+    if (!this.audio) return;
+    this.pack = id;
+    try { localStorage.setItem('sev.snd', id); } catch { /* нет хранилища */ }
+    if (id === 'open') { if (this.open) this.audio.useSamples(this.open.bufs, this.open.meta); return; }
+    try {
+      const m = await loadModPack(this.ctx, id);
+      if (this.pack !== id) return;                 // пока грузилось, выбрали другой
+      m.bufs.squeal = this.open?.bufs.tyre_squeal;
+      this.audio.useModPack(m.bufs, m.base, id);
+    } catch (e) {
+      console.warn('пакет звука не загрузился, остаётся открытый:', e.message);
+      if (this.open) this.audio.useSamples(this.open.bufs, this.open.meta);
+    }
+  }
+
+  // J — следующий звуковой пакет (если их больше одного)
+  nextPack() {
+    if (!this.packs || this.packs.length < 2) return;
+    const i = this.packs.indexOf(this.pack);
+    this.usePack(this.packs[(i + 1) % this.packs.length]);
   }
 
   toggleSound() {
@@ -92,6 +179,9 @@ export class CarFX {
     if (!car) return;
     const driving = this.driving();
     this.smoke.update(dt, driving ? car : null);
+    if (car.surface !== this.surface) car.surface = this.surface;
+    if (car.telemetry) car.telemetry.soundPack = this.pack || null;    // для приборов: какой звук играет
+    this.surface.update(dt, car.pos.x, car.pos.z);
     if (this.audio && this.ctx.state === 'running') {
       const cp = this.camera.position;
       const dist = Math.hypot(cp.x - car.pos.x, cp.y - car.pos.y, cp.z - car.pos.z);
