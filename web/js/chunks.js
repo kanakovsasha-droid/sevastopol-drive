@@ -330,9 +330,13 @@ export class ChunkManager {
     // массив улиц — так он доезжает до сборщика дорог без правок в main.js.
     // Заодно сообщаем сам квадрат: кромка — принадлежность места, а не улицы,
     // и каждый чанк рисует её строго в своих границах.
-    if (out.roads) {
+    {
       const S = this.chunk;
-      out.roads.ctx = { all: data.roads, crossings: data.crossings || [],
+      if (!out.roads) out.roads = [];
+      // зелень и обмеренные деревья — туда же: посадки тоже кладёт каждый
+      // квадрат в своих границах (props.js)
+      out.roads.ctx = { all: data.roads || [], crossings: data.crossings || [],
+                        green: data.green || [], trees: (data.places && data.places.trees) || [],
                         x0: data.cx * S, z0: data.cz * S,
                         x1: (data.cx + 1) * S, z1: (data.cz + 1) * S };
     }
@@ -427,7 +431,7 @@ export class ChunkManager {
     }
     // Полотно улиц и зебры каждый квадрат рисует сам, в своих границах, —
     // пересобирать их у сироты не нужно. Метка говорит об этом сборщику дорог.
-    if (data.roads) data.roads.ctx = { orphan: true };
+    (data.roads ||= []).ctx = { orphan: true };
     this.orphans.push({ data, host });
   }
 

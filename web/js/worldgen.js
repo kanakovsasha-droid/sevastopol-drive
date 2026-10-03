@@ -1460,6 +1460,14 @@ export function* buildRoads(world, terrain, chunk = 500) {
   const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1, lanes = 0, surf = 0, hFn = H, jn = null) => {
     const col = ROAD_COLORS[cls];
     const start = ch.base;
+    // Какие пролёты рисуются — считаем ОДИН раз: проверка дорогая, а нужна
+    // трижды. Вершину, не нужную ни одному пролёту, на рельеф не сажаем
+    // (длинная улица через полгорода приходит в каждый свой квадрат, а
+    // рисуется в нём куском), — её потом выкинет сжатие геометрии.
+    const drawSp = new Uint8Array(Math.max(1, mt.n - 1));
+    for (let i = 0; i < mt.n - 1; i++)
+      drawSp[i] = (skipJ && midSkip(pts, i, 5.5)) || (skipFn && skipFn(i)) ? 0 : 1;
+    const needV = i => (i > 0 && drawSp[i - 1]) || (i < mt.n - 1 && drawSp[i]);
     const aArr = typeof offA === 'number' ? null : offA;
     const bArr = typeof offB === 'number' ? null : offB;
     for (let i = 0; i < mt.n; i++) {
@@ -1472,7 +1480,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
         const off = s === 0 ? (aArr ? aArr[i] : offA) : (bArr ? bArr[i] : offB);
         const x = pts[i * 2] + mt.NX[i] * off * mt.S[i];
         const z = pts[i * 2 + 1] + mt.NZ[i] * off * mt.S[i];
-        ch.P.push(x, hFn(x, z) + lift, z);
+        ch.P.push(x, needV(i) ? hFn(x, z) + lift : 0, z);
         ch.C.push(enc(col[0] * t), enc(col[1] * t), enc(col[2] * t));
         // Разметку шейдер кладёт по aRoad.x·ширина/2 = метры от осевой. У
         // ужатого полотна кромка уже не на ±полуширине, и постоянные ∓1
@@ -1503,8 +1511,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
     const px = k => ch.P[lo + k * 3 - 1], pz = k => ch.P[lo + k * 3 + 1];
     const up = new Float32Array(mt.n);
     for (let i = 0; i < mt.n - 1; i++) {
-      if (skipJ && midSkip(pts, i, 5.5)) continue;
-      if (skipFn && skipFn(i)) continue;
+      if (!drawSp[i]) continue;
       const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
       let need = 0;
       // Пять проб: середины четырёх сторон и центр. Углы не щупаем — они и
@@ -1540,8 +1547,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
     // Обход даёт нормаль вверх ТОЛЬКО при таком порядке: offA левее offB,
     // а нормаль митры смотрит против оси. Обратный порядок кладёт полосу лицом в землю.
     for (let i = 0; i < mt.n - 1; i++) {
-      if (skipJ && midSkip(pts, i, 5.5)) continue;
-      if (skipFn && skipFn(i)) continue;
+      if (!drawSp[i]) continue;
       const a = start + i * 2, b = a + 1, c = a + 2, d = a + 3;
       ch.I.push(a, b, c, b, d, c);
       if (cls <= 3) { markTri(ch, a, b, c); markTri(ch, b, d, c); }
@@ -1639,6 +1645,20 @@ export function* buildRoads(world, terrain, chunk = 500) {
   };
   const FLD = ctx ? yield* roadFieldGen(ALL, ctx.x0, ctx.z0, ctx.x1, ctx.z1, keepPiece) : null;
   if (FLD) asphCov = new Uint8Array(FLD.W * FLD.H);
+  // «НА АСФАЛЬТЕ ЛИ ТОЧКА» для деревьев, фонарей, мебели и дворов — по той же
+  // кромке, по которой асфальт РИСУЕТСЯ. Растр покрытия знает только полосу
+  // полуширины вокруг осевой, а нарисованный асфальт шире: скругления углов,
+  // перекрёстки, подложки. Куст, прошедший проверку растра, стоял посреди
+  // Большой Морской (−260, 1182). Запас 0.3 м за бордюр — сам камень тоже.
+  if (FLD && !COV.__fld) {
+    const byAxis = COV.onRoad;
+    // За пределами поля (сад или сквер соседнего квадрата, чьи посадки
+    // достались этой сборке) — растр с запасом: щупаем ещё на 1.3 м вокруг.
+    const wide = (x, z) => byAxis(x, z) || byAxis(x + 1.3, z) || byAxis(x - 1.3, z)
+                        || byAxis(x, z + 1.3) || byAxis(x, z - 1.3);
+    COV.onRoad = (x, z) => FLD.has(x, z) ? FLD.at(x, z) < 0.3 : wide(x, z);
+    COV.__fld = true;
+  }
   yield;
 
   // Осевые всех проезжих улиц в сетке: «какая улица под этой точкой и куда
@@ -2592,60 +2612,52 @@ export function* buildRoads(world, terrain, chunk = 500) {
     const { F, W, ox, oz } = FLD;
     const i0 = ctx.x0 - ox, i1 = ctx.x1 - ox, j0 = ctx.z0 - oz, j1 = ctx.z1 - oz;
     const col = ROAD_COLORS[1], lift = ROAD_Y - 0.015;
-    // Улицы, построенные соседним чанком, в этот растр не попали — их место
-    // дырой не считаем: смотрим, чья клетка по полю, и берём только свои.
-    const mine = new Set(ALL);
-    const O = FLD.O;
-    const own = c => O[c] >= 0 && mine.has(ALL[O[c]]);
-    const hole = (i, j) => {
-      const c = j * W + i;
-      return !asphCov[c] && F[c] < -0.2 && F[c + 1] < -0.2 && F[c + W] < -0.2 && F[c + W + 1] < -0.2
-          && own(c) && own(c + 1) && own(c + W) && own(c + W + 1);
-    };
-    // Клетку с накрытым центром треугольник мог задеть только краем: вокруг
-    // найденной дыры прихватываем ещё по две клетки асфальта во все стороны.
-    const hm = new Uint8Array(W * FLD.H);
-    let any = false;
+    // Один проход по квадрату собирает затравки; дальше работаем только с
+    // ними и с теми строками, где они есть, — полных проходов по миллиону
+    // клеток было три, и заливка стоила дороже самого полотна.
+    const hole = c => !asphCov[c] && F[c] < -0.2 && F[c + 1] < -0.2 && F[c + W] < -0.2 && F[c + W + 1] < -0.2;
+    const seeds = [];
     for (let j = j0; j < j1; j++) {
       if ((j & 255) === 255) yield;
-      for (let i = i0; i < i1; i++)
-        if (hole(i, j)) { hm[j * W + i] = 1; any = true; }
+      for (let c = j * W + i0, ce = j * W + i1; c < ce; c++) if (hole(c)) seeds.push(c);
     }
-    if (any) {
-      const seed = hm.slice();
+    if (seeds.length) {
+      // Клетку с накрытым центром треугольник мог задеть только краем: вокруг
+      // найденной дыры прихватываем ещё по две клетки асфальта во все стороны.
+      const hm = new Uint8Array(W * FLD.H);
+      const rlo = new Int32Array(FLD.H).fill(1 << 30), rhi = new Int32Array(FLD.H).fill(-1);
+      for (const c0 of seeds) {
+        const i = c0 % W, j = (c0 / W) | 0;
+        for (let dj = -2; dj <= 2; dj++)
+          for (let di = -2; di <= 2; di++) {
+            const ii = i + di, jj = j + dj;
+            if (ii < i0 || jj < j0 || ii >= i1 || jj >= j1) continue;
+            const c = jj * W + ii;
+            if (hm[c] || !(F[c] < -0.05 && F[c + 1] < -0.05 && F[c + W] < -0.05 && F[c + W + 1] < -0.05)) continue;
+            hm[c] = 1;
+            if (ii < rlo[jj]) rlo[jj] = ii;
+            if (ii > rhi[jj]) rhi[jj] = ii;
+          }
+      }
       for (let j = j0; j < j1; j++) {
-        if ((j & 255) === 255) yield;
-        for (let i = i0; i < i1; i++) {
-          if (!seed[j * W + i]) continue;
-          for (let dj = -2; dj <= 2; dj++)
-            for (let di = -2; di <= 2; di++) {
-              const ii = i + di, jj = j + dj;
-              if (ii < i0 || jj < j0 || ii >= i1 || jj >= j1) continue;
-              const c = jj * W + ii;
-              if (F[c] < -0.05 && F[c + 1] < -0.05 && F[c + W] < -0.05 && F[c + W + 1] < -0.05) hm[c] = 1;
-            }
+        if (rhi[j] < 0) continue;
+        for (let i = rlo[j]; i <= rhi[j]; i++) {
+          if (!hm[j * W + i]) continue;
+          let e = i;
+          while (e + 1 <= rhi[j] && e - i < 40 && hm[j * W + e + 1]) e++;
+          const xa = ox + i - 0.5, xb = ox + e + 1.5, za = oz + j - 0.5, zb = oz + j + 1.5;
+          const ch = bucket(xa, za), st = ch.base;
+          for (const [x, z] of [[xa, za], [xb, za], [xa, zb], [xb, zb]]) {
+            ch.P.push(x, H(x, z) + lift, z);
+            ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
+            ch.R.push(0, 0, 6, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);
+          }
+          ch.I.push(st, st + 2, st + 1, st + 1, st + 2, st + 3);
+          ch.base += 4;
+          holes++;
+          i = e;
         }
       }
-    }
-    const isH = (i, j) => hm[j * W + i] === 1;
-    for (let j = j0; any && j < j1; j++) {
-      for (let i = i0; i < i1; i++) {
-        if (!isH(i, j)) continue;
-        let e = i;
-        while (e + 1 < i1 && e - i < 40 && isH(e + 1, j)) e++;
-        const xa = ox + i - 0.5, xb = ox + e + 1.5, za = oz + j - 0.5, zb = oz + j + 1.5;
-        const ch = bucket(xa, za), st = ch.base;
-        for (const [x, z] of [[xa, za], [xb, za], [xa, zb], [xb, zb]]) {
-          ch.P.push(x, H(x, z) + lift, z);
-          ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-          ch.R.push(0, 0, 6, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);
-        }
-        ch.I.push(st, st + 2, st + 1, st + 1, st + 2, st + 3);
-        ch.base += 4;
-        holes++;
-        i = e;
-      }
-      if ((j & 127) === 127) yield;
     }
   }
 

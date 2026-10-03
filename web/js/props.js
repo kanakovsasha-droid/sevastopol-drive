@@ -319,8 +319,40 @@ export function buildStreetProps(world, terrain, roadIndex) {
 
   // Тот же самый растр, что у дорог и аудита — строится один раз на мир.
   const COV = world.__coverage;
-  const onRoad = (x, z) => COV.onRoad(x, z);
-  const rand = rng(4242);
+  // Растр квадрата знает только свои улицы, а посадки большого сквера или
+  // парка, доставшегося этой сборке, уходят и в соседний квадрат — там они
+  // вставали посреди чужой проезжей части. Вторая проверка — по общему
+  // индексу улиц всех загруженных квадратов: ближе полуширины плюс бордюр к
+  // осевой — асфальт. Отдельно широкие: узкий проезд рядом не должен их
+  // заслонить в поиске ближайшей.
+  const ONR = r => r.c <= 3 && !r.br && !r.tn, WIDE = r => ONR(r) && r.w >= 8;
+  const byIndex = (x, z) => {
+    if (!roadIndex) return false;
+    for (const f of [ONR, WIDE]) {
+      const h = roadIndex.nearest(x, z, 9, f);
+      if (h && h.dist < h.road.w / 2 + 0.8) return true;
+    }
+    return false;
+  };
+  // В квадрате с полем кромки (см. ниже: сажаем только внутри квадрата)
+  // хватает его самого — индекс нужен только сборке без контекста.
+  const onRoad = (x, z) => COV.onRoad(x, z) || (!COV.__fld && byIndex(x, z));
+
+  // ПОСАДКИ — ПРИНАДЛЕЖНОСТЬ КВАДРАТА, как и полотно (см. buildRoads). Раньше
+  // сквер или улица сажались целиком тем чанком, что приехал первым, и их
+  // часть в соседнем квадрате проверялась по чужим для него улицам и садилась
+  // на рельеф, которого там ещё не было: куст посреди проезжей части, дерево
+  // в воздухе. Теперь каждый квадрат сажает всё, что лежит В НЁМ, по всем
+  // улицам, скверам и обмерам своих данных. Выбор места — от хеша координат,
+  // а не от общей случайной последовательности: у двух соседей одна и та же
+  // улица обязана дать одни и те же деревья.
+  const ctx = world.roads.ctx || null;
+  const ORPH = !!(ctx && ctx.orphan);              // сироты: всё уже посажено квадратами
+  const SQ = ctx && !ORPH ? ctx : null;
+  const inSq = (x, z) => !SQ || (x >= SQ.x0 && x < SQ.x1 && z >= SQ.z0 && z < SQ.z1);
+  const ROADS = ORPH ? [] : SQ ? SQ.all : world.roads;
+  const GREENS = ORPH ? [] : SQ ? (SQ.green || []) : world.green;
+  const TREES = ORPH ? [] : SQ ? (SQ.trees || []) : ((world.places && world.places.trees) || []);
   const H = (x, z) => terrain.gridHeightAt(x, z);
   // Тротуар РИСУЕТСЯ на 20 см выше рельефа (KERB_H + 0.03 в worldgen), а
   // уличные посадки садились в голый рельеф да ещё утапливались на четверть
@@ -367,12 +399,12 @@ export function buildStreetProps(world, terrain, roadIndex) {
   // консольный, проезд — парковый шар.
   const lampFor = r => (r.c <= 1 && r.w >= 10) ? 'twin' : (r.c <= 2 && r.w >= 7) ? 'street' : 'park';
 
-  for (let ri = 0; ri < world.roads.length; ri++) {
-    const r = world.roads[ri];
+  for (let ri = 0; ri < ROADS.length; ri++) {
+    const r = ROADS[ri];
     const walkway = r.c === 4 && r.w >= 4;    // пешеходная улица: бульвары и набережные
     if (!walkway && (r.c > 3 || r.w < 5 || r.br || r.tn)) continue;
     const p = r.pts, hw = r.w / 2;
-    const seed = hash2(ri * 131 + 7, ri * 17 + r.w * 37);
+    const seed = hash2(r.pts[0] * 0.131 + 7, r.pts[1] * 0.017 + r.w * 37);
     const set = walkway ? SET_PROM : r.w >= 10 ? SET_AVENUE : SET_STREET;
     const lk = walkway ? 'park' : lampFor(r);
     // на бульваре деревья и фонари стоят чаще и ближе, чем на проезжей улице
@@ -397,8 +429,9 @@ export function buildStreetProps(world, terrain, roadIndex) {
           // дерево в тротуаре
           if (Math.abs(d % stepT - (side > 0 ? 0 : stepT * 0.5)) < 0.5) {
             const x = cx + nx * side * offT, z = cz + nz * side * offT;
-            if (free(x, z) && !onOtherRoad(x, z)) {
-              if (rand() < 0.70) {
+            const roll = hash2(x * 7.3 + 1.1, z * 7.7 - 3.3);
+            if (inSq(x, z) && free(x, z) && !onOtherRoad(x, z)) {
+              if (roll < 0.70) {
                 // Кипарис и сосна — примета приморской части: на бульварах у бухты
                 // их ряды, а в верхнем городе почти нет. Долю привязываем к высоте.
                 const h = H(x, z);
@@ -407,7 +440,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
                   ? (hash2(x, z * 2) < 0.72 ? 'cypress' : 'pine')
                   : pickStreet(set, seed, x, z);
                 pushTree(bins[sp], x, h + walkTop - 0.10, z, true);
-              } else if (rand() < 0.34) {
+              } else if (roll < 0.70 + 0.30 * 0.34) {
                 // там, где дерева не вышло, остаётся приствольный газон с кустом:
                 // ряд перестаёт быть пунктиром из одинаковых промежутков
                 pushBush(x, H(x, z) + walkTop - 0.04, z);
@@ -417,7 +450,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
           // фонарь
           if (Math.abs(d % stepL - (side > 0 ? stepL * 0.26 : stepL * 0.74)) < 0.5) {
             const x = cx + nx * side * offL, z = cz + nz * side * offL;
-            if (free(x, z) && !onOtherRoad(x, z))
+            if (inSq(x, z) && free(x, z) && !onOtherRoad(x, z))
               lampBins[lk].push(x, H(x, z) + walkTop, z, 1, 1, Math.atan2(-nx * side, -nz * side), 0, 0);
           }
 
@@ -443,7 +476,8 @@ export function buildStreetProps(world, terrain, roadIndex) {
     'клён': 'platan', 'липа': 'platan', 'дуб': 'platan', 'ясень': 'platan',
   };
   let measured = 0, onAsphalt = 0;
-  for (const t of (world.places && world.places.trees) || []) {
+  for (const t of TREES) {
+    if (!inSq(t.x, t.z)) continue;
     // Обмер снят по спутнику, а полотно у меня своей ширины: часть посадок
     // попадает на асфальт. Такие не сажаем — дерево посреди дороги хуже,
     // чем отсутствующее дерево.
@@ -467,12 +501,12 @@ export function buildStreetProps(world, terrain, roadIndex) {
   // проседал. Считаем обмеренные деревья по клеткам 40 м и в занятых клетках
   // плотность отключаем.
   const measuredCell = new Set();
-  for (const t of (world.places && world.places.trees) || [])
+  for (const t of TREES)
     measuredCell.add(Math.floor(t.x / 40) * 100003 + Math.floor(t.z / 40));
   const hasMeasured = (x, z) => measuredCell.has(Math.floor(x / 40) * 100003 + Math.floor(z / 40));
 
   // деревья в парках и на склонах — там, где OSM отметил зелень
-  for (const g of world.green) {
+  for (const g of GREENS) {
     const dens = { wood: 105, park: 130, scrub: 260, grass: 620 }[g.kind];
     const q = g.poly;
     let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity, a = 0;
@@ -503,7 +537,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
         for (let t = 2.2; t < L - 2.2; t += 3.4) {
           const x = ax + ux * t + hx * 1.1, z = az + uz * t + hz * 1.1;
           // изгородь не сплошная: калитки, проходы, вытоптанные места
-          if (hash2(x * 0.7, z * 0.7) > 0.62) continue;
+          if (hash2(x * 0.7, z * 0.7) > 0.62 || !inSq(x, z)) continue;
           if (!free(x, z) || onRoad(x, z)) continue;
           hedges.push(x, H(x, z) - 0.08, z, 1, 0.82 + hash2(x, z) * 0.36,
             Math.atan2(-uz, ux), 0, 0);
@@ -512,29 +546,30 @@ export function buildStreetProps(world, terrain, roadIndex) {
     }
 
     if (!dens) continue;
-    const want = Math.min(1400, Math.floor(area / dens));
+    // Сетка кандидатов, привязанная к миру: по одному месту на клетку со
+    // сдвигом от хеша. Шаг — из плотности, но не чаще прежнего потолка в
+    // 1400 деревьев на полигон. Обходим только клетки внутри квадрата.
+    const want = Math.min(1400, area / dens);
+    if (want < 1) continue;
+    const cell = Math.sqrt(area / want);
     const gset = SET_GREEN[g.kind];
-    let placed = 0, tries = 0;
-    while (placed < want && tries++ < want * 12) {
-      const x = x0 + rand() * (x1 - x0), z = z0 + rand() * (z1 - z0);
-      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z) || hasMeasured(x, z)) continue;
-      // В роще деревья одной породы стоят куртинами, а не вперемешку: породу
-      // задаёт крупная ячейка 90 м, внутри неё лес однородный.
-      const cellSeed = hash2(Math.floor(x / 90) * 90, Math.floor(z / 90) * 90);
-      const sp = hash2(x * 3.1, z * 3.1) < 0.18
-        ? gset[Math.floor(hash2(z, x) * gset.length)]
-        : gset[Math.floor(cellSeed * gset.length)];
-      pushTree(bins[sp], x, H(x, z) - 0.25, z, true);
-      placed++;
-    }
-    // подлесок: кустов вдвое меньше деревьев, но они закрывают стык кроны с землёй
-    const wantB = Math.floor(want * 0.5);
-    let pb = 0; tries = 0;
-    while (pb < wantB && tries++ < wantB * 12) {
-      const x = x0 + rand() * (x1 - x0), z = z0 + rand() * (z1 - z0);
-      if (!pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z) || hasMeasured(x, z)) continue;
-      pushBush(x, H(x, z) - 0.1, z);
-      pb++;
+    const gx0 = Math.max(x0, SQ ? SQ.x0 : -Infinity), gx1 = Math.min(x1, SQ ? SQ.x1 : Infinity);
+    const gz0 = Math.max(z0, SQ ? SQ.z0 : -Infinity), gz1 = Math.min(z1, SQ ? SQ.z1 : Infinity);
+    for (const [cs, salt, bush] of [[cell, 0, false], [cell * Math.SQRT2, 17.3, true]]) {
+      for (let ci = Math.floor(gx0 / cs); ci <= Math.floor(gx1 / cs); ci++)
+        for (let cj = Math.floor(gz0 / cs); cj <= Math.floor(gz1 / cs); cj++) {
+          const x = (ci + hash2(ci * 1.37 + salt, cj * 2.11)) * cs;
+          const z = (cj + hash2(cj * 1.91 - salt, ci * 0.77)) * cs;
+          if (!inSq(x, z) || !pointIn(q, x, z) || H(x, z) < 1.4 || onRoad(x, z) || hasMeasured(x, z)) continue;
+          if (bush) { pushBush(x, H(x, z) - 0.1, z); continue; }
+          // В роще деревья одной породы стоят куртинами, а не вперемешку: породу
+          // задаёт крупная ячейка 90 м, внутри неё лес однородный.
+          const cellSeed = hash2(Math.floor(x / 90) * 90, Math.floor(z / 90) * 90);
+          const sp = hash2(x * 3.1, z * 3.1) < 0.18
+            ? gset[Math.floor(hash2(z, x) * gset.length)]
+            : gset[Math.floor(cellSeed * gset.length)];
+          pushTree(bins[sp], x, H(x, z) - 0.25, z, true);
+        }
     }
   }
 
