@@ -1,39 +1,14 @@
 [
   {
-    "name": "Памятник адмиралу Нахимову",
-    "style": "monument",
-    "x": -5,
-    "z": 1,
-    "facing": 0,
-    "note": "Площадь Нахимова. Ступенчатый стилобат, гранитный пьедестал с бронзовыми барельефами, фигура в адмиральской шинели лицом к бухте (на север)."
-  },
-  {
-    "name": "Кедр на площади Лазарева",
-    "style": "cedar",
-    "x": -421,
-    "z": 570,
-    "h": 20,
-    "spread": 15,
-    "note": "Островок кольца на Черноморке: в OSM это круглое пятно landuse=grass, 220 м², 22 точки, поперечник ~16 м. Центр контура."
-  },
-  {
-    "name": "«Мир Бургер» на площади Лазарева",
-    "style": "fastfood",
-    "x": -468,
-    "z": 539,
-    "facade": "проспект Нахимова",
-    "tables": 9,
-    "note": "пр. Нахимова, 14 — сейчас «Мир Бургер», раньше McDonald's. Возвращён по требованию: ревизия сочла его первым этажом жилого дома, но заведение на месте и узнаётся именно павильоном с летней верандой."
-  },
-  {
     "name": "Островок кольца на Черноморке",
     "style": "island",
     "x": -421,
     "z": 570,
     "rim": 0.55,
     "shrubs": 30,
-    "trees": 5,
-    "note": "По панораме: приподнятая клумба с низким каменным бортом, внутри земля, кусты и несколько деревьев."
+    "trees": 0,
+    "note": "По панораме: приподнятая клумба с низким каменным бортом, внутри земля, кусты и несколько деревьев.",
+    "keep": true
   },
   {
     "name": "Городская больница №1 им. Н. И. Пирогова",
@@ -386,6 +361,273 @@
       "w91447927"
     ],
     "source": "модель models/biblio_tolstogo/build.py; что видно на фото и что сделано наугад — models/biblio_tolstogo/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник адмиралу Нахимову",
+    "style": "model",
+    "x": -5.8,
+    "z": 1.7,
+    "file": "nahimov_monument.glb",
+    "ox": -5.8,
+    "oz": 1.7,
+    "skip": [],
+    "source": "модель models/nahimov_monument/build.py; что видно на фото и что сделано наугад — models/nahimov_monument/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник затопленным кораблям",
+    "style": "model",
+    "x": -88,
+    "z": -193.8,
+    "file": "sunken_ships.glb",
+    "ox": -88,
+    "oz": -193.8,
+    "skip": [],
+    "source": "модель models/sunken_ships/build.py; что видно на фото и что сделано наугад — models/sunken_ships/NOTES.md",
+    "checked": "2026-10-03",
+    "y": 0
+  },
+  {
+    "name": "Мемориал героической обороны Севастополя 1941–1942",
+    "style": "model",
+    "x": -80.3,
+    "z": 49,
+    "file": "memorial_oborony.glb",
+    "ox": -74.89,
+    "oz": 45.45,
+    "skip": [],
+    "source": "модель models/memorial_oborony/build.py; что видно на фото и что сделано наугад — models/memorial_oborony/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник А. И. Казарскому",
+    "style": "model",
+    "x": -101.6,
+    "z": 81.1,
+    "file": "kazarsky.glb",
+    "ox": -101.6,
+    "oz": 81.1,
+    "skip": [],
+    "source": "модель models/kazarsky/build.py; что видно на фото и что сделано наугад — models/kazarsky/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Мост влюблённых (Драконий мостик)",
+    "style": "model",
+    "x": -108.4,
+    "z": -128.8,
+    "file": "drakon_most.glb",
+    "ox": -108.4,
+    "oz": -128.8,
+    "skip": [],
+    "source": "модель models/drakon_most/build.py; что видно на фото и что сделано наугад — models/drakon_most/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Летняя эстрада «Ракушка»",
+    "style": "model",
+    "x": -56.8,
+    "z": -112.1,
+    "file": "rakushka.glb",
+    "ox": -58.15,
+    "oz": -114.7,
+    "skip": [],
+    "source": "модель models/rakushka/build.py; что видно на фото и что сделано наугад — models/rakushka/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Фонтан Приморского бульвара",
+    "style": "model",
+    "x": -120.5,
+    "z": -67.5,
+    "file": "fontan_bulvar.glb",
+    "ox": -120.45,
+    "oz": -67.55,
+    "skip": [],
+    "source": "модель models/fontan_bulvar/build.py; что видно на фото и что сделано наугад — models/fontan_bulvar/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Мемориал «Солдат и Матрос» (мыс Хрустальный)",
+    "style": "model",
+    "x": -885,
+    "z": 155,
+    "file": "soldat_matros.glb",
+    "ox": -885,
+    "oz": 155,
+    "skip": [],
+    "source": "модель models/soldat_matros/build.py; что видно на фото и что сделано наугад — models/soldat_matros/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник Екатерине II (Екатерининский сквер)",
+    "style": "model",
+    "x": -19.3,
+    "z": 363.6,
+    "file": "ekaterina2.glb",
+    "ox": -19.3,
+    "oz": 363.6,
+    "skip": [],
+    "source": "модель models/ekaterina2/build.py; что видно на фото и что сделано наугад — models/ekaterina2/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник В. И. Ленину на Центральном холме",
+    "style": "model",
+    "x": -165,
+    "z": 569,
+    "file": "lenin.glb",
+    "ox": -165,
+    "oz": 569,
+    "skip": [],
+    "source": "модель models/lenin/build.py; что видно на фото и что сделано наугад — models/lenin/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник Э. И. Тотлебену «Оборона Севастополя»",
+    "style": "model",
+    "x": -157.6,
+    "z": 1988,
+    "file": "totleben.glb",
+    "ox": -157.6,
+    "oz": 1988,
+    "skip": [],
+    "source": "модель models/totleben/build.py; что видно на фото и что сделано наугад — models/totleben/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник адмиралу В. А. Корнилову (Малахов курган)",
+    "style": "model",
+    "x": 1796.7,
+    "z": 1443.4,
+    "file": "kornilov_malahov.glb",
+    "ox": 1796.7,
+    "oz": 1443.4,
+    "skip": [],
+    "source": "модель models/kornilov_malahov/build.py; что видно на фото и что сделано наугад — models/kornilov_malahov/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник-бюст адмиралу Ф. Ф. Ушакову",
+    "style": "model",
+    "x": -127,
+    "z": 1821,
+    "file": "ushakov.glb",
+    "ox": -127,
+    "oz": 1821,
+    "skip": [],
+    "source": "модель models/ushakov/build.py; что видно на фото и что сделано наугад — models/ushakov/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник святым Кириллу и Мефодию",
+    "style": "model",
+    "x": -14.2,
+    "z": 935.2,
+    "file": "kirill_mefodiy.glb",
+    "ox": -14.2,
+    "oz": 935.2,
+    "skip": [],
+    "source": "модель models/kirill_mefodiy/build.py; что видно на фото и что сделано наугад — models/kirill_mefodiy/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник комсомольцам — защитникам Севастополя",
+    "style": "model",
+    "x": 150.4,
+    "z": 887.5,
+    "file": "komsomolcam.glb",
+    "ox": 150.4,
+    "oz": 887.5,
+    "skip": [],
+    "source": "модель models/komsomolcam/build.py; что видно на фото и что сделано наугад — models/komsomolcam/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник матросу Петру Кошке",
+    "style": "model",
+    "x": 1020.4,
+    "z": 1285.4,
+    "file": "koshka.glb",
+    "ox": 1020.4,
+    "oz": 1285.4,
+    "skip": [],
+    "source": "модель models/koshka/build.py; что видно на фото и что сделано наугад — models/koshka/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник-бюст А. В. Суворову",
+    "style": "model",
+    "x": 138.9,
+    "z": 1147.9,
+    "file": "suvorov.glb",
+    "ox": 138.9,
+    "oz": 1147.9,
+    "skip": [],
+    "source": "модель models/suvorov/build.py; что видно на фото и что сделано наугад — models/suvorov/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник святому князю Владимиру (запад города)",
+    "style": "model",
+    "x": -2599.3,
+    "z": 1109.5,
+    "file": "vladimir_hersones.glb",
+    "ox": -2599.3,
+    "oz": 1109.5,
+    "skip": [],
+    "source": "модель models/vladimir_hersones/build.py; что видно на фото и что сделано наугад — models/vladimir_hersones/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник апостолу Андрею Первозванному (Херсонес)",
+    "style": "model",
+    "x": -2579.8,
+    "z": 596.1,
+    "file": "andrey_hersones.glb",
+    "ox": -2579.8,
+    "oz": 596.1,
+    "skip": [],
+    "source": "модель models/andrey_hersones/build.py; что видно на фото и что сделано наугад — models/andrey_hersones/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "«Мир Бургер» на площади Лазарева",
+    "style": "model",
+    "x": -468.3,
+    "z": 538.8,
+    "file": "mir_burger.glb",
+    "ox": -457.75,
+    "oz": 544.9,
+    "skip": [
+      "w92028629"
+    ],
+    "source": "модель models/mir_burger/build.py; что видно на фото и что сделано наугад — models/mir_burger/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Кедр на площади Лазарева",
+    "style": "model",
+    "x": -422,
+    "z": 569.5,
+    "file": "cedar_lazarev.glb",
+    "ox": -422,
+    "oz": 569.5,
+    "skip": [],
+    "source": "модель models/cedar_lazarev/build.py; что видно на фото и что сделано наугад — models/cedar_lazarev/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Кедр на площади Ушакова",
+    "style": "model",
+    "x": -105,
+    "z": 1682,
+    "file": "tree_ushakov.glb",
+    "ox": -105,
+    "oz": 1682,
+    "skip": [],
+    "source": "модель models/tree_ushakov/build.py; что видно на фото и что сделано наугад — models/tree_ushakov/NOTES.md",
     "checked": "2026-10-03"
   }
 ]
