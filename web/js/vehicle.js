@@ -84,6 +84,7 @@ export const CAR = {
   diffLock: 55,             // вязкая блокировка между колёсами оси, Н·м·с
   tcSlip: 0.20,             // противобуксовочная начинает душить отсюда…
   tcMin: 0.55,              // …но ниже этой доли момент не режет: занос газом остаётся
+  tcBand: 0.22,             // за сколько проскальзывания сверх порога режет до минимума
   revInertia: 0.30,         // кг·м²: мотор с маховиком на нейтрали (перегазовка ~0.5 с до отсечки)
   // Задний привод — как режим Drift у настоящей E63: передний вал отключён,
   // противобуксовочной нет, курсовая устойчивость слабее (0 — выключена).
@@ -124,6 +125,49 @@ export const CAR = {
   throttleDown: 9,
   brakeUp: 14,
 };
+
+// Гараж: машины на выбор. CAR выше — это W213 (по умолчанию); у другой машины
+// здесь только то, чем она отличается. Car.setModel(id) накладывает отличия
+// на исходный набор и пересчитывает всё, что из него выведено.
+const CAR_BASE = { ...CAR };
+export const CARS = {
+  w213: {
+    title: 'E 63 S', code: 'W213', power: '612 л.с.', years: '2017–2023',
+    glb: '../data/models/e63.glb', sound: 'w213', rwd: false,
+    credit: '<a href="https://sketchfab.com/3d-models/mercedes-amg-e-63-s-w213-f61d8efb0b9b4c499fc66fcf35a4d09c" target="_blank" rel="noopener">Mercedes-AMG E 63 S — Mona x Supercars</a>',
+    spec: {},
+  },
+  // E63 AMG W212 дорестайлинг (2011–2013): M157 5.5 V8 битурбо, 525 л.с. и
+  // 700 Н·м с 1750 до 5000, 7-ступенчатая AMG SPEEDSHIFT MCT, задний привод
+  // (4MATIC — с рестайлинга 2013-го, здесь переключателем), ~1845 кг.
+  // Модель — обычный E-класс W212: база 2.874, колея и радиус колеса — по ней
+  // (1.55 и 0.315; у настоящей E63 колея 1.60/1.59, шины 255/35 R19 и 285/30 R19).
+  w212: {
+    title: 'E 63', code: 'W212', power: '525 л.с.', years: '2011–2013',
+    glb: '../data/models/w212.glb', sound: 'w212', rwd: true,
+    credit: '<a href="https://sketchfab.com/3d-models/mercedes-benz-e-class-w212-9b70707fd2304f578175158564719c5d" target="_blank" rel="noopener">Mercedes-Benz E-Class (W212) — Savelliy 07</a>',
+    spec: {
+      length: 4.87, width: 1.87, height: 1.47,
+      wheelbase: 2.874, track: 1.55, wheelRadius: 0.315,
+      mass: 1845, frontWeight: 0.53, cgHeight: 0.52,
+      inertiaYaw: 3600, inertiaPitch: 3050, inertiaRoll: 740,
+      muLong: 1.25, muLat: 1.06, rearGrip: 1.15,           // задние 285 против 255
+      torque: [[900, 330], [1500, 560], [1750, 700], [5000, 700], [5500, 670],
+               [6000, 600], [6400, 540], [6600, 0]],
+      redline: 6400, stall: 2400,
+      gears: [4.38, 2.86, 1.92, 1.37, 1.00, 0.82, 0.73],
+      reverse: 3.42, final: 2.82,
+      frontTorque: 0.33,                                  // 4MATIC W212: 33/67
+      // задний привод тут родной, а не режим Drift: противобуксовочная и ESP
+      // работают (у W213 на заднем приводе они выключены)
+      tcRwd: true, espRwd: 0.45, tcMin: 0.2, tcSlip: 0.04, tcBand: 0.10,   // держит шину у пика тяги
+      shiftTime: 0.16,
+      brakeTorque: 10800,
+      dragArea: 0.70, liftArea: 0.12,
+    },
+  },
+};
+
 
 // Полотно дороги рисуется на 0.14 м ВЫШЕ рельефа (ROAD_Y в worldgen), а колёса
 // опрашивали голый рельеф — машина проваливалась в асфальт, а на переломах
@@ -201,6 +245,13 @@ export class Car {
     this.contact = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];   // где пятно, в мире
 
     // ---- геометрия, выведенная из параметров
+    this.model = 'w213';
+    this._derive();
+    this._initState();
+  }
+
+  // Всё, что выведено из CAR: геометрия колёс, статические нагрузки, пружины.
+  _derive() {
     const a = CAR.wheelbase * (1 - CAR.frontWeight);    // ЦМ → передняя ось
     const b = CAR.wheelbase * CAR.frontWeight;          // ЦМ → задняя ось
     this._cgZ = CAR.wheelbase / 2 - a;                  // ЦМ впереди середины базы
@@ -217,7 +268,25 @@ export class Car {
     const cOf = (k, w) => 2 * CAR.damping * Math.sqrt(k * w / GRAV);
     this._c = [cOf(kF, wF), cOf(kF, wF), cOf(kR, wR), cOf(kR, wR)];
     this._B = Math.tan(Math.PI / (2 * CAR.curveC));     // пик кривой шины в s = 1
+    if (this.telemetry) { this.telemetry.redline = CAR.redline; this.telemetry.rpmMax = CAR.redline > 6800 ? 8000 : 7000; }
+  }
 
+  // Сменить машину на ходу: параметры, привод по умолчанию; ставим её туда же,
+  // где стояла прежняя (стоя). Модель в сцене меняет main.js.
+  setModel(id) {
+    const M = CARS[id];
+    if (!M) return false;
+    for (const k of Object.keys(CAR)) delete CAR[k];
+    Object.assign(CAR, CAR_BASE, M.spec);
+    this.model = id;
+    this.rwd = M.rwd;
+    if (this.gear > CAR.gears.length) this.gear = CAR.gears.length;
+    this._derive();
+    this.reset(this.pos.x, this.pos.z, this.yaw);
+    return true;
+  }
+
+  _initState() {
     // ---- состояние твёрдого тела (ЦМ, мировые координаты)
     this._p = [0, 0, 0]; this._v = [0, 0, 0];
     this._q = [0, 0, 0, 1]; this._w = [0, 0, 0];
@@ -429,7 +498,8 @@ export class Car {
     this.steerVis += (this.steer - this.steerVis) * Math.min(1, dt * 18);
     const T = this.telemetry;
     T.speedKmh = Math.abs(this.vLong) * 3.6; T.rpm = this.rpm;
-    T.gear = this.mode === 'D' ? this.gear : 0;
+    // передача для прибора: число вперёд, 'R' задняя, 'P' / 'N' — режим коробки
+    T.gear = this.mode !== 'D' ? this.mode : this.gear < 0 ? 'R' : this.gear;
     T.gearMode = this.mode !== 'D' ? this.mode : this.gear < 0 ? 'R' : this.manual ? 'M' : 'D';
     T.drive = this.rwd ? 'RWD' : 'AWD'; T.manual = this.manual;
     T.slip = Math.max(this.slipVel[0], this.slipVel[1], this.slipVel[2], this.slipVel[3]);
@@ -678,7 +748,7 @@ export class Car {
       // бёрнауте её нет — это и есть просьба покрутить колёса.
       const kPrev = this._kap[i] * Math.sign(ratio);
       const tc = !burn && (!this.rwd || CAR.tcRwd);
-      if (tc && kPrev > CAR.tcSlip && driveT * ratio > 0) driveT *= clamp(1 - (kPrev - CAR.tcSlip) / 0.22, CAR.tcMin, 1);
+      if (tc && kPrev > CAR.tcSlip && driveT * ratio > 0) driveT *= clamp(1 - (kPrev - CAR.tcSlip) / CAR.tcBand, CAR.tcMin, 1);
       // вязкая блокировка: колесо, убежавшее от соседа по оси, подтормаживается
       driveT += CAR.diffLock * (om0[i ^ 1] - om0[i]);
       // в бёрнауте тормоз только на передней оси (как «line lock»)
@@ -927,7 +997,8 @@ export class Car {
     // совсем бросили — передачу держим (торможение двигателем). Вниз накатом — только когда низшая передача дала бы меньше
     // 2200: между порогами вверх и вниз зазор в полторы тысячи оборотов и
     // больше, на ровном ходу коробка не «охотится».
-    const up = gas < 0.03 ? 5900 : 2600 + 4100 * gas;
+    // пороги — от отсечки этой машины (7000 у M177, 6400 у M157)
+    const up = Math.min(gas < 0.03 ? CAR.redline - 1100 : 2600 + 4100 * gas, CAR.redline - 150);
     // После любого переключения коробка 0.8 с ничего не решает.
     const LOCK = 0.8;
     if (n < g.length && rpm > up) {
@@ -938,7 +1009,7 @@ export class Car {
     // ступеней, чтобы обороты не перевалили за 5800.
     if (this._wot > 0.25 && rpm < 4200 && n > 1) {
       let m = n;
-      while (m > 1 && k * g[m - 2] < 5800) m--;
+      while (m > 1 && k * g[m - 2] < CAR.redline - 1200) m--;
       if (m < n) { this.gear = m; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK; return; }
     }
     if (n > 1 && k * g[n - 2] < 2200) {
@@ -1038,7 +1109,7 @@ export function loadCarModel(url = '../data/models/e63.glb', renderer = null) {
     const root = g.scene;
     const wheels = ['wheel_FL', 'wheel_FR', 'wheel_RL', 'wheel_RR'].map(n => root.getObjectByName(n));
     const body = root.getObjectByName('body');
-    if (!body || wheels.some(w => !w)) throw new Error('в e63.glb нет узлов body / wheel_*');
+    if (!body || wheels.some(w => !w)) throw new Error(url + ': нет узлов body / wheel_*');
     for (const w of wheels) { w.removeFromParent(); w.position.set(0, 0, 0); }
     body.removeFromParent();
     const car = mountCarModel(body, wheels);
@@ -1052,7 +1123,7 @@ export function loadCarModel(url = '../data/models/e63.glb', renderer = null) {
         if (env) { m.envMap = env; m.envMapIntensity = 0.9; }
         // кузов, двери и бамперы в файле — матовые (шероховатость 0.5–1):
         // лаку нужна гладкость, иначе отражения размазываются в серость
-        if (/chassis|door|bump|hood|trunk/i.test(m.name)) { m.roughness = 0.22; m.metalness = 0.35; }
+        if (/chassis|door|bump|hood|trunk|body_color/i.test(m.name)) { m.roughness = 0.22; m.metalness = 0.35; }
       }
     });
     return car;
