@@ -928,17 +928,31 @@ function grow(k, lod, n) {
   return s;
 }
 
-function attached(o) {
-  while (o.parent) o = o.parent;
-  return !!o.isScene;
+// 0 — квартал снят со сцены, 1 — на сцене, но ещё не показан (main.js
+// открывает квартал, когда собраны его шейдеры), 2 — виден.
+function state(o) {
+  let vis = true;
+  for (; o.parent; o = o.parent) if (!o.visible) vis = false;
+  return o.isScene ? (vis ? 2 : 1) : 0;
+}
+
+// Заранее, за экраном загрузки: создать общие сетки всех пород, чтобы прогрев
+// шейдеров (warm.js) собрал их программы и вариант тени до первого кадра, а не
+// в тот момент, когда на экране впервые появится дерево.
+export function warmFlora(scene) {
+  for (const k of KEYS) for (const lod of [0, 1]) slot(scene, k, lod, 1).mesh.visible = false;
+  slot(scene, 'shadow', 0, 1).mesh.visible = false;
 }
 
 // Каждый кадр: время ветра, выбывшие кварталы, а при сдвиге камеры на шаг —
 // пересборка ближнего и среднего наборов.
 export function updateFlora(camera, scene, now) {
   U.uTime.value = now / 1000;
-  for (let i = entries.length - 1; i >= 0; i--)
-    if (!attached(entries[i].parent)) { entries.splice(i, 1); dirty = true; }
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i], st = state(e.parent);
+    if (!st) { entries.splice(i, 1); dirty = true; continue; }
+    if (st !== e.st) { e.st = st; dirty = true; }
+  }
   const c = camera.position;
   if (!dirty && c.distanceToSquared(last) < 100) return;
   const t0 = performance.now();
@@ -947,6 +961,7 @@ export function updateFlora(camera, scene, now) {
   const cnt = { shadow0: 0 };
   for (const k of KEYS) cnt[k + 0] = cnt[k + 1] = 0;
   for (const e of entries) {
+    if (e.st !== 2) continue;                    // квартал ещё не открыт
     // квартал целиком дальше среднего плана — пропускаем
     const dx = Math.max(e.x0 - c.x, 0, c.x - e.x1), dz = Math.max(e.z0 - c.z, 0, c.z - e.z1);
     if (dx * dx + dz * dz > FAR_R * FAR_R && floraDebug.force < 0) continue;

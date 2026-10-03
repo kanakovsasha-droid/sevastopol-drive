@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=6ce88c24';
-import { plantFlora, crownRadius, ST } from './flora.js?v=6ce88c24';
+import { PolyGrid } from './worldgen.js?v=a0238627';
+import { plantFlora, crownRadius, ST } from './flora.js?v=a0238627';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,
@@ -607,7 +607,11 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
   // режем крупнее, чтобы не плодить вызовы отрисовки на трёх фонарях.
   const CHUNK = 400;
   const chunkFor = n => n >= 6000 ? CHUNK : n >= 2000 ? CHUNK * 1.5 : CHUNK * 2;
-  const place = (geoFn, arr) => {
+  // far — дальше этого (м от края куска) предмет не рисуется: main.js гасит
+  // такие куски по расстоянию до камеры. Фонарь за полкилометра — доли
+  // пикселя, а вызов отрисовки стоит как за целый. У деревьев, кустов и
+  // изгородей свои дальности — в flora.js.
+  const place = (geoFn, arr, far = 0) => {
     const n = arr.length / LST;
     if (!n) return 0;
     const cs = chunkFor(n);
@@ -620,6 +624,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
     const geo = geoFn();
     for (const idxs of buckets.values()) {
       const mesh = new THREE.InstancedMesh(geo, MAT, idxs.length);
+      if (far) mesh.userData.far = far;
       idxs.forEach((i, k) => {
         const o = i * LST;
         pv.set(arr[o], arr[o + 1], arr[o + 2]);
@@ -634,7 +639,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
     return n;
   };
   let nL = 0;
-  for (const k in LAMP_GEO) nL += place(LAMP_GEO[k], lampBins[k]);
+  for (const k in LAMP_GEO) nL += place(LAMP_GEO[k], lampBins[k], 400);
 
   group.userData.counts = { деревья: nT, 'из них обмеренных': measured, 'снято с асфальта': onAsphalt,
                             'не сели у дороги': rejected, кусты: bushes, изгороди: counts.hedge || 0, фонари: nL };

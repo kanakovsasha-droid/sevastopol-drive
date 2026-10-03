@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=6ce88c24';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=6ce88c24';
-import { buildCoverage } from './coverage.js?v=6ce88c24';
-import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=6ce88c24';
+import { SEA_FLOOR } from './terrain.js?v=a0238627';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=a0238627';
+import { buildCoverage } from './coverage.js?v=a0238627';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=a0238627';
+import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=a0238627';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -685,7 +686,13 @@ export function coarseSeaMask(terrain, far) {
   const q = new Int32Array(W * H);
   let qh = 0, qt = 0;
   const dem = i => g.data[i] * g.unit;
-  const seed = c => { if (!wall[c] && dist[c] < 0 && dem(c) <= -1.5) { dist[c] = 0; q[qt++] = c; } };
+  // Затравка — клетки открытого моря по краю охвата. Порог был −1.5 м: в
+  // старом монолите море в тайлах уходило на −2400. В нынешней грубой сетке
+  // (Int16, дециметры) открытое море записано НУЛЁМ — по краю охвата ни одной
+  // клетки ниже −1 м, заливке не с чего было начаться, и маска моря выходила
+  // пустой целиком: Южная бухта, Артбухта и всё побережье лежали песчаным
+  // пляжем на +0.32 м. Суша на краю охвата — горы и склоны, нуля там нет.
+  const seed = c => { if (!wall[c] && dist[c] < 0 && dem(c) <= 0.05) { dist[c] = 0; q[qt++] = c; } };
   for (let i = 0; i < W; i++) { seed(i); seed((H - 1) * W + i); }
   for (let j = 0; j < H; j++) { seed(j * W); seed(j * W + W - 1); }
   const flood = limit => {
@@ -830,8 +837,12 @@ function* seaMaskGen(world, terrain, x0, z0, x1, z1, coarse, res = 8) {
   // ответ теперь зависит только от окрестности в 240 м — она у обоих соседей
   // одна и та же (запас растра pad больше).
   const REACH = 30;
-  const run = limit => {
+  // Генератор: заливка квадрата у берега — до сорока миллисекунд подряд,
+  // это заметный рывок кадра. Отдаём управление каждые 16 тысяч клеток.
+  let steps = 0;
+  const run = function* (limit) {
     while (qh < qt) {
+      if ((++steps & 16383) === 0) yield;
       const c = q[qh++];
       const i = c % W, j = (c / W) | 0, d = dist[c];
       if (d >= REACH) continue;
@@ -844,12 +855,12 @@ function* seaMaskGen(world, terrain, x0, z0, x1, z1, coarse, res = 8) {
       }
     }
   };
-  run(LIMIT);
+  yield* run(LIMIT);
   // ВТОРОЙ ПРОХОД. Порога в 5.5 м мало: SRTM — модель ПОВЕРХНОСТИ, и узкие
   // бухты она засыпает выше. Идём вторым проходом с потолком 26 м, но СТРОГО
   // от уже залитых клеток и по-прежнему упираясь в барьер берега.
   qh = 0;
-  run(LIMIT2);
+  yield* run(LIMIT2);
 
   let cells = 0;
   for (let c = 0; c < dist.length; c++) if (dist[c] >= 0) cells++;
@@ -870,15 +881,40 @@ function* seaMaskGen(world, terrain, x0, z0, x1, z1, coarse, res = 8) {
       }
     }
 
-  // глубина: у берега почти ноль, дальше дно уходит вниз
+  // Глубину считаем от БЕРЕГА, а не от затравки. Затравка стоит в каждой
+  // клетке грубой маски, то есть почти везде внутри бухты, и «расстояние от
+  // затравки» там ноль: вся Южная бухта выходила отмелью на −0.35 м. Дно в
+  // треть метра под плоскостью воды на полкилометра от камеры проигрывает ей
+  // в буфере глубины, и залив рисовался песчаной плитой со стенкой в воду.
+  // Расстояние до суши — волной от сухих клеток, не дальше DL клеток: ответ
+  // зависит только от окрестности в 160 м, у соседей по шву он один и тот же.
+  const DL = 20;
+  const dland = new Uint8Array(W * H).fill(DL);
+  {
+    let qa = 0, qb = 0;
+    for (let c = 0; c < W * H; c++) if (dist[c] < 0) { dland[c] = 0; q[qb++] = c; }
+    while (qa < qb) {
+      const c = q[qa++], i = c % W, j = (c / W) | 0, d = dland[c] + 1;
+      if (d >= DL) continue;
+      for (let dj = -1; dj <= 1; dj++)
+        for (let di = -1; di <= 1; di++) {
+          const a = i + di, b = j + dj;
+          if (a < 0 || b < 0 || a >= W || b >= H) continue;
+          const n = b * W + a;
+          if (dland[n] > d) { dland[n] = d; q[qb++] = n; }
+        }
+      if ((qa & 32767) === 0) yield;
+    }
+  }
+
+  // глубина: у берега почти ноль, через клетку — полтора метра, дальше глубже
   const depthAt = (x, z) => {
     const i = Math.round((x - x0) / res), j = Math.round((z - z0) / res);
     if (i < 0 || j < 0 || i >= W || j >= H) return null;
     const c = idx(i, j);
     if (shore[c]) return 0.35;
-    const d = dist[c];
-    if (d < 0) return null;                       // суша
-    return 0.35 + Math.min(7.5, d * res * 0.055);
+    if (dist[c] < 0) return null;                 // суша
+    return 0.35 + Math.min(7.5, (dland[c] - 0.5) * res * 0.15);
   };
   return { depthAt, cells, segs, res, W, H };
 }
@@ -1022,13 +1058,21 @@ export function* buildTerrainTile(terrain, index, opts) {
 
   lap('маска города');
   const mask = yield* urbanMaskGen(world, x0, z0, x1, z1);
+  // Запасная полоса узлов вокруг квадрата: по ней считаются отметки площадок
+  // домов на краю и уклон для раскраски. E узлов — 55 м: дом крупнее этого,
+  // лежащий на шве, посчитает отметку по своей части контура (а сосед возьмёт
+  // её же из кэша, см. platforms.js).
+  const E = 6, ne = n + 2 * E;
+  const ex0 = gx0 - E * step, ez0 = gz0 - E * step;
   lap('коридор дорог');
-  const corr = yield* roadCorridorGen(
+  const corrWide = yield* roadCorridorGen(
     { roads: index.roadsWithJunctions(near.roads) }, terrain, x0, z0, x1, z1,
-    [gx0, gz0, bx0 + size + step, bz0 + size + step]);
+    [ex0, ez0, ex0 + (ne - 1) * step, ez0 + (ne - 1) * step]);
+  // Храним только сам квадрат с каймой: по нему ездит машина и садятся дороги.
+  const corr = corrWide && crop(corrWide, [gx0, gz0, bx0 + size + step, bz0 + size + step]);
   lap('высоты');
   terrain.setSampler(sampleCorridor);
-  const corrAt = (x, z) => sampleCorridor(corr, x, z);
+  const corrAt = (x, z) => sampleCorridor(corrWide, x, z);
   const greens = new PolyGrid(world.green);
 
   // Сырые высоты + снос застройки. Делаем ДО коридора дорог: иначе профиль улиц
@@ -1047,11 +1091,17 @@ export function* buildTerrainTile(terrain, index, opts) {
     if ((j & 15) === 15) yield;
   }
   lap('снос домов');
+  // Мелкая застройка и кроны: в far-слое только крупные пятна, остальное
+  // снимаем открытием поля (см. platforms.js) — до заращивания крупных.
+  openGround(wide, nb, 2);
+  yield;
   const cut = yield* removeBuildingsGen(wide, nb, wx0, wz0, step, step, world.buildings);
-  // из широкой сетки берём свой квадрат с каймой в одну ячейку — по ней нормали
-  const heights = new Float32Array(n * n);
-  for (let j = 0; j < n; j++)
-    heights.set(wide.subarray((j + M - 1) * nb + M - 1, (j + M - 1) * nb + M - 1 + n), j * n);
+  // из широкой сетки берём квадрат с запасной полосой E узлов
+  const ext = new Float32Array(ne * ne);
+  for (let j = 0; j < ne; j++) {
+    const a = (j + M - 1 - E) * nb + M - 1 - E;
+    ext.set(wide.subarray(a, a + ne), j * ne);
+  }
   lap('море');
 
   // Море вырезаем ДО коридора дорог: иначе набережная считает профиль по
@@ -1067,32 +1117,114 @@ export function* buildTerrainTile(terrain, index, opts) {
   const sea = wet ? yield* seaMaskGen(world, terrain, x0, z0, x1, z1, opts.sea) : null;
   lap('цвет и дороги');
   let carved = 0;
-  for (let j = 0; j < n; j++)
-    for (let i = 0; i < n; i++) {
-      const k = j * n + i;
-      const d = sea && sea.depthAt(gx0 + i * step, gz0 + j * step);
-      if (d == null) { if (heights[k] < 0.32) heights[k] = 0.32; continue; }
+  for (let j = 0; j < ne; j++)
+    for (let i = 0; i < ne; i++) {
+      const k = j * ne + i;
+      const d = sea && sea.depthAt(ex0 + i * step, ez0 + j * step);
+      if (d == null) { if (ext[k] < 0.32) ext[k] = 0.32; continue; }
       const want = -d;
-      if (heights[k] > want) { heights[k] = want; carved++; }
+      if (ext[k] > want) { ext[k] = want; carved++; }
     }
   yield;
 
-  // ---- цвет и вдавливание под дороги
+  // ---- набережные. DSM размазывает уступ берега на несколько пикселей по
+  // 7 м: у Графской пристани газон спускался к воде полого на сотню метров, и
+  // лестница со львами оказалась под землёй, хотя в натуре набережная — это
+  // +0.5 м у самой воды. Низкий берег (ниже 8 м — не скалы Фиолента) у линии
+  // берега из OSM опускаем к отметке набережной: 7 м ровной полосы, дальше
+  // подъём 30% к своей земле. Решают только линия берега и маска моря рядом
+  // с узлом — шов не разъедется.
+  let quay = 0;
+  const qmask = new Uint8Array(ne * ne);     // набережная: красим камнем, не песком
+  if (sea && world.coast.length) {
+    const QR = 30, BC = 32, buckets = new Map();
+    for (const ln of world.coast) {
+      const p = ln.pts;
+      for (let t = 0; t + 3 < p.length; t += 2) {
+        const ax = p[t], az = p[t + 1], bx = p[t + 2], bz = p[t + 3];
+        if (Math.max(ax, bx) < ex0 - QR || Math.min(ax, bx) > ex0 + ne * step + QR ||
+            Math.max(az, bz) < ez0 - QR || Math.min(az, bz) > ez0 + ne * step + QR) continue;
+        for (let cj = Math.floor((Math.min(az, bz) - QR) / BC); cj <= Math.floor((Math.max(az, bz) + QR) / BC); cj++)
+          for (let ci = Math.floor((Math.min(ax, bx) - QR) / BC); ci <= Math.floor((Math.max(ax, bx) + QR) / BC); ci++) {
+            const kk = ci + ',' + cj;
+            let e = buckets.get(kk);
+            if (!e) buckets.set(kk, e = []);
+            e.push(ax, az, bx, bz);
+          }
+      }
+    }
+    for (let j = 0; j < ne; j++) {
+      for (let i = 0; i < ne; i++) {
+        const k = j * ne + i;
+        const h = ext[k];
+        if (h >= 8 || h <= 0.5) continue;
+        const x = ex0 + i * step, z = ez0 + j * step;
+        const e = buckets.get(Math.floor(x / BC) + ',' + Math.floor(z / BC));
+        if (!e || sea.depthAt(x, z) != null) continue;
+        let d2 = QR * QR;
+        for (let t = 0; t < e.length; t += 4) {
+          const ax = e[t], az = e[t + 1], vx = e[t + 2] - ax, vz = e[t + 3] - az;
+          const L2 = vx * vx + vz * vz;
+          let u = L2 > 0 ? ((x - ax) * vx + (z - az) * vz) / L2 : 0;
+          u = u < 0 ? 0 : u > 1 ? 1 : u;
+          const dx = ax + vx * u - x, dz = az + vz * u - z, dd = dx * dx + dz * dz;
+          if (dd < d2) d2 = dd;
+        }
+        if (d2 >= QR * QR) continue;
+        const want = 0.5 + Math.max(0, Math.sqrt(d2) - 7) * 0.3;
+        if (h > want) { ext[k] = want; quay++; if (d2 < 15 * 15) qmask[k] = 1; }
+      }
+      if ((j & 15) === 15) yield;
+    }
+  }
+
+  // ---- вдавливание под дороги
+  const cwE = new Float32Array(ne * ne), capE = new Float32Array(ne * ne).fill(Infinity);
+  for (let j = 0; j < ne; j++) {
+    for (let i = 0; i < ne; i++) {
+      const k = j * ne + i;
+      const cr = corrAt(ex0 + i * step, ez0 + j * step);
+      if (!cr) continue;
+      let h = ext[k];
+      if (cr.w > 0) h = h * (1 - cr.w) + cr.h * cr.w;   // рельеф подстраивается под дорогу
+      if (h > cr.cap) h = cr.cap;                        // и не смеет над ней нависать
+      ext[k] = h;
+      cwE[k] = Math.min(1, cr.w); capE[k] = cr.cap;
+    }
+    if ((j & 15) === 15) yield;
+  }
+
+  // ---- террасы под скверами и площадями, потом площадки под домами
+  lap('площадки домов');
+  const keepT = [gx0 - 0.01, gz0 - 0.01, gx0 + (n - 1) * step + 0.01, gz0 + (n - 1) * step + 0.01];
+  const terr = yield* terracesGen(ext, ne, ex0, ez0, step, cwE, capE, opts.terraces, keepT, near.roads);
+  const mlev = modelLevels(opts.models, world.buildings, ext, ne, ex0, ez0, step);
+  const plat = yield* platformsGen(ext, ne, ex0, ez0, step, cwE, capE, world.buildings,
+                                   [gx0 - 0.01, gz0 - 0.01, gx0 + (n - 1) * step + 0.01, gz0 + (n - 1) * step + 0.01], mlev);
+  applySiteCuts(ext, ne, ex0, ez0, step);
+  lap('цвет и дороги');
+
+  const heights = new Float32Array(n * n);
+  for (let j = 0; j < n; j++) heights.set(ext.subarray((j + E) * ne + E, (j + E) * ne + E + n), j * n);
+
+  // ---- цвет
+  // Застроенность сглаживаем по площади ячейки (шатёр 3×3 отсчёта на ±6 м):
+  // поле вдоль узкой дорожки или кромки коридора уже девятиметровой ячейки,
+  // и по одному отсчёту в вершине серое пятно ложилось на сетку зубьями —
+  // треугольниками по 9 м. Так же и зелень: доля попадания, а не да/нет.
+  const TAP = [-6, 0, 6], TW = [0.25, 0.5, 0.25];
   const col = new Uint8Array(n * n * 3);
   const ter = new Uint8Array(n * n * 2);
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
-      const k = j * n + i;
+      const k = j * n + i, kE = (j + E) * ne + i + E;
       const x = gx0 + i * step, z = gz0 + j * step;
-      let h = heights[k];
-      const cr = corrAt(x, z);
-      if (cr) {
-        if (cr.w > 0) h = h * (1 - cr.w) + cr.h * cr.w;   // рельеф подстраивается под дорогу
-        if (h > cr.cap) h = cr.cap;                        // и не смеет над ней нависать
-      }
-      heights[k] = h;
+      const h = heights[k];
 
-      const slope = terrain.slopeAt(x, z, 12);
+      // крутизна — по ГОТОВОЙ земле, а не по сырой поверхности: по сырой
+      // край крыши давал «скалу» посреди двора
+      const hx = (ext[kE + 1] - ext[kE - 1]) / (2 * step), hz = (ext[kE + ne] - ext[kE - ne]) / (2 * step);
+      const slope = Math.atan(Math.hypot(hx, hz));
       const rock = Math.min(1, Math.max(0, (slope - 0.32) / 0.42));
       let c;
       if (h < 1.2) c = [0.741, 0.694, 0.573];
@@ -1100,22 +1232,37 @@ export function* buildTerrainTile(terrain, index, opts) {
         const dry = Math.min(1, Math.max(0, (h - 20) / 130));
         c = [0.400 + dry * 0.135, 0.451 + dry * 0.075, 0.286 + dry * 0.090];
       }
-      let u = sampleMask(mask, x, z);
-      if (cr) u = Math.max(u, cr.w);          // обочина дороги тоже город, не луг
-      if (u > 0.01 && h >= 1.2) c = [
+      let u = 0, gsum = 0, gk = null;
+      for (let b = 0; b < 3; b++)
+        for (let a = 0; a < 3; a++) {
+          const wt = TW[a] * TW[b], sx = x + TAP[a], sz = z + TAP[b];
+          let v = sampleMask(mask, sx, sz);
+          const cr = corrAt(sx, sz);
+          if (cr && cr.w > v) v = Math.min(1, cr.w);       // обочина дороги тоже город, не луг
+          u += v * wt;
+          const g = greens.find(sx, sz);
+          if (g) { gsum += wt; if (!gk || (a === 1 && b === 1)) gk = g; }
+        }
+      // у воды песок только на диком берегу: опущенная набережная в городе —
+      // камень, а не пляж (иначе вдоль Графской лежала полоса песка)
+      const qn = qmask[kE] || qmask[kE - 1] || qmask[kE + 1] || qmask[kE - ne] || qmask[kE + ne];
+      // город — если в сорока метрах есть застройка или улица
+      if (qn && u < 0.85 && (u > 0.05 || sampleMask(mask, x - 40, z) > 0.2 || sampleMask(mask, x + 40, z) > 0.2 ||
+                             sampleMask(mask, x, z - 40) > 0.2 || sampleMask(mask, x, z + 40) > 0.2)) u = 0.85;
+      // у воды песок только на диком берегу: набережная в городе — камень
+      if (u > 0.01 && (h >= 0.3 || qn)) c = [
         c[0] + (URBAN[0] - c[0]) * u, c[1] + (URBAN[1] - c[1]) * u, c[2] + (URBAN[2] - c[2]) * u,
       ];
-      const g = greens.find(x, z);
-      if (g && h >= 1.2) {
-        const gc = GREEN_COL[g.kind] || GREEN_COL.grass;
-        c = [c[0] + (gc[0] - c[0]) * 0.88, c[1] + (gc[1] - c[1]) * 0.88, c[2] + (gc[2] - c[2]) * 0.88];
+      if (gk && h >= 1.2) {
+        const gc = GREEN_COL[gk.kind] || GREEN_COL.grass, f = 0.88 * gsum;
+        c = [c[0] + (gc[0] - c[0]) * f, c[1] + (gc[1] - c[1]) * f, c[2] + (gc[2] - c[2]) * f];
       }
       c = [c[0] + (ROCK[0] - c[0]) * rock, c[1] + (ROCK[1] - c[1]) * rock, c[2] + (ROCK[2] - c[2]) * rock];
       col[k * 3] = enc(c[0]); col[k * 3 + 1] = enc(c[1]); col[k * 3 + 2] = enc(c[2]);
       ter[k * 2] = Math.round(255 * u);
       ter[k * 2 + 1] = Math.round(255 * rock);
     }
-    if ((j & 7) === 7) yield;
+    if ((j & 3) === 3) yield;
   }
 
   lap('геометрия');
@@ -1192,7 +1339,9 @@ export function* buildTerrainTile(terrain, index, opts) {
   geo.computeBoundingSphere();
 
   mesh_stats.cut = cut;
-  mesh_stats.sea = sea ? { клеток: sea.cells, сегментовБерега: sea.segs, вершинВрезано: carved } : null;
+  mesh_stats.plat = plat;
+  mesh_stats.terr = terr;
+  mesh_stats.sea = sea ? { клеток: sea.cells, сегментовБерега: sea.segs, вершинВрезано: carved, набережная: quay } : null;
   const mesh = new THREE.Mesh(geo, TILE_MAT || (TILE_MAT = terrainMaterial()));
   mesh.name = 'земля ' + key;
   mesh.receiveShadow = true;
@@ -2767,15 +2916,32 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
     if (n < 3) continue;
     if ((work += n + 10) > 240) { work = 0; yield; }
 
+    // Земля вдоль стен — не только в углах. Треугольник рельефа — девять
+    // метров, и между углами длинной стены грунт уходил ниже самого низкого
+    // угла: стена рыночного ряда висела над землёй ровной кромкой. Шаг 2 м.
     let gmin = Infinity, gmax = -Infinity;
     for (let i = 0; i < n; i++) {
-      const h = terrain.gridHeightAt(poly[i * 2], poly[i * 2 + 1]);
-      if (h < gmin) gmin = h; if (h > gmax) gmax = h;
+      const j = (i + 1) % n;
+      const ax = poly[i * 2], az = poly[i * 2 + 1];
+      const ex = poly[j * 2] - ax, ez = poly[j * 2 + 1] - az;
+      const k = Math.max(1, Math.ceil(Math.hypot(ex, ez) / 2));
+      for (let s = 0; s < k; s++) {
+        const h = terrain.gridHeightAt(ax + ex * s / k, az + ez * s / k);
+        if (h < gmin) gmin = h; if (h > gmax) gmax = h;
+      }
+      work += k >> 2;                        // выборка по стенам — тоже работа шага
     }
     if (gmax <= SEA_FLOOR + 0.5) continue;   // мусор в данных: контур целиком в море
-    const yBase = gmin - 1.2;
-    const yTop = gmax + b.h;
-    const Hb = yTop - yBase;
+    // Отметка первого этажа — САМАЯ ВЫСОКАЯ точка земли у стен. Раньше окна
+    // считались от подошвы под нижним углом, и на склоне верхняя стена
+    // уходила в грунт по подоконники: дом «в горе». Теперь этажи начинаются
+    // над землёй везде, а всё, что ниже отметки, — каменный цоколь (в шейдере
+    // это отрицательная координата по высоте), видимый с нижней стороны.
+    const yFloor = gmax;
+    const yBase = gmin - 0.6;
+    const yTop = yFloor + b.h;
+    const Hb = yTop - yFloor;
+    const wb = yBase - yFloor;               // подошва в координатах стены: ≤ −0.6
     cur = bucket(poly[0], poly[1]);
 
     // гаражи разбираем на боксы: контур OSM — это ряд, а не один дом
@@ -2824,10 +2990,10 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
       u = u1;
       // Обход ПО нормали: при обратном порядке стена отсекается как задняя грань,
       // и снаружи видно нутро дома вместо ближних стен.
-      pushV(ax, yBase, az, nx, 0, nz, w, u0, 0, Hb, wallKind);
+      pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wallKind);
       pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wallKind);
-      pushV(bx, yBase, bz, nx, 0, nz, w, u1, 0, Hb, wallKind);
-      pushV(ax, yBase, az, nx, 0, nz, w, u0, 0, Hb, wallKind);
+      pushV(bx, yBase, bz, nx, 0, nz, w, u1, wb, Hb, wallKind);
+      pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wallKind);
       pushV(ax, yTop, az, nx, 0, nz, w, u0, Hb, Hb, wallKind);
       pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wallKind);
     }
