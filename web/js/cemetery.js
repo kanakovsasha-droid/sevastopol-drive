@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { plantFlora } from './flora.js?v=6ce88c24';
 
 // Кладбища. Старое городское кладбище на улице Пожарова (вокруг церкви Всех
 // Святых), Караимское и Еврейское рядом с ним.
@@ -477,68 +478,27 @@ function rareObelisk(mb, x, y, z, yaw) {
 }
 
 // ------------------------------------------------------------------ деревья
-// Свои заготовки: props.js их не отдаёт наружу, а здесь нужны другие силуэты —
-// старый заросший лес кладбища, а не уличные посадки.
-function blob(r, x, y, z, sx, sy, sz, rot) {
-  const g = new THREE.IcosahedronGeometry(r, 0);
-  g.rotateY(rot); g.rotateZ(rot * 0.41);
-  g.scale(sx, sy, sz); g.translate(x, y, z);
-  return g;
+// Породы, ступени подробности и отрисовка — общие с городом (flora.js):
+// кипарисы и сосны кладбища теперь те же, что на бульварах, а дальний план
+// кладбищенского леса — импосторы. Здесь только перевод своих записей в
+// общую посадку. Широколиственные на старом кладбище — каштан, софора,
+// платан вперемешку (по месту).
+const BROAD = ['chestnut', 'acacia', 'platan', 'chestnut'];
+function plantTrees(grp, inst) {
+  const sets = {};
+  const put = (k, ...v) => (sets[k] || (sets[k] = [])).push(...v);
+  for (const key of ['t_cypress', 't_pine', 't_broad', 't_bush']) {
+    const L = inst[key] || [];
+    for (let o = 0; o < L.length; o += 12) {
+      const x = L[o], z = L[o + 2];
+      const k = key === 't_cypress' ? 'cypress' : key === 't_pine' ? 'pine' : key === 't_bush' ? 'shrub'
+        : BROAD[Math.floor(hash3(Math.round(x), Math.round(z), 41) * BROAD.length)];
+      const tx = L[o + 7], tz = L[o + 8];
+      put(k, x, L[o + 1], z, L[o + 4], L[o + 5], L[o + 3], Math.hypot(tx, tz), Math.atan2(tz, tx), 0);
+    }
+  }
+  plantFlora(grp, sets);
 }
-function trunk(rT, rB, h, seg = 5) {
-  const g = new THREE.CylinderGeometry(rT, rB, h, seg, 1, true);
-  g.translate(0, h / 2, 0);
-  return g;
-}
-const LEAF = {
-  cypress: [lin([0.16, 0.28, 0.18]), lin([0.19, 0.32, 0.20])],
-  pine:    [lin([0.18, 0.30, 0.20]), lin([0.21, 0.34, 0.22]), lin([0.15, 0.26, 0.18])],
-  broad:   [lin([0.30, 0.42, 0.20]), lin([0.35, 0.47, 0.23]), lin([0.26, 0.37, 0.18]), lin([0.39, 0.50, 0.25])],
-  bush:    [lin([0.27, 0.40, 0.19]), lin([0.32, 0.45, 0.22])],
-};
-const BARK = lin([0.36, 0.28, 0.20]);
-// Один гладкий вытянутый ком (икосаэдр второй подробности) читается колонной
-// кипариса лучше, чем стопка острых камней.
-function column(r, h, y0, detail = 1) {
-  const g = new THREE.IcosahedronGeometry(r, detail);
-  g.scale(1, h / r, 1);
-  g.translate(0, y0 + h, 0);
-  return g;
-}
-const TREES = {
-  cypress: () => {
-    const mb = new MB();
-    mb.geo(trunk(0.09, 0.18, 2.0), BARK);
-    mb.geo(column(1.0, 4.5, 0.8), LEAF.cypress[0]);
-    mb.geo(blob(0.45, 0.12, 7.6, 0.05, 1, 1.7, 1, 2.0), LEAF.cypress[1]);
-    return mb.build();
-  },
-  pine: () => {
-    const mb = new MB();
-    const t = trunk(0.14, 0.28, 6.4);
-    t.rotateZ(0.05);
-    mb.geo(t, lin([0.45, 0.31, 0.21]));
-    mb.geo(blob(2.0, 0.25, 6.4, 0, 1, 0.42, 1, 1.5), LEAF.pine[0]);
-    mb.geo(blob(1.4, -1.1, 7.1, 0.6, 1, 0.45, 1, 3.6), LEAF.pine[1]);
-    mb.geo(blob(1.1, 1.0, 7.4, -0.5, 1, 0.45, 1, 5.2), LEAF.pine[2]);
-    return mb.build();
-  },
-  broad: () => {
-    const mb = new MB();
-    mb.geo(trunk(0.17, 0.3, 4.4), BARK);
-    mb.geo(blob(2.0, 0, 5.8, 0, 1, 0.85, 1, 0), LEAF.broad[0]);
-    mb.geo(blob(1.5, 1.4, 5.0, 0.4, 1, 0.8, 1, 1.9), LEAF.broad[1]);
-    mb.geo(blob(1.4, -1.3, 5.2, -0.9, 1, 0.85, 1, 3.4), LEAF.broad[2]);
-    mb.geo(blob(1.2, 0.2, 7.2, -0.3, 1, 0.8, 1, 5.1), LEAF.broad[3]);
-    return mb.build();
-  },
-  bush: () => {
-    const mb = new MB();
-    mb.geo(blob(0.85, 0, 0.55, 0, 1.15, 0.7, 1.15, 0.5), LEAF.bush[0]);
-    mb.geo(blob(0.6, 0.35, 0.95, -0.2, 1, 0.75, 1, 2.7), LEAF.bush[1]);
-    return mb.build();
-  },
-};
 
 // Панель ограды: каменный цоколь, кованые прутья, две перекладины. Длина 3 м,
 // по x масштабируется под реальный пролёт.
@@ -618,7 +578,7 @@ export function* buildCemeteries(w, terrain, d) {
   for (const k of [...ORTHO_KEYS, ...JEW_KEYS]) mk(k, VARIANTS[k], acc.inst[k] || [], false, near);
   yield* pause(acc);
   mk('ограда', fencePanelGeo, acc.inst.panel || [], true, near);
-  for (const k of Object.keys(TREES)) mk('дерево:' + k, TREES[k], acc.inst['t_' + k] || [], true, grp);
+  plantTrees(grp, acc.inst);
   if (acc.stat.v) {
     const sm = new THREE.Mesh(acc.stat.build(), matStatic);
     sm.castShadow = true;

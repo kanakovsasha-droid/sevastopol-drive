@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Terrain, SEA_FLOOR } from './terrain.js?v=6ce88c24';
 import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=6ce88c24';
 import { buildStreetProps } from './props.js?v=6ce88c24';
+import { updateFlora, floraStats } from './flora.js?v=6ce88c24';
 import { buildYards, buildStructures } from './yards.js?v=6ce88c24';
 import { buildFurniture } from './furniture.js?v=6ce88c24';
 import { buildLandmarks } from './landmarks.js?v=6ce88c24';
@@ -237,6 +238,7 @@ async function boot() {
     window.G.tileProf = tileProf;
     window.G.chunkProf = chunkProf;
     window.G.counts = counts;
+    window.G.flora = floraStats;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
     console.log(`до старта ${window.G.boot} мс, чанков в манифесте ${chunks.cells.size}`);
@@ -649,7 +651,7 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
 
   at('деревья');
-  const props = buildStreetProps(w, terrain, roads);
+  const props = buildStreetProps(w, terrain, roads, d.allBuildings, d.allGreen);
   g.add(props);
   for (const [k, v] of Object.entries(props.userData.counts || {})) counts[k] = (counts[k] || 0) + v;
   lap('деревья');
@@ -1398,6 +1400,8 @@ function loop(now) {
 
   updateCamera(dt);
   updateHUD(dt);
+  // деревья: ближний и средний план вокруг камеры, ветер
+  updateFlora(camera, scene, now);
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
