@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Питомник</title>
+<style>html,body{margin:0;background:#9fc3e6;overflow:hidden}#i{position:fixed;left:8px;top:6px;font:13px monospace;color:#123}</style>
+<script type="importmap">{ "imports": { "three": "../web/lib/three.module.js" } }</script></head>
+<body><div id="i"></div>
+<script type="module">
+// Питомник: все породы рядом, при свете и тумане игры. Для глаза и для
+// отладки ступеней подробности: ?lod=0|1|2 — всё ближним, средним, дальним
+// планом; ?d=40 — расстояние камеры; ?h=высота камеры.
+import * as THREE from 'three';
+import { plantFlora, updateFlora, floraDebug, floraStats, TREES, BUSHES, ST } from '../web/js/flora.js';
+const P = new URLSearchParams(location.search);
+floraDebug.force = P.has('lod') ? +P.get('lod') : -1;
+const r = new THREE.WebGLRenderer({ antialias: true });
+r.setSize(innerWidth, innerHeight); r.setPixelRatio(devicePixelRatio);
+r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.NeutralToneMapping;
+r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap;
+document.body.appendChild(r.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fc3e6);
+scene.fog = new THREE.FogExp2(0xbcd0dc, 0.00031);
+scene.add(new THREE.HemisphereLight(0x8fb9e6, 0x6d6450, 0.85));
+const sun = new THREE.DirectionalLight(0xffeccd, 3.15);
+sun.position.set(-0.48 * 400, 0.70 * 400, 0.53 * 400); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 10, far: 900 });
+sun.shadow.camera.updateProjectionMatrix();
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshLambertMaterial({ color: 0x5f6b3a }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const g = new THREE.Group(); scene.add(g);
+const sets = {};
+const keys = [...TREES, ...BUSHES, 'hedge'];
+const sp = +(P.get('sp') || 13);
+keys.forEach((k, i) => {
+  const a = sets[k] = [];
+  const x = (i - (keys.length - 1) / 2) * sp;
+  if (k === 'hedge') { for (let j = 0; j < 4; j++) a.push(x - 3 + j * 2, 0, 0, 1, 1, 0, 0, 0, 0); }
+  else a.push(x, 0, 0, 1, 1, i * 0.7, 0, 0, i < 3 ? 1 : 0);
+});
+plantFlora(g, sets);
+const cam = new THREE.PerspectiveCamera(+(P.get('fov') || 50), innerWidth / innerHeight, 0.4, 40000);
+const d = +(P.get('d') || 70), h = +(P.get('h') || 5);
+cam.position.set(+(P.get('x') || 0), h, d); cam.lookAt(+(P.get('x') || 0), +(P.get('ly') || 4), 0);
+const t0 = performance.now();
+function loop(now) {
+  updateFlora(cam, scene, P.has('still') ? 0 : now);
+  r.render(scene, cam);
+  document.getElementById('i').textContent = `lod ${floraDebug.force} · вызовов ${r.info.render.calls} · треуг. ${r.info.render.triangles} · ближних ${floraStats.near} средних ${floraStats.mid}`;
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+window.F = { scene, cam, r };
+</script></body></html>

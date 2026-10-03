@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=6ce88c24';
+import { PolyGrid } from './worldgen.js?v=551c1705';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
@@ -131,6 +131,7 @@ function trafficGeo() {
 // восемь клеток по 128 — весь набор.
 const SIGN_CELL = 256, SIGN_COLS = 4, SIGN_ROWS = 3;
 const CELL_GREY = 8;      // ровная серая клетка: изнанка щитка и сама стойка
+let SIGN_ATLAS = null;
 function signAtlas() {
   const cv = document.createElement('canvas');
   cv.width = SIGN_CELL * SIGN_COLS; cv.height = SIGN_CELL * SIGN_ROWS;
@@ -500,7 +501,10 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   // потоку. Знак вне обочины бессмыслен, поэтому если бордюра не нашлось —
   // объект просто не рисуем, а не бросаем его посреди газона.
   {
-    const atlas = signAtlas();
+    // атлас одинаковый во всех кварталах — рисуем и выгружаем его один раз
+    // (userData.shared: выгрузка квартала его не освобождает, см. drainJunk)
+    const atlas = SIGN_ATLAS || (SIGN_ATLAS = signAtlas());
+    atlas.userData.shared = true;
     const signMat = () => new THREE.MeshStandardMaterial({
       map: atlas, roughness: 0.55, metalness: 0.05, side: THREE.FrontSide,
     });

@@ -7,9 +7,10 @@
 // Поэтому карт теперь две:
 //   • обзорная (клавиша Tab) — один растр всего мира, но с грубым шагом:
 //     разрешение подбирается так, чтобы сторона не вылезла за 3200 пикселей;
-//   • миникарта — рисуется ВЕКТОРОМ вокруг игрока каждый раз заново, из
-//     пространственного индекса дальнего слоя. В окне 320 м это две сотни
-//     объектов, восемь раз в секунду — дешевле, чем гигантский растр.
+//   • миникарта — рисуется ВЕКТОРОМ вокруг игрока из пространственного
+//     индекса дальнего слоя, севером вверх и с запасом; поворачивает и
+//     двигает её между перерисовками CSS (hud.js), так что рисуется она
+//     редко — когда игрок отъехал или сменился масштаб.
 //
 // Обе едят far.json: детальные чанки для карты не нужны и всё равно есть
 // не везде.
@@ -159,32 +160,80 @@ function pick(map, x0, z0, x1, z1) {
   return out;
 }
 
-// круглая миникарта в углу, повёрнутая по направлению движения.
-// Рисуется вектором прямо в метрах: единица холста = метр мира.
-export function drawMini(ctx, map, px, pz, yaw, size, scaleM) {
-  const r = size / 2;
-  ctx.save();
-  ctx.clearRect(0, 0, size, size);
-  ctx.beginPath(); ctx.arc(r, r, r - 2, 0, Math.PI * 2); ctx.clip();
-  ctx.fillStyle = COL.land; ctx.fillRect(0, 0, size, size);
+// Миникарта (вариант A «Циферблат»): тёмная графитовая палитра, рисуется
+// СЕВЕРОМ ВВЕРХ вокруг точки (cx, cz) в закадровый холст с запасом по краям.
+// Поворот по курсу, сдвиг между перерисовками и плавный зум делает уже
+// CSS-трансформ холста в hud.js — это работа компоновщика, не кадра. Поэтому
+// перерисовка редкая: когда игрок уехал на треть запаса или масштаб ушёл на 10 %.
+const MINI = {
+  land: '#23292e', green: '#27342b', sea: '#163140', build: '#363f46', path: '#3a434a',
+  rail: '#4a535a', road: ['#a3adb5', '#a3adb5', '#85909a', '#6b757e'], cur: '#e3e8ec',
+};
 
-  const half = scaleM / 2 * 1.45;             // с запасом на поворот
-  const x0 = px - half, x1 = px + half, z0 = pz - half, z1 = pz + half;
+// Море по высотам — плитками, сглаженными один раз: сетка проб растягивается
+// с билинейной интерполяцией и режется по половине, и берег выходит гладкой
+// линией, а не лестницей из квадратов. Плитки кешируются (LRU), за одну
+// перерисовку строится не больше нескольких — без рывков на новом месте.
+const SEA_N = 64, SEA_UP = 2, SEA_KEEP = 120, SEA_BUDGET = 4;
+function seaTile(map, L, tx, tz) {
+  const cache = map.seaTiles || (map.seaTiles = new Map());
+  const key = L + ':' + tx + ':' + tz;
+  let t = cache.get(key);
+  if (t !== undefined) { cache.delete(key); cache.set(key, t); return t; }  // свежая — в конец
+  if (map._seaBudget <= 0) { map._seaMissing = true; return null; }
+  map._seaBudget--;
+  const step = L / SEA_N, x0 = tx * L, z0 = tz * L;
+  const a = document.createElement('canvas');
+  a.width = a.height = SEA_N;
+  const ga = a.getContext('2d'), id = ga.createImageData(SEA_N, SEA_N);
+  let any = 0;
+  for (let j = 0; j < SEA_N; j++)
+    for (let i = 0; i < SEA_N; i++)
+      if (map.terrain.gridHeightAt(x0 + (i + 0.5) * step, z0 + (j + 0.5) * step) < 0.4) {
+        id.data[(j * SEA_N + i) * 4 + 3] = 255; any++;
+      }
+  if (!any) t = false;                                   // суша целиком — рисовать нечего
+  else {
+    ga.putImageData(id, 0, 0);
+    const S = SEA_N * SEA_UP;
+    t = document.createElement('canvas');
+    t.width = t.height = S;
+    const g = t.getContext('2d', { willReadFrequently: true });
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.drawImage(a, 0, 0, S, S);
+    const im = g.getImageData(0, 0, S, S), d = im.data;
+    const r = parseInt(MINI.sea.slice(1, 3), 16), gg = parseInt(MINI.sea.slice(3, 5), 16), b = parseInt(MINI.sea.slice(5, 7), 16);
+    for (let i = 0; i < d.length; i += 4) {
+      const on = d[i + 3] >= 128;
+      d[i] = r; d[i + 1] = gg; d[i + 2] = b; d[i + 3] = on ? 255 : 0;
+    }
+    g.putImageData(im, 0, 0);
+  }
+  cache.set(key, t);
+  if (cache.size > SEA_KEEP) cache.delete(cache.keys().next().value);
+  return t;
+}
 
-  ctx.translate(r, r);
-  // Курс в мире — это +(sin, cos), то есть на холсте (sin, cos) при оси Y вниз.
-  // Чтобы он смотрел ВВЕРХ, полотно надо повернуть на yaw + пол-оборота:
-  // при простом rotate(yaw) курс уезжал ровно вниз, карта была задом наперёд.
-  ctx.rotate(yaw + Math.PI);
-  ctx.scale(size / scaleM, size / scaleM);
-  ctx.translate(-px, -pz);
+// o: { cx, cz — центр в метрах, mpp — метров на CSS-пиксель, dpr,
+//      hi — ломаные текущей улицы (плоские списки x,z) }.
+// Возвращает true, если море дорисовано не целиком (нужна ещё перерисовка).
+export function drawMini(ctx, map, o) {
+  const W = ctx.canvas.width, H = ctx.canvas.height;
+  const s = o.dpr / o.mpp;                               // пикселей холста на метр
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = MINI.land; ctx.fillRect(0, 0, W, H);
+  const hw = W / 2 / s, hh = H / 2 / s;
+  const x0 = o.cx - hw, x1 = o.cx + hw, z0 = o.cz - hh, z1 = o.cz + hh;
+  ctx.setTransform(s, 0, 0, s, W / 2 - o.cx * s, H / 2 - o.cz * s);
 
-  // море — по высотам, редкой сеткой
-  const STEP = Math.max(8, scaleM / 26);
-  ctx.fillStyle = COL.sea;
-  for (let z = Math.floor(z0 / STEP) * STEP; z < z1; z += STEP)
-    for (let x = Math.floor(x0 / STEP) * STEP; x < x1; x += STEP)
-      if (map.terrain.gridHeightAt(x, z) < 0.4) ctx.fillRect(x, z, STEP + 0.6, STEP + 0.6);
+  const L = o.mpp < 1.6 ? 256 : o.mpp < 4.5 ? 1024 : 4096;
+  map._seaBudget = SEA_BUDGET; map._seaMissing = false;
+  ctx.imageSmoothingEnabled = true;
+  for (let tz = Math.floor(z0 / L); tz <= Math.floor(z1 / L); tz++)
+    for (let tx = Math.floor(x0 / L); tx <= Math.floor(x1 / L); tx++) {
+      const t = seaTile(map, L, tx, tz);
+      if (t) ctx.drawImage(t, tx * L, tz * L, L, L);
+    }
 
   const items = pick(map, x0, z0, x1, z1);
   const poly = p => {
@@ -193,39 +242,42 @@ export function drawMini(ctx, map, px, pz, yaw, size, scaleM) {
     for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
     ctx.closePath(); ctx.fill();
   };
-  const line = (p, w, col) => {
-    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const line = (p, w) => {
+    ctx.lineWidth = w;
     ctx.beginPath();
     ctx.moveTo(p[0], p[1]);
     for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
     ctx.stroke();
   };
-  ctx.fillStyle = COL.green;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.fillStyle = MINI.green;
   for (const e of items) if (e.kind === 'green') poly(e.o.poly);
-  for (const e of items) if (e.kind === 'rail') line(e.o.pts, 3, COL.rail);
-  // Порядок как на большой карте: широкие ложатся поверх узких.
-  const CLS = [[4, COL.path], [3, COL.road3], [2, COL.road2], [1, COL.road0]];
-  for (const [cls, col] of CLS)
+  ctx.fillStyle = MINI.build;
+  for (const e of items) if (e.kind === 'build') poly(e.o.poly);
+  const minW = 2.2 * o.mpp;                              // тоньше 2 px дорога теряется
+  ctx.strokeStyle = MINI.rail;
+  for (const e of items) if (e.kind === 'rail') line(e.o.pts, Math.max(2, 1.2 * o.mpp));
+  // тропинки только вблизи: на обзоре они превращаются в шум
+  if (o.mpp < 2) {
+    ctx.strokeStyle = MINI.path;
+    for (const e of items) if (e.kind === 'road' && e.o.c >= 4) line(e.o.pts, Math.max(1.6, 1.1 * o.mpp));
+  }
+  // широкие поверх узких
+  for (const cls of [3, 2, 1]) {
+    ctx.strokeStyle = MINI.road[cls];
     for (const e of items) {
       if (e.kind !== 'road') continue;
       const c = e.o.c;
       if (cls === 1 ? c > 1 : c !== cls) continue;
-      line(e.o.pts, cls === 1 ? e.o.w + 1.5 : e.o.w, col);
+      line(e.o.pts, Math.max(e.o.w + (cls === 1 ? 1.5 : 0), minW));
     }
-  ctx.fillStyle = COL.build;
-  for (const e of items) if (e.kind === 'build') poly(e.o.poly);
-  ctx.restore();
-
-  // рамка и стрелка игрока
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(r, r, r - 2, 0, Math.PI * 2); ctx.stroke();
-  ctx.translate(r, r);
-  ctx.fillStyle = '#e8b451';
-  ctx.beginPath();
-  ctx.moveTo(0, -8); ctx.lineTo(5.5, 7); ctx.lineTo(0, 4); ctx.lineTo(-5.5, 7);
-  ctx.closePath(); ctx.fill();
-  ctx.restore();
+  }
+  if (o.hi && o.hi.length) {
+    ctx.strokeStyle = MINI.cur;
+    for (const h of o.hi) line(h.pts, Math.max((h.w || 8) + 1, minW * 1.2));
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  return map._seaMissing;
 }
 
 // Вся карта на весь экран. zoom = 1 — весь мир целиком; больше — приближение

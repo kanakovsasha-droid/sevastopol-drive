@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=6ce88c24';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=551c1705';
 
 // Здания, которые нельзя оставлять коробкой. Массу берём из контура OSM,
 // а сверху ставим то, что делает здание узнаваемым: колоннаду, портик,
@@ -12,11 +12,22 @@ const s2l = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 // квартал; в чанк кладётся пустая группа, модель приезжает в неё позже — сборка
 // мира остаётся синхронной.
 const MODELS = new Map();
+// Прогрев шейдеров модели (main.js ставит сюда precompile из warm.js): модель
+// отдаём в сцену, только когда её программы собраны в фоне, иначе первый
+// взгляд на здание — сборка шейдеров прямо в кадре.
+let warm = null;
+export function setModelWarm(fn) { warm = fn; }
+// Не больше двух загрузок разом: десяток моделей квартала, приехавших в одном
+// кадре, — это десяток разборов и выгрузок в видеопамять подряд.
+let loadingNow = 0;
+const loadWait = [];
+const slot = () => loadingNow < 2 ? (loadingNow++, Promise.resolve()) : new Promise(r => loadWait.push(r));
+const freeSlot = () => { const r = loadWait.shift(); if (r) r(); else loadingNow--; };
 function loadModel(file) {
   let p = MODELS.get(file);
   if (!p) {
     const v = document.querySelector('meta[name="build"]')?.content || '';
-    p = new GLTFLoader().loadAsync(`../data/models/${file}${v ? '?v=' + v : ''}`).then(g => {
+    p = slot().then(() => new GLTFLoader().loadAsync(`../data/models/${file}${v ? '?v=' + v : ''}`)).then(g => {
       g.scene.traverse(o => {
         if (!o.isMesh) return;
         const m = o.material;
@@ -28,8 +39,16 @@ function loadModel(file) {
         // штукатурка добирает отражённым от земли светом, которого в сцене нет.
         if (m.name !== 'glass' && m.name !== 'metal') { m.emissive.copy(m.color); m.emissiveIntensity = 0.2; }
       });
-      return g.scene;
-    });
+      if (!warm) return g.scene;
+      // вместе с моделью — заглушку дальнего уровня (HIDDEN): она тоже
+      // рисуется и бросает тень своим вариантом шейдера
+      const box = new THREE.Group();
+      box.add(g.scene);
+      const stub = new THREE.Mesh(g.scene.getObjectByProperty('isMesh', true).geometry, HIDDEN);
+      stub.castShadow = true;
+      box.add(stub);
+      return warm(box).catch(() => {}).then(() => { box.remove(g.scene); return g.scene; });
+    }).finally(freeSlot);
     MODELS.set(file, p);
   }
   return p;

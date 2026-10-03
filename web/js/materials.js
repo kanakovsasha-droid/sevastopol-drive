@@ -515,6 +515,39 @@ export function buildingMaterial() {
           c *= 1.0 - 0.12 * smoothstep(1.2, 0.2, vWall.y);
           rough = 0.94;
         }
+        // ---- цоколь: всё, что ниже отметки первого этажа (y < 0) ----
+        // Дом на склоне: этажи считаются от самой высокой точки земли у стен,
+        // а с нижней стороны остаётся каменное основание. Без него низ дома
+        // либо висел над грунтом, либо окна первого этажа уходили в землю.
+        // Кровли (1, 3, 5, 6) и гаражи (8, 9) сюда не попадают: у кровли в y
+        // лежит мировая координата, у бокса подошвы ниже нуля нет.
+        if (vWall.y < 0.0 && !(vKind > 0.5 && vKind < 1.5) && !(vKind > 2.5 && vKind < 3.5)
+            && !(vKind > 4.5 && vKind < 6.5) && !(vKind > 7.5 && vKind < 9.5)) {
+          float d = -vWall.y;                                   // метров ниже первого этажа
+          vec3 base = diffuseColor.rgb;
+          // инкерманский камень блоками ~0.9 x 0.45 м, вразбежку
+          vec3 stone = mix(vec3(0.60, 0.57, 0.51), base, 0.25) * 0.86;
+          vec2 blk = vec2(vWall.x / 0.92, d / 0.46);
+          blk.x += step(0.5, fract(blk.y * 0.5)) * 0.5;
+          vec2 fb = abs(fract(blk) - 0.5);
+          stone *= (1.0 - 0.28 * smoothstep(0.40, 0.485, max(fb.x, fb.y)))
+                 * (0.92 + 0.14 * hash21(floor(blk)));
+          // слив поверх цоколя и тень под ним
+          float capb = 1.0 - lr(d - 0.16, 40.0);
+          stone *= 1.0 - 0.22 * (1.0 - lr(d - 0.16, 7.0)) * (1.0 - capb);
+          stone = mix(stone, base * 1.05 + 0.05, capb * 0.85);
+          float r2 = 0.93;
+          // окна полуподвала у жилого фасада: где цоколь высокий, он читается
+          // как этаж, а не как глухая стена. Где мелко — их прячет грунт.
+          if (vKind < 0.5 || (vKind > 6.5 && vKind < 7.5) || (vKind > 10.5 && vKind < 12.5)) {
+            float fyb = fract(d / 3.3), bxw = fract(vWall.x / 3.0);
+            float bw = step(0.30, bxw) * step(bxw, 0.70) * step(0.36, fyb) * step(fyb, 0.70) * step(1.0, d);
+            stone = mix(stone, vec3(0.06, 0.07, 0.075), bw);
+            r2 = mix(r2, 0.2, bw);
+          }
+          c = stone;
+          rough = r2;
+        }
         diffuseColor.rgb = c;
         procRough = rough;
       }`,
@@ -525,6 +558,8 @@ export function buildingMaterial() {
 // aRoad: x — поперёк [-1..1], y — метры вдоль, z — ширина в метрах
 // aCls: 0 магистраль · 1 главная · 2 улица · 3 проезд · 4 пешеходная · 5 тротуар · 6 бордюр
 //       7 зебра · 8 сплошная краска (стоп-линия) · 9 газон островка
+//       10 «уступи дорогу» зубцами (1.13)
+// aJn ≥ 500 — вершина кольца: aJn − 1000 метров до съезда
 // aJn: метры до пятна ближайшего перекрёстка — ближе порога разметки нет
 //
 // ФАКТУРА АСФАЛЬТА СЧИТАЕТСЯ ПО МИРОВЫМ КООРДИНАТАМ. Раньше зерно бралось по
@@ -534,8 +569,12 @@ export function buildingMaterial() {
 // перекрёсток читался сшитым из лоскутов. Мировая фактура одна на всё, что
 // называется асфальтом: полотно, подложка узла, основа под зеброй.
 export function roadMaterial() {
+  // Двусторонний: полотно с поуровневой обрезкой полуширин на крутом изломе
+  // иногда перекручивает пролёт «бабочкой», и вывернутый треугольник
+  // отбрасывался как задняя грань — посреди перекрёстка зияла треугольная
+  // дыра до земли. Снизу дорогу никто не видит, цена — ноль.
   const mat = new THREE.MeshStandardMaterial({
-    vertexColors: true, roughness: 0.90, metalness: 0.0,
+    vertexColors: true, roughness: 0.90, metalness: 0.0, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -6,
   });
   return inject(mat, 'sev-road', {
@@ -572,6 +611,14 @@ export function roadMaterial() {
             stone *= 1.0 - 0.30 * band(fract(v / 0.95), 0.0, 0.04);
             c = mix(stone, stone * 0.62, smoothstep(0.215, 0.235, m));
           }
+        } else if (vCls > 9.5) {
+          // ---- 1.13: треугольники вершиной к подъезжающему ----
+          float tu = fract(m / 0.9) - 0.5;
+          float tt = clamp((v + 0.3) / 0.6, 0.0, 1.0);    // 0 — сторона водителя
+          float on = 1.0 - smoothstep(0.40 * tt - 0.02, 0.40 * tt + 0.02, abs(tu));
+          float wear = 0.84 + 0.16 * hash21(floor(vXZ * 2.2));
+          c = mix(c * asphaltTone(vXZ), vec3(0.66, 0.645, 0.60) * wear, on * 0.92);
+          rough = mix(0.92, 0.64, on);
         } else if (vCls > 8.5) {
           // ---- газон островка ----
           float g1 = fbm(vXZ * 0.95), g2 = fbm(vXZ * 0.14);
@@ -657,7 +704,11 @@ export function roadMaterial() {
           if (nLane > 1.5 && vCls < 2.9) {
             float edge = halfW - 0.55;                   // краевые сплошные 1.2
             float lw = edge * 2.0 / nLane;               // ширина полосы
-            float line = band(am, edge, 0.06);
+            // кольцо: aJn сдвинут на 1000, обрывается только наружная кромка
+            bool onRing = vJn > 500.0;
+            float jd = onRing ? vJn - 1000.0 : vJn;
+            float line = onRing ? band(m, -edge, 0.06) + band(m, edge, 0.06) * smoothstep(0.4, 0.6, jd)
+                                : band(am, edge, 0.06);
             // ПДД 1.5: штрих 3 м, промежуток 9 м. Перед перекрёстком — 1.1.
             // ПДД 1.5: штрих 3 м, промежуток 9 м
             float dash = step(fract(v / 12.0), 0.25);
@@ -696,7 +747,7 @@ export function roadMaterial() {
             vec3 paint = vec3(0.66, 0.645, 0.60) * wear;
             // У перекрёстка разметка кончается: 7.4 м до пятна узла — это
             // место стоп-линии (зебра 3.4 м, отступ, сама линия).
-            float k = clamp(line, 0.0, 1.0) * 0.92 * smoothstep(7.3, 7.5, vJn);
+            float k = clamp(line, 0.0, 1.0) * 0.92 * (onRing ? 1.0 : smoothstep(7.3, 7.5, jd));
             c = mix(c, paint, k);
             rough = mix(rough, 0.62, k);
           }
