@@ -916,22 +916,33 @@ export class Car {
       if (Math.abs(vLong) < 1.5) { this.gear = wantRev ? -1 : 1; this._shiftLock = 0.2; }
       return;
     }
+    // Полный газ копится отдельно: кикдаун только если газ в пол держат
+    // четверть секунды, а не от каждого тычка клавиши.
+    this._wot = gas > 0.85 ? (this._wot || 0) + h : 0;
     if (this.gear < 0 || this._shiftLock > 0) return;
     const k = Math.abs(vLong) / CAR.wheelRadius * CAR.final * 9.5493;   // об/мин на единицу передаточного
     const g = CAR.gears, n = this.gear;
     const rpm = k * g[n - 1];
-    // вверх: под газом — у отсечки, без газа передачу держим (торможение двигателем)
-    const up = gas < 0.2 ? 5900 : 4300 + 2450 * gas;
+    // Вверх: чем больше газ, тем позже (чуть газа — 3000, в пол — 6700); газ
+    // совсем бросили — передачу держим (торможение двигателем). Вниз накатом — только когда низшая передача дала бы меньше
+    // 2200: между порогами вверх и вниз зазор в полторы тысячи оборотов и
+    // больше, на ровном ходу коробка не «охотится».
+    const up = gas < 0.03 ? 5900 : 2600 + 4100 * gas;
+    // После любого переключения коробка 0.8 с ничего не решает.
+    const LOCK = 0.8;
     if (n < g.length && rpm > up) {
-      this.gear = n + 1; this._shiftT = CAR.shiftTime; this._shiftLock = 0.32;
+      this.gear = n + 1; this._shiftT = CAR.shiftTime; this._shiftLock = LOCK;
       return;
     }
-    // вниз: кикдаун сразу на несколько ступеней, накатом — по одной
-    const down = gas > 0.8 ? 5500 : 2500;
-    let m = n;
-    while (m > 1 && k * g[m - 2] < down) m--;
-    if (m < n) {
-      this.gear = gas > 0.8 ? m : n - 1; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = 0.32;
+    // Кикдаун: газ в пол дольше 0.25 с и мотор ниже 4200 — вниз на столько
+    // ступеней, чтобы обороты не перевалили за 5800.
+    if (this._wot > 0.25 && rpm < 4200 && n > 1) {
+      let m = n;
+      while (m > 1 && k * g[m - 2] < 5800) m--;
+      if (m < n) { this.gear = m; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK; return; }
+    }
+    if (n > 1 && k * g[n - 2] < 2200) {
+      this.gear = n - 1; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK;
     }
   }
 
