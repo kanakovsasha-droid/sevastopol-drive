@@ -1512,6 +1512,12 @@ export function* buildRoads(world, terrain, chunk = 500) {
   // Порог тот же, что в terrain.groundDriveHeightAt: 0.35 м было меньше
   // собственных выемки и насыпи коридора, и профиль возвращался к сырому
   // рельефу — отсюда прыжки на спуске Котовского.
+  // Пешеходной дорожке — видимая земля, а не профиль езды. Профиль у
+  // улицы — это её плато коридора шириной до 27 м, и дорожка, идущая рядом
+  // со склоном, висела над газоном на полметра или ныряла под него (у
+  // библиотеки Толстого — триста проб из шести тысяч). Под улицей она всё
+  // равно скрыта асфальтом: лежит ниже него.
+  const GROUND = (x, z) => terrain.gridHeightAt(x, z);
   const H = (x, z) => {
     const g = terrain.gridHeightAt(x, z);
     const d = terrain.driveHeightAt(x, z);
@@ -2301,7 +2307,9 @@ export function* buildRoads(world, terrain, chunk = 500) {
     const ch = bucket(r.pts[0], r.pts[1]);
     const hw = r.w / 2;
     const lane = laneOf.get(ri);
-    const ext = lane ? lane.ext : densify(extendEnds(r.pts, Math.min(hw, 5)));
+    // Дорожка идёт по земле, а у земли треугольники в 9 м: на шаге 6 м хорда
+    // дорожки на склоне то висела над перегибом, то уходила под него. 3 м.
+    const ext = lane ? lane.ext : densify(extendEnds(r.pts, Math.min(hw, 5)), r.c === 4 ? 3 : 6);
     // широкая улица лежит чуть выше узкой: там, где полотна всё же перекрылись,
     // это снимает мерцание вместо случайной борьбы за глубину
     // Пешеходная дорожка — НИЖЕ асфальта и тротуара: где она в данных
@@ -2417,7 +2425,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
       // рисовались обе внахлёст. Растр уже решил, чья это земля, — этого хватает.
       for (const [bx, bz] of pts3) if (!onOtherRoad(bx, bz, ri)) return false;
       return true;      // кусок целиком на чужой проезжей части
-    }, ri, lanesR, r.sf || 0, bridgeH.get(ri) || H, jn);
+    }, ri, lanesR, r.sf || 0, r.c === 4 && !r.br ? GROUND : (bridgeH.get(ri) || H), jn);
     if (r.c === 4) {
       // Дорожка метит свою полосу, чтобы параллельная соседка не легла сверху.
       // Метим ТОЛЬКО нарисованное: раньше снятый пролёт всё равно занимал
