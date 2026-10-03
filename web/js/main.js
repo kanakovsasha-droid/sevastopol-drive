@@ -8,6 +8,7 @@ import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } fro
 import { buildFurniture } from './furniture.js?v=4fd612b8';
 import { buildLandmarks, setModelWarm } from './landmarks.js?v=4fd612b8';
 import { buildSigns } from './signs.js?v=4fd612b8';
+import { loadStreet, buildStreet, streetFurniture } from './street.js?v=4fd612b8';
 import { buildCemeteries } from './cemetery.js?v=4fd612b8';
 import { audit } from './audit.js?v=4fd612b8';
 import { buildMap, drawFull, mapUnproject } from './minimap.js?v=4fd612b8';
@@ -151,6 +152,7 @@ async function boot() {
     // Поля и корты: рельеф под ними срезается до одной отметки ДО того, как
     // по нему построится первый квадрат земли и первый профиль дороги.
     await loadSport(V);
+    await loadStreet(V);
     installFlats(terrain);
     for (const id of sportSkipIds()) skipIds.add(id);
     // Для меню «куда поехать» и подписей на карте нужен ПОЛНЫЙ список — он
@@ -611,6 +613,7 @@ function* buildChunk(d, key) {
   };
   w.allBuildings = d.allBuildings || w.buildings;   // парковкам и оградам: дома соседа на шве
   const furniture = fill(d.furniture, ['points', 'barriers']);
+  furniture.points = streetFurniture(furniture.points);   // Большая Морская ставит своё (street.js)
   const part = d.key || key;
   // ?prof=1 — разбивка сборки по этапам: без неё непонятно, что именно
   // стоит те самые полтораста миллисекунд на плотном квартале.
@@ -696,6 +699,10 @@ function* buildChunk(d, key) {
   g.add(props);
   for (const [k, v] of Object.entries(props.userData.counts || {})) counts[k] = (counts[k] || 0) + v;
   lap('деревья');
+  yield; pt = performance.now();
+  at('улица');
+  g.add(buildStreet(w, terrain, props.userData.onRoad, d.allBuildings || w.buildings));
+  lap('улица');
   yield; pt = performance.now();
   at('мебель');
   const furn = buildFurniture(furniture, terrain, roads,
