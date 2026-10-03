@@ -1,0 +1,14 @@
+{
+  "name": "Кедр на площади Ушакова",
+  "file": "tree_ushakov.glb",
+  "x": -105,
+  "z": 1682,
+  "tris": 22978,
+  "trisLod": 2805,
+  "species": "Cedrus deodara (кедр гималайский)",
+  "h": 17.7,
+  "crown": 16.4,
+  "ox": -105,
+  "oz": 1682,
+  "skip": []
+}
