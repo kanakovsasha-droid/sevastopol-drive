@@ -7,6 +7,7 @@ import { TireSmoke } from './smoke.js?v=6ce88c24';
 //
 //   B — привод: 4MATIC+ ↔ только задний (режим Drift)
 //   P — паркинг ↔ D,  X — нейтраль ↔ D (N занята миникартой)
+//   G — коробка: автомат ↔ ручная; в ручной Shift — передача вверх, Q — вниз
 //   K — звук вкл/выкл
 //   W+S на месте — бёрнаут; из N в D на оборотах — старт с пробуксовкой
 //
@@ -57,11 +58,16 @@ export class CarFX {
       unlock();
       if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
       if (e.code === 'KeyK') this.toggleSound();
-      if (!this.driving()) return;
+      if (!this.driving() || e.repeat) return;     // зажатая клавиша не листает передачи
       const c = this.getCar();
       if (e.code === 'KeyB') c.toggleDrive();
       if (e.code === 'KeyP') c.setMode(c.mode === 'P' ? 'D' : 'P');
       if (e.code === 'KeyX') c.setMode(c.mode === 'N' ? 'D' : 'N');
+      // ручная коробка: G — автомат/ручная, Shift — вверх, Q — вниз
+      // (Ctrl не берём: Ctrl+W закрывает вкладку)
+      if (e.code === 'KeyG') c.toggleManual();
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') c.shiftUp();
+      if (e.code === 'KeyQ') c.shiftDown();
     });
     addEventListener('pointerdown', unlock);
     // фоновая вкладка: кадров нет — звук замирает, а не гудит последней нотой
