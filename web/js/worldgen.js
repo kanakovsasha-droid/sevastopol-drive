@@ -881,15 +881,40 @@ function* seaMaskGen(world, terrain, x0, z0, x1, z1, coarse, res = 8) {
       }
     }
 
-  // глубина: у берега почти ноль, дальше дно уходит вниз
+  // Глубину считаем от БЕРЕГА, а не от затравки. Затравка стоит в каждой
+  // клетке грубой маски, то есть почти везде внутри бухты, и «расстояние от
+  // затравки» там ноль: вся Южная бухта выходила отмелью на −0.35 м. Дно в
+  // треть метра под плоскостью воды на полкилометра от камеры проигрывает ей
+  // в буфере глубины, и залив рисовался песчаной плитой со стенкой в воду.
+  // Расстояние до суши — волной от сухих клеток, не дальше DL клеток: ответ
+  // зависит только от окрестности в 160 м, у соседей по шву он один и тот же.
+  const DL = 20;
+  const dland = new Uint8Array(W * H).fill(DL);
+  {
+    let qa = 0, qb = 0;
+    for (let c = 0; c < W * H; c++) if (dist[c] < 0) { dland[c] = 0; q[qb++] = c; }
+    while (qa < qb) {
+      const c = q[qa++], i = c % W, j = (c / W) | 0, d = dland[c] + 1;
+      if (d >= DL) continue;
+      for (let dj = -1; dj <= 1; dj++)
+        for (let di = -1; di <= 1; di++) {
+          const a = i + di, b = j + dj;
+          if (a < 0 || b < 0 || a >= W || b >= H) continue;
+          const n = b * W + a;
+          if (dland[n] > d) { dland[n] = d; q[qb++] = n; }
+        }
+      if ((qa & 32767) === 0) yield;
+    }
+  }
+
+  // глубина: у берега почти ноль, через клетку — полтора метра, дальше глубже
   const depthAt = (x, z) => {
     const i = Math.round((x - x0) / res), j = Math.round((z - z0) / res);
     if (i < 0 || j < 0 || i >= W || j >= H) return null;
     const c = idx(i, j);
     if (shore[c]) return 0.35;
-    const d = dist[c];
-    if (d < 0) return null;                       // суша
-    return 0.35 + Math.min(7.5, d * res * 0.055);
+    if (dist[c] < 0) return null;                 // суша
+    return 0.35 + Math.min(7.5, (dland[c] - 0.5) * res * 0.15);
   };
   return { depthAt, cells, segs, res, W, H };
 }
