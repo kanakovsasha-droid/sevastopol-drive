@@ -1,0 +1,14 @@
+{
+  "name": "Кедр на площади Лазарева",
+  "file": "cedar_lazarev.glb",
+  "x": -422,
+  "z": 569.5,
+  "tris": 23316,
+  "trisLod": 2978,
+  "species": "Cedrus libani (кедр ливанский)",
+  "h": 20.6,
+  "crown": 18.1,
+  "ox": -422,
+  "oz": 569.5,
+  "skip": []
+}

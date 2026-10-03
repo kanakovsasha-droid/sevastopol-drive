@@ -37,7 +37,9 @@ function loadModel(file) {
         o.receiveShadow = true;
         // Теневая сторона под одним небесным светом уходит в грязно-оливковый:
         // штукатурка добирает отражённым от земли светом, которого в сцене нет.
-        if (m.name !== 'glass' && m.name !== 'metal') { m.emissive.copy(m.color); m.emissiveIntensity = 0.2; }
+        // У деревьев-моделей (leaf, bark) подсветки нет: хвоя с ней выцветает
+        // в салатовый и светится в тени.
+        if (!/^(glass|metal|leaf|bark)$/.test(m.name)) { m.emissive.copy(m.color); m.emissiveIntensity = 0.2; }
       });
       if (!warm) return g.scene;
       // вместе с моделью — заглушку дальнего уровня (HIDDEN): она тоже

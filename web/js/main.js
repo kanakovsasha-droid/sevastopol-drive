@@ -1,22 +1,23 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=6fe82d29';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=6fe82d29';
-import { buildStreetProps } from './props.js?v=6fe82d29';
-import { updateFlora, floraStats, warmFlora } from './flora.js?v=6fe82d29';
-import { buildYards, buildStructures } from './yards.js?v=6fe82d29';
-import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=6fe82d29';
-import { buildFurniture } from './furniture.js?v=6fe82d29';
-import { buildLandmarks, setModelWarm } from './landmarks.js?v=6fe82d29';
-import { buildSigns } from './signs.js?v=6fe82d29';
-import { buildCemeteries } from './cemetery.js?v=6fe82d29';
-import { audit } from './audit.js?v=6fe82d29';
-import { buildMap, drawFull, mapUnproject } from './minimap.js?v=6fe82d29';
-import { Hud } from './hud.js?v=6fe82d29';
-import { ChunkManager } from './chunks.js?v=6fe82d29';
-import { Collider, RoadIndex } from './collision.js?v=6fe82d29';
-import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=6fe82d29';
-import { CarFX } from './carfx.js?v=6fe82d29';
-import { precompile } from './warm.js?v=6fe82d29';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=4fd612b8';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=4fd612b8';
+import { buildStreetProps } from './props.js?v=4fd612b8';
+import { updateFlora, floraStats, warmFlora } from './flora.js?v=4fd612b8';
+import { buildYards, buildStructures } from './yards.js?v=4fd612b8';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=4fd612b8';
+import { buildFurniture } from './furniture.js?v=4fd612b8';
+import { buildLandmarks, setModelWarm } from './landmarks.js?v=4fd612b8';
+import { buildSigns } from './signs.js?v=4fd612b8';
+import { loadStreet, buildStreet, streetFurniture } from './street.js?v=4fd612b8';
+import { buildCemeteries } from './cemetery.js?v=4fd612b8';
+import { audit } from './audit.js?v=4fd612b8';
+import { buildMap, drawFull, mapUnproject } from './minimap.js?v=4fd612b8';
+import { Hud } from './hud.js?v=4fd612b8';
+import { ChunkManager } from './chunks.js?v=4fd612b8';
+import { Collider, RoadIndex } from './collision.js?v=4fd612b8';
+import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=4fd612b8';
+import { CarFX } from './carfx.js?v=4fd612b8';
+import { precompile } from './warm.js?v=4fd612b8';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -151,6 +152,7 @@ async function boot() {
     // Поля и корты: рельеф под ними срезается до одной отметки ДО того, как
     // по нему построится первый квадрат земли и первый профиль дороги.
     await loadSport(V);
+    await loadStreet(V);
     installFlats(terrain);
     for (const id of sportSkipIds()) skipIds.add(id);
     // Для меню «куда поехать» и подписей на карте нужен ПОЛНЫЙ список — он
@@ -611,6 +613,7 @@ function* buildChunk(d, key) {
   };
   w.allBuildings = d.allBuildings || w.buildings;   // парковкам и оградам: дома соседа на шве
   const furniture = fill(d.furniture, ['points', 'barriers']);
+  furniture.points = streetFurniture(furniture.points);   // Большая Морская ставит своё (street.js)
   const part = d.key || key;
   // ?prof=1 — разбивка сборки по этапам: без неё непонятно, что именно
   // стоит те самые полтораста миллисекунд на плотном квартале.
@@ -696,6 +699,10 @@ function* buildChunk(d, key) {
   g.add(props);
   for (const [k, v] of Object.entries(props.userData.counts || {})) counts[k] = (counts[k] || 0) + v;
   lap('деревья');
+  yield; pt = performance.now();
+  at('улица');
+  g.add(buildStreet(w, terrain, props.userData.onRoad, d.allBuildings || w.buildings));
+  lap('улица');
   yield; pt = performance.now();
   at('мебель');
   const furn = buildFurniture(furniture, terrain, roads,

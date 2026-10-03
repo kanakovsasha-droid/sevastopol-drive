@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=6fe82d29';
-import { plantFlora, crownRadius, ST } from './flora.js?v=6fe82d29';
+import { PolyGrid } from './worldgen.js?v=4fd612b8';
+import { plantFlora, crownRadius, ST } from './flora.js?v=4fd612b8';
+import { streetOwnsRoad } from './street.js?v=4fd612b8';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,
@@ -349,6 +350,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null)
   for (const r of ctx.all) {
     const walkway = r.c === 4 && r.w >= 4;    // пешеходная улица: бульвары и набережные
     if (!walkway && (r.c > 3 || r.w < 5 || r.br || r.tn)) continue;
+    if (streetOwnsRoad(r)) continue;          // Большую Морскую сажает street.js по натуре
     const p = r.pts, hw = r.w / 2;
     if (!p || p.length < 4) continue;
     // улица целиком мимо квадрата (с запасом на отступ посадок) — пропускаем
