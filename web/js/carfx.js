@@ -7,6 +7,7 @@ import { TireSmoke } from './smoke.js?v=5e13f386';
 //
 //   B — привод: 4MATIC+ ↔ только задний (режим Drift)
 //   P — паркинг ↔ D,  X — нейтраль ↔ D (N занята миникартой)
+//   G — коробка: автомат ↔ ручная; в ручной Shift — передача вверх, Q — вниз
 //   K — звук вкл/выкл
 //   W+S на месте — бёрнаут; из N в D на оборотах — старт с пробуксовкой
 //
@@ -14,6 +15,18 @@ import { TireSmoke } from './smoke.js?v=5e13f386';
 // браузер AudioContext не запускает.
 
 const KEY_SOUND = 'sev.sound';
+
+// Записи мотора, хлопков и шин: data/audio/sounds.json перечисляет файлы.
+export async function loadCarSounds(ctx, base = '../data/audio/') {
+  const v = document.querySelector('meta[name="build"]')?.content || '';
+  const q = v ? '?v=' + v : '';
+  const meta = await fetch(base + 'sounds.json' + q).then(r => r.json());
+  const names = [...Object.keys(meta.loops), ...meta.shots];
+  const bufs = {};
+  await Promise.all(names.map(n => fetch(base + n + '.wav' + q).then(r => r.arrayBuffer())
+    .then(ab => ctx.decodeAudioData(ab)).then(b => { bufs[n] = b; })));
+  return { bufs, meta };
+}
 
 export class CarFX {
   // opts: scene, camera, car() — текущая машина, driving() — сейчас за рулём
@@ -35,11 +48,16 @@ export class CarFX {
       unlock();
       if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
       if (e.code === 'KeyK') this.toggleSound();
-      if (!this.driving()) return;
+      if (!this.driving() || e.repeat) return;     // зажатая клавиша не листает передачи
       const c = this.getCar();
       if (e.code === 'KeyB') c.toggleDrive();
       if (e.code === 'KeyP') c.setMode(c.mode === 'P' ? 'D' : 'P');
       if (e.code === 'KeyX') c.setMode(c.mode === 'N' ? 'D' : 'N');
+      // ручная коробка: G — автомат/ручная, Shift — вверх, Q — вниз
+      // (Ctrl не берём: Ctrl+W закрывает вкладку)
+      if (e.code === 'KeyG') c.toggleManual();
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') c.shiftUp();
+      if (e.code === 'KeyQ') c.shiftDown();
     });
     addEventListener('pointerdown', unlock);
     // фоновая вкладка: кадров нет — звук замирает, а не гудит последней нотой
@@ -57,6 +75,8 @@ export class CarFX {
       this.ctx = new AC({ latencyHint: 'interactive' });
       this.audio = new E63Sound(this.ctx);
       this.ctx.resume();
+      loadCarSounds(this.ctx).then(r => r && this.audio.useSamples(r.bufs, r.meta))
+        .catch(e => console.warn('записи звука не загрузились, остаётся синтез:', e.message));
     } catch (e) { console.warn('звук не запустился:', e.message); this.ctx = null; this.audio = null; }
   }
 

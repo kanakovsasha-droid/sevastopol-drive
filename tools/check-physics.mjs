@@ -30,6 +30,7 @@ const PORT = arg('port', '5191');
 const ONLY = arg('only', '');
 const JSON_OUT = arg('json', '');
 const START = (arg('start', '-398,484')).split(',').map(Number);
+const STICK = arg('stick', '');                 // переопределить CAR.stick (замер «до/после»)
 
 async function loadPlaywright() {
   const tries = [process.env.PLAYWRIGHT, 'playwright',
@@ -51,8 +52,9 @@ await page.goto(`http://127.0.0.1:${PORT}/web/`, { waitUntil: 'domcontentloaded'
 await page.waitForFunction(() => window.G && window.G.car, null, { timeout: 180000 });
 
 // Всё, что ниже, исполняется в странице.
-const result = await page.evaluate(async ({ ONLY, START }) => {
+const result = await page.evaluate(async ({ ONLY, START, STICK }) => {
   const G = window.G;
+  if (STICK !== '') { const m = await import(document.querySelector('script[type=module]').src.replace(/main\.js.*/, 'vehicle.js') + '?v=' + (new URL(document.querySelector('script[type=module]').src).searchParams.get('v') || '')); if (m.CAR) m.CAR.stick = +STICK; }
   const Car = G.car.constructor;
   const DT = 1 / 60, KMH = 3.6, G0 = 9.81;
   const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
@@ -262,6 +264,21 @@ const result = await page.evaluate(async ({ ONLY, START }) => {
       while (sp.t < 2) sp.step({ throttle: 1 });
       out.parkGas = { movedMm: r2(Math.abs(p.pos.z) * 1000, 1), rpm: Math.round(p.rpm), gear: p.gearLabel };
     }
+    // ---- 7д. ручная коробка: «игрок» переключает вверх, когда мотор упёрся в
+    // отсечку. Разгон до 100 и до 200, сколько раз била отсечка
+    if (Car.prototype.toggleManual) {
+      const car = mkFlat(); car.toggleManual();
+      const s = rig(car);
+      let t100 = null, t200 = null, cuts = 0, was = 0, shifts = 0;
+      while (s.t < 30 && t200 === null) {
+        if (car.rpm > 6950) { const g0 = car.gear; car.shiftUp(); s.step({ throttle: 1 }); if (car.gear !== g0) shifts++; }
+        else s.step({ throttle: 1 });
+        if (car.limiter && !was) cuts++; was = car.limiter;
+        if (t100 === null && s.v * KMH >= 100) t100 = s.t;
+        if (t200 === null && s.v * KMH >= 200) t200 = s.t;
+      }
+      out.manual = { t100: r2(t100), t200: r2(t200), shifts, limiterHits: cuts, gear: car.gearLabel, telemetry: car.telemetry.gearMode + car.telemetry.gear };
+    }
     // ---- 8. стоянка на плите и на косогоре 10%: не ползти и не дрожать
     for (const [name, slope] of [['parkFlat', 0], ['parkSlope', 0.10]]) {
       const hAt = (x, z) => 10 + x * slope * 0.7 + z * slope * 0.7;
@@ -289,46 +306,50 @@ const result = await page.evaluate(async ({ ONLY, START }) => {
     await idle(1500);
 
     // Маршрут: от ближайшей проезжей части цепочкой звеньев, на стыке берём
-    // продолжение с наименьшим поворотом. У дорог нет имён — только геометрия.
-    const hit = G.roads.nearest(START[0], START[1], 80, r => r.c <= 3);
-    const route = [];
-    if (hit) {
-      const used = new Set();
-      let r = hit.road, p = r.pts, n = p.length / 2;
-      // ближайшая вершина и направление «на северо-восток» (к площади Лазарева)
-      let best = 0, bd = 1e9;
-      for (let i = 0; i < n; i++) { const d = Math.hypot(p[i * 2] - hit.x, p[i * 2 + 1] - hit.z); if (d < bd) { bd = d; best = i; } }
-      let dir = (p[(n - 1) * 2] - p[0]) > 0 ? 1 : -1;
-      route.push([hit.x, hit.z]);
-      let i = best, len = 0;
-      for (let guard = 0; guard < 400 && len < 520; guard++) {
-        i += dir;
-        if (i < 0 || i >= n) {
-          used.add(r);
-          const ex = p[(i - dir) * 2], ez = p[(i - dir) * 2 + 1];
-          const pi = (i - dir) - dir;
-          const hx = ex - p[pi * 2], hz = ez - p[pi * 2 + 1];
-          let nb = null, nbScore = 0.5;                   // не круче ~60°
-          for (const q of G.roads.roads) {
-            if (!q || used.has(q) || q.c > 3) continue;
-            const qp = q.pts, qn = qp.length / 2;
-            for (const [a, b, d2] of [[0, 1, 1], [qn - 1, qn - 2, -1]]) {
-              if (Math.hypot(qp[a * 2] - ex, qp[a * 2 + 1] - ez) > 2.5) continue;
-              const ux = qp[b * 2] - qp[a * 2], uz = qp[b * 2 + 1] - qp[a * 2 + 1];
-              const sc = (ux * hx + uz * hz) / ((Math.hypot(ux, uz) || 1) * (Math.hypot(hx, hz) || 1));
-              if (sc > nbScore) { nbScore = sc; nb = { q, a, d2 }; }
+    // продолжение с наименьшим поворотом. dirPref: 1 / -1 — в какую сторону
+    // по первой улице (0 — «на восток»).
+    const buildRoute = (sx, sz, maxLen = 520, dirPref = 0) => {
+      const hit = G.roads.nearest(sx, sz, 80, r => r.c <= 3);
+      const route = [];
+      if (hit) {
+        const used = new Set();
+        let r = hit.road, p = r.pts, n = p.length / 2;
+        let best = 0, bd = 1e9;
+        for (let i = 0; i < n; i++) { const d = Math.hypot(p[i * 2] - hit.x, p[i * 2 + 1] - hit.z); if (d < bd) { bd = d; best = i; } }
+        let dir = dirPref || ((p[(n - 1) * 2] - p[0]) > 0 ? 1 : -1);
+        route.push([hit.x, hit.z]);
+        let i = best, len = 0;
+        for (let guard = 0; guard < 600 && len < maxLen; guard++) {
+          i += dir;
+          if (i < 0 || i >= n) {
+            used.add(r);
+            const ex = p[(i - dir) * 2], ez = p[(i - dir) * 2 + 1];
+            const pi = (i - dir) - dir;
+            const hx = ex - p[pi * 2], hz = ez - p[pi * 2 + 1];
+            let nb = null, nbScore = 0.5;                   // не круче ~60°
+            for (const q of G.roads.roads) {
+              if (!q || used.has(q) || q.c > 3) continue;
+              const qp = q.pts, qn = qp.length / 2;
+              for (const [a, b, d2] of [[0, 1, 1], [qn - 1, qn - 2, -1]]) {
+                if (Math.hypot(qp[a * 2] - ex, qp[a * 2 + 1] - ez) > 2.5) continue;
+                const ux = qp[b * 2] - qp[a * 2], uz = qp[b * 2 + 1] - qp[a * 2 + 1];
+                const sc = (ux * hx + uz * hz) / ((Math.hypot(ux, uz) || 1) * (Math.hypot(hx, hz) || 1));
+                if (sc > nbScore) { nbScore = sc; nb = { q, a, d2 }; }
+              }
             }
+            if (!nb) break;
+            r = nb.q; p = r.pts; n = p.length / 2; i = nb.a; dir = nb.d2;
+            continue;
           }
-          if (!nb) break;
-          r = nb.q; p = r.pts; n = p.length / 2; i = nb.a; dir = nb.d2;
-          continue;
+          const last = route[route.length - 1];
+          const d = Math.hypot(p[i * 2] - last[0], p[i * 2 + 1] - last[1]);
+          if (d < 0.5) continue;
+          len += d; route.push([p[i * 2], p[i * 2 + 1]]);
         }
-        const last = route[route.length - 1];
-        const d = Math.hypot(p[i * 2] - last[0], p[i * 2 + 1] - last[1]);
-        if (d < 0.5) continue;
-        len += d; route.push([p[i * 2], p[i * 2 + 1]]);
       }
-    }
+      return route;
+    };
+    const route = buildRoute(START[0], START[1]);
     const routeLen = route.reduce((a, q, i) => i ? a + Math.hypot(q[0] - route[i - 1][0], q[1] - route[i - 1][1]) : 0, 0);
     const yawOf = (a, b) => Math.atan2(b[0] - a[0], b[1] - a[1]);
 
@@ -383,6 +404,49 @@ const result = await page.evaluate(async ({ ONLY, START }) => {
                          yawDeg: r2(wrap(car.yaw - yaw0) * 180 / Math.PI, 3), ayRms: r2(Math.sqrt(sa / n), 4), vMaxMm: r2(maxV * 1000, 2) };
     }
 
+    // ---- холмы: 600 м по улицам с самыми резкими переломами профиля (найдены
+    // перебором осевых), в обе стороны, на 100 и 130 км/ч. Мерим время в
+    // воздухе (ни одно колесо не нагружено), сколько раз машину ПОДБРОСИЛО
+    // (отрыв со скоростью кузова вверх больше 0.5 м/с) и высоту подлёта кузова
+    // над полотном. Съехал с полотна больше чем на секунду — заезд дальше не
+    // считаем: это промах «водителя» стенда.
+    const HILLS = [[-119, 1353], [111, 1025], [-240, 498], [768, 843], [-815, 780], [332, 1251]];
+    for (const kmh of [100, 130]) {
+      const res = { runs: 0, distM: 0, airS: 0, launches: 0, liftMaxM: 0, where: '' };
+      for (const [hx, hz] of HILLS) for (const dirPref of [1, -1]) {
+        G.jumpTo(hx, hz);
+        for (let i = 0; i < 60; i++) { await idle(200); if (G.chunks.has(G.chunks.keyAt(hx, hz)) && G.terrain.surfaceAt(hx, hz) && G.roads.nearest(hx, hz, 80, r => r.c <= 3)) break; }
+        await idle(600);
+        const rt = buildRoute(hx, hz, 600, dirPref);
+        if (rt.length < 3) continue;
+        car.reset(rt[0][0], rt[0][1], yawOf(rt[0], rt[1]), kmh / KMH);
+        const s = rig(car, realUpdate);
+        let j = 1, offT = 0, wasAir = false, py = car.pos.y, n = 0;
+        while (j < rt.length && n < 60 * 40) {
+          if (Math.hypot(rt[j][0] - car.pos.x, rt[j][1] - car.pos.z) < 6) { j++; continue; }
+          let need = 8 + s.v * 0.35, q = j, ax = car.pos.x, az = car.pos.z, tx = rt[q][0], tz = rt[q][1];
+          while (q < rt.length) { const d = Math.hypot(rt[q][0] - ax, rt[q][1] - az); if (d >= need) { tx = ax + (rt[q][0] - ax) * need / d; tz = az + (rt[q][1] - az) * need / d; break; } need -= d; ax = rt[q][0]; az = rt[q][1]; tx = ax; tz = az; q++; }
+          const err = wrap(Math.atan2(tx - car.pos.x, tz - car.pos.z) - car.yaw);
+          // перед поворотом «водитель» сбрасывает: стенд мерит холмы, а не вылеты
+          const vt = Math.min(kmh / KMH, 6 + 3.5 / (Math.abs(err) + 0.02));
+          s.step({ throttle: hold(s, vt), steer: clamp(err * 2.0, -1, 1) });
+          n++;
+          const onRoad = G.terrain.corridorAt(car.pos.x, car.pos.z) !== null;
+          offT = onRoad ? 0 : offT + DT;
+          if (offT > 1) break;
+          const vy = (car.pos.y - py) / DT; py = car.pos.y;
+          if (car.airborne) { res.airS += DT; if (!wasAir && vy > 0.5) res.launches++; }
+          wasAir = car.airborne;
+          const gap = car.pos.y - (G.terrain.driveHeightAt(car.pos.x, car.pos.z) + 0.145);
+          if (gap > res.liftMaxM) { res.liftMaxM = gap; res.where = `${car.pos.x.toFixed(0)},${car.pos.z.toFixed(0)}`; }
+          if (n % 90 === 0) await idle(0);
+        }
+        res.runs++; res.distM += s.dist;
+      }
+      out['hills' + kmh] = { runs: res.runs, distM: Math.round(res.distM), airS: r2(res.airS, 2), airPerKm: r2(res.airS / (res.distM / 1000), 2),
+                             launches: res.launches, liftMaxM: r2(res.liftMaxM, 2), liftAt: res.where };
+    }
+
     // ---- проезд по улице. Рулим «погоней за точкой» на осевой впереди.
     for (const kmh of [60, 100]) {
       if (route.length < 3) break;
@@ -428,7 +492,7 @@ const result = await page.evaluate(async ({ ONLY, START }) => {
   }
   G.car.update = realUpdate;
   return out;
-}, { ONLY, START });
+}, { ONLY, START, STICK });
 
 await browser.close();
 

@@ -97,6 +97,15 @@ export const CAR = {
   // аэродинамика и качение
   dragArea: 0.76,           // Cx·S, м²
   liftArea: 0.22,           // прижим, Cy·S
+  // Прижим к полотну — допущение аркады, не аэродинамика. Профиль улиц в
+  // данных местами ломается на 20–30% уклона за 20 м (гребень), и на 100 км/ч
+  // по честной физике машина с такого гребня улетает на метр-два: центробежное
+  // v²·κ там больше g. Настоящие улицы так не ломаются (профиль чинит поток
+  // дорог), а машина должна держаться дороги. Поэтому, пока колёса рядом с
+  // полотном, недостачу опоры добираем тягой вниз — до stick·g. Это гасит
+  // «подлёты» на буграх; с настоящего трамплина или обрыва (опора дальше
+  // 1.2 м) машина летит честно.
+  stick: 1.6,
   rolling: 0.013,           // сопротивление качению
   // руль
   maxSteer: 0.60,           // угол колёс до упора на стоянке, рад
@@ -177,6 +186,11 @@ export class Car {
     this.espActive = 0;  // 0..1 — насколько сейчас вмешивается курсовая устойчивость
     // ---- коробка и привод
     this.mode = 'D';     // P — паркинг, N — нейтраль, D — езда (R включается сам: S с места)
+    this.manual = false; // ручная коробка
+    this._req = 0;       // просьба ручной коробке: +1 вверх, −1 вниз
+    // всё, что нужно приборам, одним объектом (обновляется каждый кадр)
+    this.telemetry = { speedKmh: 0, rpm: CAR.idle, rpmMax: 7500, redline: CAR.redline, gear: 1, gearMode: 'D',
+                       drive: 'AWD', manual: false, slip: 0, onLimiter: false, throttle: 0, boost: 0 };
     this.rwd = false;    // true — только задний привод
     this.limiter = 0;    // 1 — отсечка прямо сейчас
     this.shiftCount = 0; // растёт на каждом переключении — для звука
@@ -239,9 +253,16 @@ export class Car {
     return true;
   }
   toggleDrive() { this.rwd = !this.rwd; return this.rwd; }
+  // Ручная коробка: передачи только по просьбе (shiftUp / shiftDown), на
+  // отсечке мотор упирается в 7000, переключение вверх — без сброса газа
+  // (как подрулевыми у AMG: момент рвётся на 0.1 с). Вниз — с перегазовкой,
+  // и коробка не даст включить передачу, на которой мотор уйдёт за отсечку.
+  toggleManual() { this.manual = !this.manual; this._req = 0; return this.manual; }
+  shiftUp() { if (this.manual) this._req = 1; }
+  shiftDown() { if (this.manual) this._req = -1; }
   get gearLabel() {
     if (this.mode !== 'D') return this.mode;
-    return this.gear < 0 ? 'R' : 'D' + this.gear;
+    return this.gear < 0 ? 'R' : (this.manual ? 'M' : 'D') + this.gear;
   }
   get driveLabel() { return this.rwd ? 'задний' : '4MATIC+'; }
 
@@ -276,7 +297,9 @@ export class Car {
       + (this._hAt(x + fz * W, z - fx * W) + this._hAt(x - fz * W, z + fx * W)) * 0.10;
   }
 
-  reset(x, z, yaw = 0) {
+  // speed — поставить уже на ходу (м/с, вдоль курса): стенду так не нужен
+  // полукилометровый разгон перед каждым гребнем
+  reset(x, z, yaw = 0, speed = 0) {
     this._ceil = Infinity;
     const fx = Math.sin(yaw), fz = Math.cos(yaw), lx = Math.cos(yaw), lz = -Math.sin(yaw);
     // ставим сразу по уклону: четыре высоты под колёсами → плоскость
@@ -308,6 +331,15 @@ export class Car {
     this.vLong = 0; this.vLat = 0; this.yawRate = 0;
     this.steer = 0; this.steerVis = 0; this.crash = 0; this.airborne = false;
     this._yawOut = yaw;
+    if (speed > 0) {
+      this._v = [f[0] * speed, f[1] * speed, f[2] * speed];
+      this._om = [1, 1, 1, 1].map(() => speed / CAR.wheelRadius);
+      const k = speed / CAR.wheelRadius * CAR.final * 9.5493;
+      this.gear = 1;
+      while (this.gear < CAR.gears.length && k * CAR.gears[this.gear - 1] > 5200) this.gear++;
+      this._rpmE = this.rpm = k * CAR.gears[this.gear - 1];
+      this.vLong = speed;
+    }
     this._pose(this._cur); this._copyPose(this._prev, this._cur);
     this._publish(1);
   }
@@ -379,6 +411,13 @@ export class Car {
     }
     this._publish(clamp(this._acc / STEP, 0, 1));
     this.steerVis += (this.steer - this.steerVis) * Math.min(1, dt * 18);
+    const T = this.telemetry;
+    T.speedKmh = Math.abs(this.vLong) * 3.6; T.rpm = this.rpm;
+    T.gear = this.mode === 'D' ? this.gear : 0;
+    T.gearMode = this.mode !== 'D' ? this.mode : this.gear < 0 ? 'R' : this.manual ? 'M' : 'D';
+    T.drive = this.rwd ? 'RWD' : 'AWD'; T.manual = this.manual;
+    T.slip = Math.max(this.slipVel[0], this.slipVel[1], this.slipVel[2], this.slipVel[3]);
+    T.onLimiter = this.limiter > 0; T.throttle = this.throttle; T.boost = this.boost;
     this.crash *= Math.exp(-dt * 4);
   }
 
@@ -406,6 +445,10 @@ export class Car {
     else if (!drive) {
       // P и N: газ только крутит мотор, S — тормоз
       if (thr > 0) gasT = thr; else if (thr < 0) brakeT = -thr;
+    } else if (this.manual) {
+      // ручная: W — газ на включённой передаче (и на задней тоже), S — тормоз
+      if (thr > 0) gasT = thr; else if (thr < 0) brakeT = -thr;
+      wantRev = this.gear < 0;
     } else if (thr > 0) {
       if (vLong < -1.0) brakeT = thr; else { gasT = thr; wantRev = false; }
     } else if (thr < 0) {
@@ -567,11 +610,13 @@ export class Car {
       if (c[i] > -CAR.droop) {
         // демпфер дегрессивный: на резком ходу (ступенька) он не должен бить
         const r = rate[i], ar = Math.abs(r);
-        const dv = ar < 0.35 ? r : Math.sign(r) * (0.35 + (ar - 0.35) * 0.32);
+        // Отбой (r < 0) — линейный и жёстче сжатия: дегрессивный отбой на
+        // гребне отпускал пружину, и она подбрасывала кузов.
+        const dv = r < 0 ? r : ar < 0.35 ? r : 0.35 + (ar - 0.35) * 0.32;
         const j = i ^ 1;                                   // колесо той же оси
         const arb = (i < 2 ? CAR.antiRollFront : CAR.antiRollRear)
           * (clamp(c[i], -CAR.droop, CAR.bump) - clamp(c[j], -CAR.droop, CAR.bump));
-        f = this._w0[i] + this._k[i] * c[i] + this._c[i] * dv * (r > 0 ? 0.85 : 1.25) + arb;
+        f = this._w0[i] + this._k[i] * c[i] + this._c[i] * dv * (r > 0 ? 0.85 : 1.5) + arb;
         if (c[i] > CAR.bump) f += BUMP_K * (c[i] - CAR.bump) + (r > 0 ? 6000 * r : 0);
         f = clamp(f, 0, this._w0[i] * 4.5);
       }
@@ -581,6 +626,19 @@ export class Car {
       comp[i] = c[i];
     }
     this._fresh = false;
+
+    // ---- прижим к полотну (см. CAR.stick): недостача опоры против веса,
+    // только на ходу и пока колёса не дальше 0.8 м от дороги
+    let sumFz = 0, gapMin = 9;
+    for (let i = 0; i < 4; i++) { sumFz += fzNew[i]; gapMin = Math.min(gapMin, -c[i]); }
+    if (CAR.stick > 0 && speed > 8) {
+      const near = clamp((1.2 - gapMin) / 0.6, 0, 1);
+      const need = CAR.mass * GRAV * nY * 0.92 - sumFz;
+      if (near > 0 && need > 0) {
+        const f = Math.min(need, CAR.stick * CAR.mass * GRAV) * near * clamp((speed - 8) / 8, 0, 1);
+        Fx -= nX * f; Fy -= nY * f; Fz -= nZ * f;
+      }
+    }
 
     const om0 = [om[0], om[1], om[2], om[3]];   // снимок: обход по порядку не должен давать перекос влево-вправо
     for (let i = 0; i < 4; i++) {
@@ -811,6 +869,23 @@ export class Car {
   // раскручены, и коробка перебирала бы передачи вверх на ровном месте.
   _shift(h, vLong, gas, wantRev) {
     this._shiftT -= h; this._shiftLock -= h;
+    if (this.manual) {
+      const req = this._req; this._req = 0;
+      if (!req || this._shiftLock > 0) return;
+      const k = Math.abs(vLong) / CAR.wheelRadius * CAR.final * 9.5493;
+      const g = CAR.gears, n = this.gear;
+      if (req > 0) {
+        if (n < 0) { if (Math.abs(vLong) < 1.5) { this.gear = 1; this._shiftLock = 0.2; } return; }
+        if (n < g.length) { this.gear = n + 1; this._shiftT = 0.10; this._shiftLock = 0.15; }
+      } else {
+        if (n === 1) { if (Math.abs(vLong) < 1.5) { this.gear = -1; this._shiftLock = 0.2; } return; }
+        if (n > 1 && k * g[n - 2] < CAR.redline + 250) {
+          this.gear = n - 1; this._shiftT = 0.08; this._shiftLock = 0.15;
+          this._rpmE = Math.max(this._rpmE, k * g[n - 2]);          // перегазовка
+        }
+      }
+      return;
+    }
     if (wantRev !== (this.gear < 0)) {
       if (Math.abs(vLong) < 1.5) { this.gear = wantRev ? -1 : 1; this._shiftLock = 0.2; }
       return;
