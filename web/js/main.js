@@ -6,11 +6,12 @@ import { buildYards, buildStructures } from './yards.js?v=6ce88c24';
 import { buildFurniture } from './furniture.js?v=6ce88c24';
 import { buildLandmarks } from './landmarks.js?v=6ce88c24';
 import { buildSigns } from './signs.js?v=6ce88c24';
+import { buildCemeteries } from './cemetery.js?v=6ce88c24';
 import { audit } from './audit.js?v=6ce88c24';
 import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=6ce88c24';
 import { ChunkManager } from './chunks.js?v=6ce88c24';
 import { Collider, RoadIndex } from './collision.js?v=6ce88c24';
-import { Car, createCarMesh } from './vehicle.js?v=6ce88c24';
+import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=6ce88c24';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -183,6 +184,9 @@ async function boot() {
     car = new Car(terrain, collider);
     carMesh = createCarMesh();
     scene.add(carMesh);
+    // настоящая модель приезжает позже, коробочная стоит до неё
+    loadCarModel(undefined, renderer).then(m => { scene.remove(carMesh); carMesh = m; scene.add(m); })
+      .catch(e => console.warn('модель машины не загрузилась, остаётся коробочная:', e.message));
     car.reset(SPAWN.x, SPAWN.z, 0);
     walk.x = SPAWN.x; walk.z = SPAWN.z;
 
@@ -618,6 +622,10 @@ function* buildChunk(d, key) {
   g.add(buildStructures(w, terrain));
   lap('сооружения');
   yield; pt = performance.now();
+  at('кладбища');
+  g.add(yield* buildCemeteries(w, terrain, d));
+  lap('кладбища');
+  yield; pt = performance.now();
 
   const defs = d.landmarks || [];
   at('памятные');
@@ -629,6 +637,10 @@ function* buildChunk(d, key) {
   // Список ведём по id: соседний чанк, где тот же дом лежит копией, обязан
   // его пропустить — иначе сквозь Панораму торчат обычные этажи.
   const skip = new Set(lm.userData.skip);
+  // Дом, замещённый моделью, помечен прямо в данных (hide) во ВСЕХ квадратах,
+  // где лежит его копия: соседний квадрат может собраться раньше хозяина
+  // модели и тогда не узнал бы о пропуске — коробка осталась бы вокруг модели.
+  w.buildings.forEach((b, i) => { if (b.hide) skip.add(i); });
   w.buildings.forEach((b, i) => { if (b.id && skipIds.has(b.id)) skip.add(i); });
   for (const i of skip) { const b = w.buildings[i]; if (b && b.id) skipIds.add(b.id); }
   at('дома');
@@ -1373,19 +1385,8 @@ function loop(now) {
     terrain.prune(sx, sz, DETAIL_KEEP);
   }
 
-  carMesh.position.copy(car.pos);
-  carMesh.rotation.set(0, 0, 0);
-  carMesh.rotateY(car.yaw);
-  carMesh.rotateX(car.pitch);
-  carMesh.rotateZ(car.roll);
-  // колёса ходят вертикально каждое своё — кузов плитой земле не следует
-  const ws = carMesh.userData.wheels;
-  if (ws) for (let i = 0; i < ws.length && i < 4; i++) ws[i].position.y = 0.355 + car.wheelDrop[i];
-  const w = carMesh.userData.wheels;
-  for (let i = 0; i < 4; i++) {
-    w[i].rotation.set(0, i < 2 ? car.steerVis : 0, 0);
-    w[i].rotateX(car.wheelSpin);
-  }
+  // кузов по крену и клевку, колёса — ход подвески, руль и прокрутка
+  placeCarMesh(carMesh, car);
 
   // тень едет за игроком, иначе карты теней не хватит на 5 км
   const t = mode === 'car' ? car.pos

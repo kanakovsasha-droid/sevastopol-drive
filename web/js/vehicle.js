@@ -1,222 +1,885 @@
 import * as THREE from 'three';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=6ce88c24';
+import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=6ce88c24';
 
-// Модель машины. Была попытка считать силы на шинах через углы увода — она
-// давала «честный» занос, но ездить стало нельзя: машину срывало в вращение
-// на обычном повороте. Вернулись к первой модели — кинематический велосипед:
-// угол руля напрямую задаёт скорость поворота, а занос живёт отдельной
-// затухающей добавкой. Машина всегда едет туда, куда смотрит нос, срыв даёт
-// только ручник. Всё, что нарабатывалось после (посадка на четыре колеса,
-// подвеска, полёт, скольжение вдоль стены, высота полотна), оставлено.
+// Физика машины. Третий заход.
+//
+// Прежняя модель была кинематическим велосипедом: руль напрямую задавал скорость
+// поворота, занос жил отдельной затухающей добавкой. Замер стендом
+// (tools/check-physics.mjs) показал, что это не машина: круг радиусом 5.5 м
+// на 60 км/ч — это 5 g вбок, на 120 км/ч — 14 g; торможение 2.75 g; максималка
+// 159 км/ч. Отсюда «рулится ужасно»: шин нет, машина едет как курсор.
+// До неё была попытка считать силы на шинах через углы увода — по истории
+// машину срывало во вращение на обычном повороте. Здесь от этого держат
+// ограничение руля по скорости, самовозврат руля в занос и курсовая
+// устойчивость (CAR.esp) — проверено стендом: змейка на 100 км/ч с рулём
+// от упора до упора идёт с углом увода не больше 5°.
+//
+// Сейчас — твёрдое тело на четырёх колёсах:
+//   • шаг физики фиксированный, 120 Гц, с аккумулятором; наружу отдаётся поза,
+//     интерполированная между двумя последними шагами (иначе при 60 кадрах
+//     шагов выходит то два, то один, и картинка мелко дёргается);
+//   • подвеска: пружина + демпфер + стабилизатор на каждое колесо, луч вниз
+//     по высоте полотна — отсюда крен, клевок и перенос веса сами собой;
+//   • шины: угол увода и продольное проскальзывание, кривая с насыщением
+//     (упрощённая Pacejka) и общий круг трения; скорость вращения колеса —
+//     отдельная степень свободы, считается неявно (иначе на 120 Гц она жёсткая);
+//   • двигатель с кривой момента, девять передач, автомат, полный привод
+//     с уклоном назад, тормоза с распределением и АБС, ручник на задние;
+//   • на стоянке шины держат машину «на якоре» — пружиной к точке, где встала:
+//     формулы увода при нулевой скорости делят на ноль и дают дрожь.
+//
+// Интерфейс для main.js прежний: reset(x, z, yaw), update(dt, input), поля
+// pos / yaw / pitch / roll / vLong / wheelDrop / wheelSpin / steerVis / crash.
 
-const WHEELBASE = 2.65;
-const MAX_STEER = 0.62;
-// Тяга и сопротивление подобраны так, чтобы равновесие наступало около
-// 58 м/с — это ~210 км/ч.
-const ENGINE = 18.5;
-const REVERSE = 7.0;
-const BRAKE = 24;
-const DRAG_AIR = 0.0019;
-const DRAG_ROLL = 0.11;
-const GRIP = 6.2;             // как быстро гаснет занос
-const GRIP_HANDBRAKE = 1.1;   // с ручником задок живёт своей жизнью
+// ---------------------------------------------------------------- параметры
+// Mercedes-AMG E63 S (W213). Всё, что стоит крутить на вкус, собрано здесь.
+// Оси кузова: +Z вперёд, +Y вверх, +X ВЛЕВО (так устроена модель в сцене).
+export const CAR = {
+  // габариты — для модели и для столкновений
+  length: 4.99, width: 1.91, height: 1.46,
+  // база, колея и радиус сняты с модели data/models/e63.glb (центры колёс
+  // z = ±1.4695, x = ±0.805..0.827, шина 0.336) — по ним стоят и колёса в сцене
+  wheelbase: 2.939,         // колёсная база, м
+  track: 1.632,             // колея, м
+  wheelRadius: 0.336,       // радиус колеса, м
+  // массы
+  mass: 1950,               // кг
+  frontWeight: 0.55,        // доля веса на передней оси
+  cgHeight: 0.50,           // высота центра масс над дорогой, м
+  inertiaYaw: 3900,         // момент инерции вокруг вертикали, кг·м²
+  inertiaPitch: 3300,       // вокруг поперечной оси (клевок)
+  inertiaRoll: 780,         // вокруг продольной оси (крен)
+  // подвеска
+  rideFreqFront: 1.75,      // собственная частота, Гц: выше — жёстче
+  rideFreqRear: 1.95,
+  damping: 0.62,            // доля критического демпфирования
+  antiRollFront: 21000,     // стабилизатор, Н/м разницы хода колёс
+  antiRollRear: 11000,      // мягче сзади — машину тянет в недостаточную поворачиваемость
+  bump: 0.085,              // ход сжатия до отбойника, м
+  droop: 0.11,              // ход отбоя, м
+  // шины
+  muLong: 1.16,             // сцепление вдоль
+  muLat: 1.10,              // сцепление поперёк
+  slipPeak: 0.095,          // проскальзывание на пике тяги
+  alphaPeak: 0.135,         // tg угла увода на пике (~7.7°)
+  loadSens: 0.14,           // падение сцепления с ростом нагрузки
+  curveC: 1.42,             // форма кривой: больше — резче спад за пиком
+  rearGrip: 1.06,           // задние шины шире передних
+  // двигатель и трансмиссия: 4.0 V8 битурбо, 612 л.с., 850 Н·м
+  torque: [[900, 380], [1500, 610], [2000, 780], [2500, 850], [4500, 850],
+           [5750, 747], [6500, 661], [7000, 560], [7250, 0]],   // об/мин → Н·м
+  idle: 900, redline: 7000,
+  stall: 2600,              // обороты гидротрансформатора на старте с места
+  gears: [5.35, 3.24, 2.25, 1.64, 1.21, 1.00, 0.87, 0.72, 0.60],
+  reverse: 4.80,
+  final: 3.06,
+  efficiency: 0.88,         // КПД трансмиссии
+  shiftTime: 0.18,          // разрыв тяги на переключении, с
+  frontTorque: 0.36,        // доля момента на передней оси (4MATIC+: уклон назад)
+  topSpeed: 302 / 3.6,      // электронный ограничитель, м/с (на деле выходит ровно 300)
+  reverseSpeed: 50 / 3.6,   // потолок заднего хода
+  engineInertia: 0.16,      // кг·м², приводится к колёсам через передачу
+  wheelInertia: 1.5,        // кг·м² на колесо
+  diffLock: 55,             // вязкая блокировка между колёсами оси, Н·м·с
+  tcSlip: 0.16,             // противобуксовочная начинает душить отсюда…
+  tcMin: 0.42,              // …но ниже этой доли момент не режет: занос газом остаётся
+  // тормоза
+  brakeTorque: 11500,       // суммарный момент всех четырёх, Н·м
+  brakeFront: 0.64,         // доля на переднюю ось
+  handbrakeTorque: 5200,    // на каждое заднее колесо, Н·м
+  absEff: 0.98,             // АБС держит колесо у этой доли пика
+  // аэродинамика и качение
+  dragArea: 0.76,           // Cx·S, м²
+  liftArea: 0.22,           // прижим, Cy·S
+  rolling: 0.013,           // сопротивление качению
+  // руль
+  maxSteer: 0.60,           // угол колёс до упора на стоянке, рад
+  steerTime: 0.26,          // время выкручивания до упора, с
+  steerReturn: 0.16,        // возврат в ноль, с
+  steerLatG: 1.05,          // на скорости упор руля — столько g бокового…
+  steerSlip: 0.95,          // …плюс запас на увод передних шин, в долях пика
+  counterSteer: 0.70,       // самовозврат руля в занос (стабилизирующий момент шин)
+  // курсовая устойчивость (ESP в спортивном режиме): 0 — выключена, 1 — строгая.
+  // Подтормаживает колёса, когда кузов крутится быстрее, чем просит руль.
+  esp: 0.7,
+  espAngle: 0.05,           // угол увода кузова, с которого она просыпается, рад
+  espGain: 22000,           // Н·м на рад/с ошибки рыскания
+  espMax: 7000,             // потолок момента, Н·м
+  throttleUp: 3.6,          // скорость нажатия газа с клавиатуры, 1/с
+  throttleDown: 9,
+  brakeUp: 9,
+};
+
 // Полотно дороги рисуется на 0.14 м ВЫШЕ рельефа (ROAD_Y в worldgen), а колёса
 // опрашивали голый рельеф — машина проваливалась в асфальт, а на переломах
 // профиля кузов не совпадал с дорогой и повисал.
 const ROAD_LIFT = 0.145;
+const STEP = 1 / 120;         // шаг физики, с
+const MAX_STEPS = 14;         // не больше стольких шагов за кадр (≈0.12 с)
+const GRAV = 9.81;
+const RHO2 = 0.6125;          // половина плотности воздуха
+const V_LOW = 3.0;            // ниже этой скорости увод считается по ней, м/с
+const HOLD_V = 0.45;          // ниже — машина встаёт «на якорь»
+const HOLD_K = 62000;         // жёсткость якоря, Н/м на колесо
+const HOLD_C = 9500;          // его демпфер, Н·с/м
+const BUMP_K = 240000;        // отбойник, Н/м
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const wrapPi = a => { a = (a + Math.PI) % (2 * Math.PI); return a < 0 ? a + Math.PI : a - Math.PI; };
+
+// Кривая шины: линейный участок, пик в s = 1, плавный спад за ним. s — общее
+// нормированное скольжение (увод и пробуксовка, сведённые к долям своих пиков).
+function tyreCurve(s, C, B) { return Math.sin(C * Math.atan(B * s)); }
+
+function torqueAt(rpm) {
+  const T = CAR.torque;
+  if (rpm <= T[0][0]) return T[0][1];
+  for (let i = 1; i < T.length; i++) {
+    if (rpm <= T[i][0]) {
+      const a = T[i - 1], b = T[i];
+      return a[1] + (b[1] - a[1]) * (rpm - a[0]) / (b[0] - a[0]);
+    }
+  }
+  return 0;
+}
 
 export class Car {
   constructor(terrain, collider) {
     this.terrain = terrain;
     this.collider = collider;
-    this.pos = new THREE.Vector3();
+    // ---- то, что читает main.js (поза ИНТЕРПОЛИРОВАНА между шагами физики)
+    this.pos = new THREE.Vector3();   // точка на дороге под серединой базы
     this.yaw = 0;
+    this.pitch = 0;
+    this.roll = 0;
     this.vLong = 0;      // вдоль корпуса, м/с
     this.vLat = 0;       // влево от корпуса, м/с
     this.yawRate = 0;
-    this.steer = 0;      // текущий угол руля
-    this.pitch = 0;
-    this.roll = 0;
-    this.wheelSpin = 0;
+    this.steer = 0;      // текущий угол колёс
     this.steerVis = 0;
+    this.wheelSpin = 0;  // угол проворота колёс (по передним)
+    this.wheelAngle = [0, 0, 0, 0];   // то же по каждому колесу — для внешней модели
+    this.wheelDrop = [0, 0, 0, 0];    // ход подвески по каждому колесу (+ сжатие)
     this.crash = 0;
-    this.wheelDrop = [0, 0, 0, 0];   // ход подвески по каждому колесу
-    this.vy = 0;         // вертикальная скорость: прыжки и съезды с бордюра
     this.airborne = false;
     this.inWater = false;
-  }
+    // ---- телеметрия: приборы, звук, следы шин
+    this.rpm = CAR.idle;
+    this.gear = 1;       // 1..9, −1 задний
+    this.slip = [0, 0, 0, 0];         // насколько шина за пиком (>1 — скользит)
+    this.gLong = 0; this.gLat = 0;
+    this.espActive = 0;  // 0..1 — насколько сейчас вмешивается курсовая устойчивость
 
-  reset(x, z, yaw = 0) {
-    this.pos.set(x, this.terrain.driveHeightAt(x, z) + ROAD_LIFT, z);
-    this.yaw = yaw;
-    this.vLong = 0; this.vLat = 0; this.yawRate = 0;
-    this.steer = 0; this.crash = 0; this.vy = 0; this.airborne = false;
+    // ---- геометрия, выведенная из параметров
+    const a = CAR.wheelbase * (1 - CAR.frontWeight);    // ЦМ → передняя ось
+    const b = CAR.wheelbase * CAR.frontWeight;          // ЦМ → задняя ось
+    this._cgZ = CAR.wheelbase / 2 - a;                  // ЦМ впереди середины базы
+    const ht = CAR.track / 2;
+    // порядок колёс как в модели: ПЛ, ПП, ЗЛ, ЗП
+    this._wx = [ht, -ht, ht, -ht];
+    this._wz = [a, a, -b, -b];
+    const wF = CAR.mass * GRAV * b / CAR.wheelbase / 2;
+    const wR = CAR.mass * GRAV * a / CAR.wheelbase / 2;
+    this._w0 = [wF, wF, wR, wR];                        // статическая нагрузка
+    const kOf = (w, f) => w / GRAV * (2 * Math.PI * f) ** 2;
+    const kF = kOf(wF, CAR.rideFreqFront), kR = kOf(wR, CAR.rideFreqRear);
+    this._k = [kF, kF, kR, kR];
+    const cOf = (k, w) => 2 * CAR.damping * Math.sqrt(k * w / GRAV);
+    this._c = [cOf(kF, wF), cOf(kF, wF), cOf(kR, wR), cOf(kR, wR)];
+    this._B = Math.tan(Math.PI / (2 * CAR.curveC));     // пик кривой шины в s = 1
+
+    // ---- состояние твёрдого тела (ЦМ, мировые координаты)
+    this._p = [0, 0, 0]; this._v = [0, 0, 0];
+    this._q = [0, 0, 0, 1]; this._w = [0, 0, 0];
+    this._R = new Float64Array(9);
+    this._om = [0, 0, 0, 0];           // угловая скорость колёс
+    this._comp = [0, 0, 0, 0];         // сжатие подвески относительно стоянки
+    this._ge = [0, 0, 0, 0];           // опора под колесом после ограничителя подъёма
+    this._gr = [0, 0, 0, 0];           // сырая опора прошлого шага
+    this._rf = [0, 0, 0, 0];           // сглаженная скорость её подъёма, м/с
+    this._fz = [0, 0, 0, 0];
+    this._kap = [0, 0, 0, 0];
+    this._anchor = [null, null, null, null];
+    this._hold = false;
+    this._gas = 0; this._brake = 0; this._shiftT = 0; this._shiftLock = 0;
+    this._acc = 0; this._flipT = 0; this._yawOut = 0; this._fresh = true; this._ceil = Infinity;
+    this._prev = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, d: [0, 0, 0, 0] };
+    this._cur = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, d: [0, 0, 0, 0] };
+    this._tmp = new THREE.Vector3();
   }
 
   get speed() { return Math.hypot(this.vLong, this.vLat); }
   get kmh() { return this.vLong * 3.6; }
   get forward() { return new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
 
-  update(dt, input) {
-    dt = Math.min(dt, 1 / 25);
+  // Высота опоры под точкой. Мост над головой — не опора: полотно путепровода
+  // берёт верх в driveHeightAt, и машина, едущая ПОД ним, оказывалась бы на
+  // три метра «под землёй». Всё, что выше крыши, — не наше, берём грунт.
+  _hAt(x, z) {
     const t = this.terrain;
-    this.inWater = t.driveHeightAt(this.pos.x, this.pos.z) < 0.35;
-
-    // уклон под колёсами: разница высот спереди и сзади
-    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
-    const hF = t.driveHeightAt(this.pos.x + fx * 1.35, this.pos.z + fz * 1.35);
-    const hR = t.driveHeightAt(this.pos.x - fx * 1.35, this.pos.z - fz * 1.35);
-    const slopeAcc = -9.81 * clamp((hF - hR) / 2.7, -0.8, 0.8);
-
-    // ---- продольная динамика
-    let acc = 0;
-    if (!this.airborne) {
-      if (input.throttle > 0) acc += ENGINE * input.throttle * (1 - Math.min(0.72, Math.abs(this.vLong) / 82));
-      if (input.throttle < 0) acc += this.vLong > 0.5 ? -BRAKE : REVERSE * input.throttle;
-      if (input.handbrake) acc -= Math.sign(this.vLong) * BRAKE * 0.55;
+    let h = t.driveHeightAt(x, z);
+    if (h > this._ceil && t.groundDriveHeightAt) {
+      const g = t.groundDriveHeightAt(x, z);
+      if (g < h) h = g;
     }
-    acc += slopeAcc;
-    acc -= DRAG_AIR * this.vLong * Math.abs(this.vLong) + DRAG_ROLL * this.vLong;
-    if (this.inWater) acc -= this.vLong * 3.2;
-    this._ax = acc;
+    return h + ROAD_LIFT;
+  }
 
-    this.vLong += acc * dt;
-    if (input.throttle === 0 && !input.handbrake && Math.abs(this.vLong) < 0.25) this.vLong = 0;
-    if (this.inWater) this.vLong = clamp(this.vLong, -2.5, 2.5);
+  // Высота под колесом — НЕ в точке, а по пятну. Профиль полотна кусочно-
+  // линейный (сетка коридора 5 м, сетка рельефа 9 м, диагонали треугольников):
+  // на стыках ячеек уклон ломается скачком, местами есть ступеньки в 2–3 см.
+  // Настоящая шина такие мелочи обкатывает; точечный луч — передаёт в кузов
+  // ударом. Берём симметричный крест из пяти выборок: на ровном уклоне он
+  // точен (запаздывания нет), а перелом и ступеньку размазывает на длину L.
+  // С ростом скорости пятно длиннее — время наезда на ступеньку не сжимается.
+  _ground(x, z, fx, fz, L) {
+    const W = 0.22;
+    return this._hAt(x, z) * 0.36
+      + (this._hAt(x + fx * L, z + fz * L) + this._hAt(x - fx * L, z - fz * L)) * 0.22
+      + (this._hAt(x + fz * W, z - fx * W) + this._hAt(x - fz * W, z + fx * W)) * 0.10;
+  }
 
-    // ---- руль: на скорости выкручивается меньше, иначе машина «ломается»
-    const steerMax = MAX_STEER * (1 - 0.72 * Math.min(1, Math.abs(this.vLong) / 52));
-    const steer = clamp(input.steer, -1, 1) * steerMax;
-    this.steer = steer;
-    this.steerVis += (steer - this.steerVis) * Math.min(1, dt * 11);
+  reset(x, z, yaw = 0) {
+    this._ceil = Infinity;
+    const fx = Math.sin(yaw), fz = Math.cos(yaw), lx = Math.cos(yaw), lz = -Math.sin(yaw);
+    // ставим сразу по уклону: четыре высоты под колёсами → плоскость
+    const h = [];
+    for (let i = 0; i < 4; i++) {
+      const a = this._wz[i] + this._cgZ, b = this._wx[i];
+      h.push(this._ground(x + fx * a + lx * b, z + fz * a + lz * b, fx, fz, 0.25));
+    }
+    const dF = (h[0] + h[1] - h[2] - h[3]) / 2, dS = (h[0] + h[2] - h[1] - h[3]) / 2;
+    // вперёд и влево по плоскости, вверх — их векторное произведение
+    let f = [fx * CAR.wheelbase, dF, fz * CAR.wheelbase], l = [lx * CAR.track, dS, lz * CAR.track];
+    const nf = Math.hypot(f[0], f[1], f[2]); f = f.map(v => v / nf);
+    let u = [f[1] * l[2] - f[2] * l[1], f[2] * l[0] - f[0] * l[2], f[0] * l[1] - f[1] * l[0]];
+    const nu = Math.hypot(u[0], u[1], u[2]); u = u.map(v => v / nu);
+    l = [u[1] * f[2] - u[2] * f[1], u[2] * f[0] - u[0] * f[2], u[0] * f[1] - u[1] * f[0]];
+    this._setBasis(l, u, f);
+    const y0 = (h[0] + h[1] + h[2] + h[3]) / 4;
+    // ЦМ: над точкой привязки на высоту cgHeight и вперёд на cgZ
+    this._p[0] = x + u[0] * CAR.cgHeight + f[0] * this._cgZ;
+    this._p[1] = y0 + u[1] * CAR.cgHeight + f[1] * this._cgZ;
+    this._p[2] = z + u[2] * CAR.cgHeight + f[2] * this._cgZ;
+    this._v = [0, 0, 0]; this._w = [0, 0, 0];
+    this._om = [0, 0, 0, 0]; this._comp = [0, 0, 0, 0]; this._kap = [0, 0, 0, 0];
+    this._anchor = [null, null, null, null]; this._hold = false;
+    this._gas = 0; this._brake = 0; this._shiftT = 0; this._shiftLock = 0;
+    this._acc = 0; this._flipT = 0; this._fresh = true;
+    this.gear = 1; this.rpm = CAR.idle;
+    this.vLong = 0; this.vLat = 0; this.yawRate = 0;
+    this.steer = 0; this.steerVis = 0; this.crash = 0; this.airborne = false;
+    this._yawOut = yaw;
+    this._pose(this._cur); this._copyPose(this._prev, this._cur);
+    this._publish(1);
+  }
 
-    // ---- поворот. Скорость рыскания задаёт РУЛЬ, а не момент сил на осях:
-    // именно поэтому машина никогда не уходит в неуправляемое вращение.
-    const yawRate = this.airborne ? this.yawRate * 0.98 : (this.vLong / WHEELBASE) * Math.tan(steer);
-    this.yawRate = yawRate;
-    this.yaw += yawRate * dt;
+  _setBasis(l, u, f) {
+    // матрица со столбцами (влево, вверх, вперёд) → кватернион
+    const m00 = l[0], m10 = l[1], m20 = l[2], m01 = u[0], m11 = u[1], m21 = u[2], m02 = f[0], m12 = f[1], m22 = f[2];
+    const tr = m00 + m11 + m22, q = this._q;
+    if (tr > 0) {
+      const s = 0.5 / Math.sqrt(tr + 1);
+      q[3] = 0.25 / s; q[0] = (m21 - m12) * s; q[1] = (m02 - m20) * s; q[2] = (m10 - m01) * s;
+    } else if (m00 > m11 && m00 > m22) {
+      const s = 2 * Math.sqrt(1 + m00 - m11 - m22);
+      q[3] = (m21 - m12) / s; q[0] = 0.25 * s; q[1] = (m01 + m10) / s; q[2] = (m02 + m20) / s;
+    } else if (m11 > m22) {
+      const s = 2 * Math.sqrt(1 + m11 - m00 - m22);
+      q[3] = (m02 - m20) / s; q[0] = (m01 + m10) / s; q[1] = 0.25 * s; q[2] = (m12 + m21) / s;
+    } else {
+      const s = 2 * Math.sqrt(1 + m22 - m00 - m11);
+      q[3] = (m10 - m01) / s; q[0] = (m02 + m20) / s; q[1] = (m12 + m21) / s; q[2] = 0.25 * s;
+    }
+    this._matrix();
+  }
 
-    // ---- занос: инерция тянет наружу поворота, шины сопротивляются
-    const grip = input.handbrake ? GRIP_HANDBRAKE : GRIP;
-    this.vLat += -yawRate * this.vLong * dt;
-    this.vLat *= Math.exp(-grip * dt);
-    this.vLat = clamp(this.vLat, -14, 14);
+  _matrix() {
+    const q = this._q, R = this._R;
+    const x = q[0], y = q[1], z = q[2], w = q[3];
+    R[0] = 1 - 2 * (y * y + z * z); R[1] = 2 * (x * y - z * w);     R[2] = 2 * (x * z + y * w);
+    R[3] = 2 * (x * y + z * w);     R[4] = 1 - 2 * (x * x + z * z); R[5] = 2 * (y * z - x * w);
+    R[6] = 2 * (x * z - y * w);     R[7] = 2 * (y * z + x * w);     R[8] = 1 - 2 * (x * x + y * y);
+  }
 
-    const lx = Math.cos(this.yaw), lz = -Math.sin(this.yaw);      // влево
-    this.pos.x += (fx * this.vLong + lx * this.vLat) * dt;
-    this.pos.z += (fz * this.vLong + lz * this.vLat) * dt;
+  // Поза для сцены: точка привязки модели и углы в том порядке, в каком main.js
+  // их применяет (rotateY → rotateX → rotateZ, то есть порядок Эйлера YXZ).
+  _pose(o) {
+    const R = this._R, p = this._p;
+    const ly = -CAR.cgHeight, lz = -this._cgZ;
+    o.x = p[0] + R[1] * ly + R[2] * lz;
+    o.y = p[1] + R[4] * ly + R[5] * lz;
+    o.z = p[2] + R[7] * ly + R[8] * lz;
+    o.pitch = Math.asin(clamp(-R[5], -1, 1));
+    o.yaw = Math.atan2(R[2], R[8]);
+    o.roll = Math.atan2(R[3], R[4]);
+    for (let i = 0; i < 4; i++) o.d[i] = clamp(this._comp[i], -CAR.droop, CAR.bump + 0.03);
+  }
+  _copyPose(a, b) {
+    a.x = b.x; a.y = b.y; a.z = b.z; a.yaw = b.yaw; a.pitch = b.pitch; a.roll = b.roll;
+    for (let i = 0; i < 4; i++) a.d[i] = b.d[i];
+  }
+  _publish(k) {
+    const a = this._prev, b = this._cur;
+    this.pos.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
+    // курс наружу — НЕПРЕРЫВНЫЙ, без скачка через ±π: камера и карта берут разности
+    const yaw = a.yaw + wrapPi(b.yaw - a.yaw) * k;
+    this._yawOut += wrapPi(yaw - this._yawOut);
+    this.yaw = this._yawOut;
+    this.pitch = a.pitch + (b.pitch - a.pitch) * k;
+    this.roll = a.roll + wrapPi(b.roll - a.roll) * k;
+    for (let i = 0; i < 4; i++) this.wheelDrop[i] = a.d[i] + (b.d[i] - a.d[i]) * k;
+  }
 
-    this._collide(fx, fz, lx, lz);
-    this._settle(fx, fz, lx, lz, dt);
-    this.wheelSpin += this.vLong * dt / 0.33;
+  update(dt, input) {
+    this._acc = Math.min(this._acc + Math.max(0, dt), STEP * MAX_STEPS);
+    while (this._acc >= STEP - 1e-9) {
+      this._copyPose(this._prev, this._cur);
+      this._step(STEP, input);
+      this._pose(this._cur);
+      this._acc -= STEP;
+    }
+    this._publish(clamp(this._acc / STEP, 0, 1));
+    this.steerVis += (this.steer - this.steerVis) * Math.min(1, dt * 18);
     this.crash *= Math.exp(-dt * 4);
   }
 
-  // Столкновения. Раньше скорость просто множилась на коэффициент — машина
-  // липла к стене и теряла ход вдоль неё. Теперь гасим только составляющую
-  // ПО НОРМАЛИ, вдоль стены оставляем скольжение и добавляем момент отскока.
-  _collide(fx, fz, lx, lz) {
-    let impact = 0;
-    for (const s of [1.55, 0, -1.55]) {
-      const probe = new THREE.Vector3(this.pos.x + fx * s, 0, this.pos.z + fz * s);
-      const hit = this.collider.resolve(probe, 0.98);
-      if (!hit) continue;
-      this.pos.x = probe.x - fx * s;
-      this.pos.z = probe.z - fz * s;
-      // мировая скорость -> нормаль
-      const wx = fx * this.vLong + lx * this.vLat;
-      const wz = fz * this.vLong + lz * this.vLat;
-      const vn = wx * hit.nx + wz * hit.nz;
-      if (vn < 0) {
-        impact = Math.max(impact, -vn);
-        const rest = 0.22;                       // немного отскока
-        const nx2 = wx - vn * (1 + rest) * hit.nx;
-        const nz2 = wz - vn * (1 + rest) * hit.nz;
-        const slide = 0.86;                      // трение о стену вдоль неё
-        this.vLong = (nx2 * fx + nz2 * fz) * slide;
-        this.vLat = (nx2 * lx + nz2 * lz) * slide;
-        // удар в угол разворачивает кузов
-        this.yawRate = clamp(this.yawRate + (s > 0 ? -1 : s < 0 ? 1 : 0)
-          * (hit.nx * lx + hit.nz * lz) * vn * 0.10, -2.6, 2.6);
+  // ------------------------------------------------------------ один шаг
+  _step(h, input) {
+    const R = this._R, p = this._p, v = this._v, w = this._w;
+    const lX = R[0], lY = R[3], lZ = R[6];      // влево
+    const uX = R[1], uY = R[4], uZ = R[7];      // вверх
+    const fX = R[2], fY = R[5], fZ = R[8];      // вперёд
+    const vLong = v[0] * fX + v[1] * fY + v[2] * fZ;
+    const vLat = v[0] * lX + v[1] * lY + v[2] * lZ;
+    const speed = Math.hypot(v[0], v[1], v[2]);
+
+    // ---- ввод: W — газ, S — тормоз, а с места — задний ход
+    const thr = clamp(input.throttle || 0, -1, 1);
+    let gasT = 0, brakeT = 0, wantRev = this.gear < 0;
+    if (thr > 0) {
+      if (vLong < -1.0) brakeT = thr; else { gasT = thr; wantRev = false; }
+    } else if (thr < 0) {
+      if (vLong > 1.0) brakeT = -thr; else { gasT = -thr; wantRev = true; }
+    }
+    this._gas += clamp(gasT - this._gas, -CAR.throttleDown * h, CAR.throttleUp * h);
+    this._brake += clamp(brakeT - this._brake, -12 * h, CAR.brakeUp * h);
+    const gas = this._gas;
+    // Без газа на малом ходу автомат сам придерживает машину: иначе после
+    // тычка по газу она катится ещё полминуты, а встать можно только тормозом.
+    const brake = Math.max(this._brake, gas < 0.02 ? 0.10 * clamp(1 - speed / 3, 0, 1) : 0);
+    const hand = !!input.handbrake;
+
+    // ---- руль. Упор зависит от скорости: до угла, который даёт steerLatG
+    // бокового, плюс запас на увод шин. Иначе клавиша «до упора» на трассе
+    // ставит колёса поперёк и шины просто срывает.
+    const vs = Math.max(Math.abs(vLong), 1);
+    const lim = Math.min(CAR.maxSteer,
+      Math.atan(CAR.wheelbase * CAR.steerLatG * GRAV / (vs * vs)) + CAR.alphaPeak * CAR.steerSlip);
+    let want = clamp(input.steer || 0, -1, 1) * lim;
+    // Самовозврат в занос: стабилизирующий момент шин сам доворачивает руль в
+    // сторону движения — отпусти баранку, и колёса встанут по ходу. С клавиатуры
+    // это единственный способ поймать занос: руки рулём по градусу не работают.
+    let assist = 0;
+    if (vLong > 4 && !this.airborne) {
+      const beta = Math.atan2(vLat, vLong);
+      const dead = 0.035;
+      const b = Math.abs(beta) > dead ? beta - Math.sign(beta) * dead : 0;
+      assist = CAR.counterSteer * clamp(b, -0.6, 0.6) * clamp((vLong - 4) / 6, 0, 1);
+    }
+    want = clamp(want + assist, -CAR.maxSteer, CAR.maxSteer);
+    const toZero = Math.abs(want) < Math.abs(this.steer) || want * this.steer < 0;
+    // к нулю и в занос руль идёт быстро, от нуля — за steerTime до упора
+    const steerRate = (toZero || Math.abs(assist) > 0.02 ? CAR.maxSteer / CAR.steerReturn * 0.5 : lim / CAR.steerTime) * h;
+    this.steer += clamp(want - this.steer, -steerRate, steerRate);
+    const cs = Math.cos(this.steer), sn = Math.sin(this.steer);
+
+    // ---- коробка
+    this._shift(h, vLong, gas, wantRev);
+    const ratio = (this.gear < 0 ? -CAR.reverse : CAR.gears[this.gear - 1]) * CAR.final;
+    const om = this._om;
+    const omDrive = CAR.frontTorque * (om[0] + om[1]) / 2 + (1 - CAR.frontTorque) * (om[2] + om[3]) / 2;
+    const rpmWheels = Math.abs(omDrive * ratio) * 9.5493;
+    // гидротрансформатор: на низшей передаче обороты не падают ниже «стопа»
+    const low = this.gear === 1 || this.gear < 0;
+    const rpm = Math.max(rpmWheels, CAR.idle + (low ? gas * (CAR.stall - CAR.idle) : 0));
+    this.rpm += (rpm - this.rpm) * Math.min(1, h * 14);
+    let engT = 0;
+    if (this._shiftT <= 0) {
+      engT = torqueAt(rpm) * gas;
+      if (rpm > CAR.redline) engT *= clamp(1 - (rpm - CAR.redline) / 150, 0, 1);
+      // ограничитель скорости и вода
+      engT *= clamp(((this.gear < 0 ? CAR.reverseSpeed : CAR.topSpeed) - Math.abs(vLong)) / 1.5, 0, 1);
+      if (this.gear < 0) engT *= 0.55;
+      // торможение двигателем: только когда муфта замкнута
+      if (gas < 0.05 && rpmWheels > 1300) engT -= (25 + rpmWheels * 0.009) * (1 - gas * 20);
+    }
+    if (this.inWater) engT *= 0.25;
+    const axleT = engT * ratio * CAR.efficiency;         // на все колёса, со знаком
+    const iDrive = CAR.wheelInertia + CAR.engineInertia * ratio * ratio / 4;
+
+    // ---- стоянка: без газа и почти без хода — на якорь
+    let grounded = 0;
+    for (let i = 0; i < 4; i++) if (this._fz[i] > 0) grounded++;
+    const slow = speed < HOLD_V && Math.abs(w[1]) < 0.4;
+    if (gas > 0.02 || grounded < 3) this._hold = false;
+    else if (slow) this._hold = true;
+    else if (speed > HOLD_V * 3) this._hold = false;
+    const hold = this._hold;
+
+    // ---- опора: высоты под четырьмя колёсами и общая плоскость
+    this._ceil = p[1] - CAR.cgHeight + 1.9;
+    const fl = Math.hypot(fX, fZ) || 1, gfx = fX / fl, gfz = fZ / fl;
+    const L = clamp(0.26 + 0.013 * speed, 0.26, 0.95);
+    const bx = [0, 0, 0, 0], by = [0, 0, 0, 0], bz = [0, 0, 0, 0], gh = [0, 0, 0, 0];
+    for (let i = 0; i < 4; i++) {
+      // точка касания колеса на стоянке, в мире
+      const x = this._wx[i], y = -CAR.cgHeight, z = this._wz[i];
+      bx[i] = p[0] + lX * x + uX * y + fX * z;
+      by[i] = p[1] + lY * x + uY * y + fY * z;
+      bz[i] = p[2] + lZ * x + uZ * y + fZ * z;
+      let g = this._ground(bx[i], bz[i], gfx, gfz, L);
+      // Ступенька в данных: край дорожного коридора стоит над голой сеткой
+      // рельефа на 0.5–0.8 м (выемка/насыпь коридора обрывается, где его вес
+      // падает ниже половины). Пятно шины такое не размажет, и машину с него
+      // подкидывало на полтора метра. Поэтому опора под колесом поднимается не
+      // быстрее, чем поднималась только что (сглаженная скорость подъёма), плюс
+      // запас в 12% уклона: настоящий подъём, хоть 28% на Котовского, колесо
+      // отслеживает без отставания, а ступенька превращается во въезд.
+      // Вниз ограничения нет: с обрыва падаем честно.
+      if (this._fresh) { this._ge[i] = this._gr[i] = g; this._rf[i] = 0; }
+      const rr = Math.min((g - this._gr[i]) / h, 0.4 * speed + 0.5);
+      this._gr[i] = g;
+      this._rf[i] += (rr - this._rf[i]) * Math.min(1, h / 0.12);
+      const rise = (Math.max(this._rf[i], 0) + 0.12 * speed + 0.4) * h;
+      if (g > this._ge[i] + rise) g = this._ge[i] + rise;
+      this._ge[i] = gh[i] = g;
+    }
+    // нормаль: (перед − зад) × (лево − право)
+    let ax = bx[0] + bx[1] - bx[2] - bx[3], ay = gh[0] + gh[1] - gh[2] - gh[3], az = bz[0] + bz[1] - bz[2] - bz[3];
+    let cx = bx[0] + bx[2] - bx[1] - bx[3], cy = gh[0] + gh[2] - gh[1] - gh[3], cz = bz[0] + bz[2] - bz[1] - bz[3];
+    let nX = ay * cz - az * cy, nY = az * cx - ax * cz, nZ = ax * cy - ay * cx;
+    let nl = Math.hypot(nX, nY, nZ) || 1;
+    if (nY < 0) nl = -nl;
+    nX /= nl; nY /= nl; nZ /= nl;
+    if (nY < 0.5) { nX = 0; nY = 1; nZ = 0; }             // стена, а не дорога
+    const un = Math.max(0.5, uX * nX + uY * nY + uZ * nZ);
+
+    // ---- силы на кузов
+    let Fx = 0, Fy = -CAR.mass * GRAV, Fz = 0, Tx = 0, Ty = 0, Tz = 0;
+    // воздух: сопротивление против скорости, прижим вдоль «низа» кузова
+    const drag = RHO2 * CAR.dragArea * speed;
+    Fx -= drag * v[0]; Fy -= drag * v[1]; Fz -= drag * v[2];
+    const down = RHO2 * CAR.liftArea * vLong * vLong;
+    Fx -= uX * down; Fy -= uY * down; Fz -= uZ * down;
+    if (this.inWater) { Fx -= v[0] * CAR.mass * 3.2; Fz -= v[2] * CAR.mass * 3.2; }
+
+    const comp = this._comp;
+    let deep = 0, contacts = 0;
+    const fzNew = [0, 0, 0, 0], rate = [0, 0, 0, 0], c = [0, 0, 0, 0];
+    for (let i = 0; i < 4; i++) {
+      // сжатие: насколько точка касания «на стоянке» ушла под плоскость дороги
+      c[i] = (gh[i] - by[i]) * nY / un;
+      rate[i] = this._fresh ? 0 : clamp((c[i] - comp[i]) / h, -4, 4);
+    }
+    for (let i = 0; i < 4; i++) {
+      let f = 0;
+      if (c[i] > -CAR.droop) {
+        // демпфер дегрессивный: на резком ходу (ступенька) он не должен бить
+        const r = rate[i], ar = Math.abs(r);
+        const dv = ar < 0.35 ? r : Math.sign(r) * (0.35 + (ar - 0.35) * 0.32);
+        const j = i ^ 1;                                   // колесо той же оси
+        const arb = (i < 2 ? CAR.antiRollFront : CAR.antiRollRear)
+          * (clamp(c[i], -CAR.droop, CAR.bump) - clamp(c[j], -CAR.droop, CAR.bump));
+        f = this._w0[i] + this._k[i] * c[i] + this._c[i] * dv * (r > 0 ? 0.85 : 1.25) + arb;
+        if (c[i] > CAR.bump) f += BUMP_K * (c[i] - CAR.bump) + (r > 0 ? 6000 * r : 0);
+        f = clamp(f, 0, this._w0[i] * 4.5);
+      }
+      fzNew[i] = f;
+      if (f > 0) contacts++;
+      if (c[i] > deep) deep = c[i];
+      comp[i] = c[i];
+    }
+    this._fresh = false;
+
+    const om0 = [om[0], om[1], om[2], om[3]];   // снимок: обход по порядку не должен давать перекос влево-вправо
+    for (let i = 0; i < 4; i++) {
+      const fz = fzNew[i];
+      this._fz[i] = fz;
+      const front = i < 2;
+      // привод и тормоз этого колеса
+      let driveT = axleT * (front ? CAR.frontTorque : 1 - CAR.frontTorque) / 2;
+      if (hand && !front) driveT = 0;
+      // противобуксовочная: душит, но не до нуля
+      const kPrev = this._kap[i] * Math.sign(ratio);
+      if (kPrev > CAR.tcSlip && driveT * ratio > 0) driveT *= clamp(1 - (kPrev - CAR.tcSlip) / 0.22, CAR.tcMin, 1);
+      // вязкая блокировка: колесо, убежавшее от соседа по оси, подтормаживается
+      driveT += CAR.diffLock * (om0[i ^ 1] - om0[i]);
+      let brakeTq = brake * CAR.brakeTorque * (front ? CAR.brakeFront : 1 - CAR.brakeFront) / 2;
+      const inertia = iDrive;
+
+      if (fz <= 0) {
+        // колесо в воздухе: крутится свободно
+        this._kap[i] = 0; this.slip[i] = 0; this._anchor[i] = null;
+        if (hand && !front) brakeTq += CAR.handbrakeTorque;
+        om[i] = this._spin(om[i], driveT, brakeTq, 0, 0, inertia, h);
+        continue;
+      }
+      // точка контакта и её скорость
+      const px = bx[i] + uX * c[i], py = by[i] + uY * c[i], pz = bz[i] + uZ * c[i];
+      const rx = px - p[0], ry = py - p[1], rz = pz - p[2];
+      const vx = v[0] + w[1] * rz - w[2] * ry;
+      const vy = v[1] + w[2] * rx - w[0] * rz;
+      const vz = v[2] + w[0] * ry - w[1] * rx;
+      // оси колеса в плоскости дороги
+      let hx = front ? fX * cs + lX * sn : fX, hy = front ? fY * cs + lY * sn : fY, hz = front ? fZ * cs + lZ * sn : fZ;
+      const hn = hx * nX + hy * nY + hz * nZ;
+      hx -= nX * hn; hy -= nY * hn; hz -= nZ * hn;
+      const hl = Math.hypot(hx, hy, hz) || 1; hx /= hl; hy /= hl; hz /= hl;
+      const sx = nY * hz - nZ * hy, sy = nZ * hx - nX * hz, sz = nX * hy - nY * hx;   // влево от колеса
+      const vl = vx * hx + vy * hy + vz * hz;      // вдоль колеса
+      const vt = vx * sx + vy * sy + vz * sz;      // поперёк
+      const grip = (front ? 1 : CAR.rearGrip) * clamp(1 - CAR.loadSens * (fz / this._w0[i] - 1), 0.72, 1.12);
+      const muX = CAR.muLong * grip, muY = CAR.muLat * grip;
+
+      let fLong, fLat;
+      if (hold) {
+        // ЯКОРЬ. Шина стоит на месте и держит кузов как пружина — в пределах
+        // сцепления. Сверх него якорь ползёт: это обычное трение скольжения.
+        let an = this._anchor[i];
+        if (!an) an = this._anchor[i] = [px, pz];
+        const dx = px - an[0], dz = pz - an[1];
+        let fl2 = -HOLD_K * (dx * hx + dz * hz) - HOLD_C * vl;
+        let ft2 = -HOLD_K * (dx * sx + dz * sz) - HOLD_C * vt;
+        const cap = muY * fz, mag = Math.hypot(fl2, ft2);
+        if (mag > cap) {
+          fl2 *= cap / mag; ft2 *= cap / mag;
+          an[0] += dx * 0.2; an[1] += dz * 0.2;
+        }
+        fLong = fl2; fLat = ft2;
+        om[i] = 0; this._kap[i] = 0; this.slip[i] = 0;
+      } else {
+        this._anchor[i] = null;
+        // АБС: момент не выше того, что шина способна передать, и сброс, если
+        // колесо всё-таки пошло в блокировку (торможение в повороте)
+        if (brakeTq > 0 && Math.abs(vl) > 2) {
+          brakeTq = Math.min(brakeTq, CAR.wheelRadius * muX * fz * CAR.absEff);
+          const k = this._kap[i] * Math.sign(vl);
+          if (k < -CAR.slipPeak * 1.3) brakeTq *= clamp(1 + (k + CAR.slipPeak * 1.3) / 0.08, 0.2, 1);
+        }
+        if (hand && !front) brakeTq += CAR.handbrakeTorque;
+        const den = Math.max(Math.abs(vl), V_LOW);
+        const tanA = vt / den;
+        const sY = tanA / CAR.alphaPeak;
+        const C = CAR.curveC, B = this._B, R0 = CAR.wheelRadius;
+        // продольная сила как функция скорости вращения колеса
+        const force = (omega) => {
+          const kap = (omega * R0 - vl) / den;
+          const sX = kap / CAR.slipPeak;
+          const s = Math.hypot(sX, sY);
+          if (s < 1e-6) return [0, 0, kap, 0];
+          const g = tyreCurve(s, C, B) / s;
+          return [muX * fz * g * sX, -muY * fz * g * sY, kap, s];
+        };
+        const f0 = force(om[i]);
+        const eps = 0.01 * den / R0;
+        const f1 = force(om[i] + eps);
+        const D = Math.max(0, (f1[0] - f0[0]) / eps);
+        // качение сопротивляется вращению
+        const roll = -CAR.rolling * fz * R0 * Math.tanh(om[i] * 2);
+        om[i] = this._spin(om[i], driveT + roll, brakeTq, f0[0] * R0, D * R0, inertia, h);
+        const f = force(om[i]);
+        fLong = f[0]; fLat = f[1];
+        this._kap[i] = f[2]; this.slip[i] = f[3];
+      }
+      // сила на кузов: опора по нормали + шина в плоскости
+      const tx = nX * fz + hx * fLong + sx * fLat;
+      const ty = nY * fz + hy * fLong + sy * fLat;
+      const tz = nZ * fz + hz * fLong + sz * fLat;
+      Fx += tx; Fy += ty; Fz += tz;
+      Tx += ry * tz - rz * ty; Ty += rz * tx - rx * tz; Tz += rx * ty - ry * tx;
+      this.wheelAngle[i] += om[i] * h;
+    }
+    this.wheelSpin += (om[0] + om[1]) / 2 * h;
+    this.airborne = contacts === 0;
+
+    // ---- курсовая устойчивость. Эталон — рыскание, которого просит руль при
+    // нынешней скорости (с потолком по сцеплению). Крутимся быстрее и кузов уже
+    // идёт боком — подтормаживаем колёса одной стороны: это момент против
+    // вращения и немного потери хода. Ручник её отключает: он и есть просьба
+    // о заносе. Под полным газом она слабее — занос газом остаётся.
+    this.espActive = 0;
+    if (CAR.esp > 0 && !hand && vLong > 6 && contacts >= 3) {
+      const beta = Math.abs(Math.atan2(vLat, vLong));
+      const rMax = 0.95 * CAR.muLat * GRAV / vLong;
+      const rRef = clamp(vLong * Math.tan(this.steer) / (CAR.wheelbase * (1 + (vLong / 32) ** 2)), -rMax, rMax);
+      const err = w[1] - rRef;
+      // два признака: кузов уже идёт боком (угол увода) или рыскание заметно
+      // выше того, что шины способны удержать, — второй срабатывает раньше
+      const act = Math.max(clamp((beta - CAR.espAngle) / CAR.espAngle, 0, 1),
+                           clamp((Math.abs(w[1]) - rMax * 1.15) / (rMax * 0.5), 0, 1))
+        * CAR.esp * (1 - 0.45 * gas);
+      // только ГАСИМ лишнее вращение; докручивать машину в поворот — не её дело
+      if (act > 0 && err * w[1] > 0) {
+        const M = clamp(-CAR.espGain * err, -CAR.espMax, CAR.espMax) * act;
+        Tx += uX * M; Ty += uY * M; Tz += uZ * M;
+        const dragF = Math.abs(M) / CAR.track;            // цена момента: тормозная сила
+        Fx -= fX * dragF; Fy -= fY * dragF; Fz -= fZ * dragF;
+        this.espActive = act;
       }
     }
-    if (impact > 3) this.crash = Math.min(1, impact / 20);
+
+    // ---- в воздухе и на боку: кузов мягко возвращается колёсами вниз.
+    // Это не физика, а уважение к игроку: лежать на крыше неинтересно.
+    if (contacts < 2) {
+      const k = contacts === 0 ? 5200 : 2600;
+      Tx -= uZ * k; Tz += uX * k;                    // момент вдоль (up × Y) тянет «верх» кузова к вертикали
+      Tx -= w[0] * 900; Ty -= w[1] * 500; Tz -= w[2] * 900;
+    }
+
+    // ---- интегрирование: скорость, потом положение (полунеявный Эйлер)
+    const im = 1 / CAR.mass;
+    const axW = Fx * im, ayW = Fy * im, azW = Fz * im;
+    v[0] += axW * h; v[1] += ayW * h; v[2] += azW * h;
+    // момент → оси кузова, там тензор инерции диагонален
+    const tbx = Tx * lX + Ty * lY + Tz * lZ, tby = Tx * uX + Ty * uY + Tz * uZ, tbz = Tx * fX + Ty * fY + Tz * fZ;
+    let wbx = w[0] * lX + w[1] * lY + w[2] * lZ, wby = w[0] * uX + w[1] * uY + w[2] * uZ, wbz = w[0] * fX + w[1] * fY + w[2] * fZ;
+    const Ix = CAR.inertiaPitch, Iy = CAR.inertiaYaw, Iz = CAR.inertiaRoll;
+    const dwx = (tbx - wby * wbz * (Iz - Iy)) / Ix;
+    const dwy = (tby - wbz * wbx * (Ix - Iz)) / Iy;
+    const dwz = (tbz - wbx * wby * (Iy - Ix)) / Iz;
+    wbx += dwx * h; wby += dwy * h; wbz += dwz * h;
+    w[0] = lX * wbx + uX * wby + fX * wbz;
+    w[1] = lY * wbx + uY * wby + fY * wbz;
+    w[2] = lZ * wbx + uZ * wby + fZ * wbz;
+
+    // Глубокий провал под опору (подгрузился детальный рельеф, выезд на
+    // подпорную стенку): силой отбойника тут машину выстрелит в небо.
+    // Поднимаем положением, за конечное время, и гасим скорость внутрь.
+    if (deep > CAR.bump + 0.10) {
+      p[1] += Math.min(deep - CAR.bump - 0.10, 0.06);
+      const vn = v[0] * nX + v[1] * nY + v[2] * nZ;
+      if (vn < 0) { v[0] -= nX * vn; v[1] -= nY * vn; v[2] -= nZ * vn; }
+      if (vn < -5) this.crash = Math.max(this.crash, Math.min(1, -vn / 16));
+    }
+
+    p[0] += v[0] * h; p[1] += v[1] * h; p[2] += v[2] * h;
+    const q = this._q, hh = 0.5 * h;
+    const qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+    q[0] += hh * (w[0] * qw + w[1] * qz - w[2] * qy);
+    q[1] += hh * (w[1] * qw + w[2] * qx - w[0] * qz);
+    q[2] += hh * (w[2] * qw + w[0] * qy - w[1] * qx);
+    q[3] -= hh * (w[0] * qx + w[1] * qy + w[2] * qz);
+    const ql = Math.hypot(q[0], q[1], q[2], q[3]) || 1;
+    q[0] /= ql; q[1] /= ql; q[2] /= ql; q[3] /= ql;
+    this._matrix();
+
+    this._collide();
+
+    // ---- перевернулись и лежим: поставить на колёса на том же месте
+    if (R[4] < 0.25) this._flipT += h; else this._flipT = 0;
+    if (this._flipT > 2.2) {
+      const o = {}; o.d = [0, 0, 0, 0]; this._pose(o);
+      const acc = this._acc, yawOut = this._yawOut;
+      this.reset(o.x, o.z, o.yaw);
+      this._acc = acc; this._yawOut = yawOut + wrapPi(o.yaw - yawOut);
+      return;
+    }
+
+    // ---- предохранитель: число сломалось — ставим машину туда, где она была цела
+    if (!(isFinite(p[0] + p[1] + p[2] + v[0] + v[1] + v[2] + w[0] + w[1] + w[2] + q[0] + q[3]))) {
+      const g = this._good || { x: 0, z: 0, yaw: 0 };
+      const acc = this._acc;
+      this.reset(g.x, g.z, g.yaw);
+      this._acc = acc;
+      return;
+    }
+    if (contacts >= 3) (this._good ||= {}).x = p[0], this._good.z = p[2], this._good.yaw = Math.atan2(R[2], R[8]);
+
+    // ---- наружу
+    const R2 = this._R;
+    this.vLong = v[0] * R2[2] + v[1] * R2[5] + v[2] * R2[8];
+    this.vLat = v[0] * R2[0] + v[1] * R2[3] + v[2] * R2[6];
+    this.yawRate = w[1];
+    this.gLong = (axW * fX + ayW * fY + azW * fZ + GRAV * fY) / GRAV;
+    this.gLat = (axW * lX + ayW * lY + azW * lZ + GRAV * lY) / GRAV;
+    this.inWater = this.terrain.driveHeightAt(p[0], p[2]) < 0.35 && p[1] < 2.5;
   }
 
-  // Посадка по четырём колёсам: одна точка давала провал кузова и рывки крена.
-  _settle(fx, fz, lx, lz, dt) {
-    const t = this.terrain;
-    const WB = 1.32, TR = 0.86;
-    let sum = 0; const wh = [];
-    for (const [a, b] of [[WB, TR], [WB, -TR], [-WB, TR], [-WB, -TR]]) {
-      const wx = this.pos.x + fx * a + lx * b, wz = this.pos.z + fz * a + lz * b;
-      const hh = t.driveHeightAt(wx, wz) + ROAD_LIFT;
-      wh.push(hh); sum += hh;
+  // Вращение колеса за шаг. Сила шины жёстко зависит от скорости вращения —
+  // явный шаг на 120 Гц тут расходится, поэтому по шине шаг неявный
+  // (линеаризация: dF/dω = D). Тормоз — трение: он останавливает колесо, но
+  // назад его не раскручивает.
+  _spin(om, driveT, brakeT, tyreT, D, inertia, h) {
+    const den = inertia + h * D;
+    let o = om + h * (driveT - tyreT) / den;
+    if (brakeT > 0) {
+      const d = h * brakeT / den;
+      o = Math.abs(o) <= d ? 0 : o - Math.sign(o) * d;
     }
-    // Полёт. Раньше высота просто присваивалась по земле: сойдя с бордюра или
-    // с обрыва, машина мгновенно телепортировалась вниз, а на трамплине
-    // втыкалась в склон. Теперь есть вертикальная скорость: пока опора ниже
-    // кузова, машина падает по тяжести; коснувшись — садится и гасит удар.
-    const groundY = sum / 4;
-    // Порог был 6 см — МЕНЬШЕ, чем отставание кузова от земли на спуске:
-    // подвеска тянет тело к земле за конечное время, и на уклоне оно законно
-    // висит выше на десяток сантиметров. Машина считала себя взлетевшей,
-    // включала тяжесть и падала — отсюда 5.3% времени в воздухе и удары под
-    // 276 g на спуске Котовского. Сорок сантиметров: столько отставание не
-    // набирает, а настоящий трамплин набирает сразу.
-    if (this.pos.y > groundY + 0.40) {
-      this.airborne = true;
-      this.vy -= 9.81 * dt;
-      this.pos.y += this.vy * dt;
-      if (this.pos.y <= groundY) { this.pos.y = groundY; this.vy = 0; this.airborne = false; }
-    } else {
-      if (this.airborne && this.vy < -4) this.crash = Math.min(1, -this.vy / 16);
-      // КУЗОВ НЕ ПРИКЛЕЕН К ЗЕМЛЕ. Раньше здесь стояло pos.y = groundY, и любая
-      // ступенька профиля становилась телепортом: на спуске Котовского замер дал
-      // 202 g вертикального удара и 23 удара сильнее 3 g на 330 метрах.
-      // Тянемся к земле быстро, но за конечное время: ступенька в пять
-      // сантиметров разбирается за четыре кадра — глазу мгновенно, а удар
-      // размазывается. Отставание больше полуметра не копим: это уже не
-      // ступенька, а обрыв, и туда надо падать.
-      // Ни одного мгновенного скачка: даже большой разрыв закрывается за
-      // несколько кадров. Раньше отставание больше полуметра закрывалось
-      // ТЕЛЕПОРТОМ, и приземление после подскока давало удар в 280 g.
-      const dy = groundY - this.pos.y;
-      const step = Math.max(0.05, Math.abs(dy) * 0.30);
-      this.pos.y += Math.sign(dy) * Math.min(Math.abs(dy), step);
-      this.vy = 0; this.airborne = false;
-    }
-    // Знак: rotateX(+) в Three ОПУСКАЕТ нос (точка при z>0 уходит вниз на
-    // -z*sin). Раньше сюда клали угол как есть, и на подъёме машина клевала
-    // носом вниз, а на спуске задирала — колёса отрывались на любом уклоне.
-    const tp = -Math.atan2((wh[0] + wh[1]) / 2 - (wh[2] + wh[3]) / 2, WB * 2);
-    const tr = Math.atan2((wh[0] + wh[2]) / 2 - (wh[1] + wh[3]) / 2, TR * 2);
-    // лёгкий клевок и крен от собственных ускорений, но так, чтобы кузов
-    // не заваливало: ограничение в пару градусов
-    const dyn = clamp((this._ax || 0) * 0.0035, -0.030, 0.030);
-    const rollDyn = clamp(this.yawRate * this.vLong * 0.0022, -0.045, 0.045);
-    // Наклон должен догонять землю почти мгновенно: при медленном сглаживании
-    // кузов не успевал за переломом профиля, и колёса отрывались на треть метра.
-    this.pitch += (clamp(tp, -0.45, 0.45) + dyn - this.pitch) * Math.min(1, dt * 26);
-    this.roll += (clamp(tr, -0.35, 0.35) + rollDyn - this.roll) * Math.min(1, dt * 26);
+    return o;
+  }
 
-    // НЕЗАВИСИМАЯ ПОДВЕСКА. Кузов — жёсткая плита, а земля под четырьмя точками
-    // почти никогда не плоская: на седловине два колеса неизбежно повисают,
-    // сколько ни подбирай высоту и наклон. Поэтому колёса ходят вертикально
-    // сами: считаем, где оказалось колесо по плоскости кузова, и опускаем его
-    // до земли. Ход ограничен, иначе на бордюре колесо уедет внутрь арки.
-    const sp = Math.sin(this.pitch), sr = Math.sin(this.roll);
-    for (let i = 0; i < 4; i++) {
-      const a = i < 2 ? WB : -WB, b = (i % 2 === 0) ? TR : -TR;
-      const planeY = this.pos.y - sp * a + sr * b;
-      const want2 = wh[i] - planeY;                       // сколько не хватает до земли
-      const tgt = clamp(want2, -0.40, 0.40);   // ход подвески
-      this.wheelDrop[i] += (tgt - this.wheelDrop[i]) * Math.min(1, dt * 22);
+  // Автомат. Решение — по скорости МАШИНЫ, а не колёс: на пробуксовке колёса
+  // раскручены, и коробка перебирала бы передачи вверх на ровном месте.
+  _shift(h, vLong, gas, wantRev) {
+    this._shiftT -= h; this._shiftLock -= h;
+    if (wantRev !== (this.gear < 0)) {
+      if (Math.abs(vLong) < 1.5) { this.gear = wantRev ? -1 : 1; this._shiftLock = 0.2; }
+      return;
     }
+    if (this.gear < 0 || this._shiftLock > 0) return;
+    const k = Math.abs(vLong) / CAR.wheelRadius * CAR.final * 9.5493;   // об/мин на единицу передаточного
+    const g = CAR.gears, n = this.gear;
+    const rpm = k * g[n - 1];
+    // вверх: под газом — у отсечки, без газа передачу держим (торможение двигателем)
+    const up = gas < 0.2 ? 5900 : 4300 + 2450 * gas;
+    if (n < g.length && rpm > up) {
+      this.gear = n + 1; this._shiftT = CAR.shiftTime; this._shiftLock = 0.32;
+      return;
+    }
+    // вниз: кикдаун сразу на несколько ступеней, накатом — по одной
+    const down = gas > 0.8 ? 5500 : 2500;
+    let m = n;
+    while (m > 1 && k * g[m - 2] < down) m--;
+    if (m < n) {
+      this.gear = gas > 0.8 ? m : n - 1; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = 0.32;
+    }
+  }
+
+  // Столкновения со стенами: три круга вдоль кузова. Удар — импульсом в точке
+  // касания: гасится составляющая по нормали, вдоль стены машина скользит,
+  // а удар в угол разворачивает кузов.
+  _collide() {
+    if (!this.collider) return;
+    const R = this._R, p = this._p, v = this._v, w = this._w;
+    const fl = Math.hypot(R[2], R[8]) || 1, fx = R[2] / fl, fz = R[8] / fl;
+    const probe = this._tmp;
+    let impact = 0;
+    for (const s of [1.55, 0, -1.55]) {
+      const rx = fx * (s - this._cgZ), rz = fz * (s - this._cgZ);
+      probe.set(p[0] + rx, 0, p[2] + rz);
+      const hit = this.collider.resolve(probe, 0.98);
+      if (!hit) continue;
+      p[0] = probe.x - rx; p[2] = probe.z - rz;
+      const vx = v[0] + w[1] * rz, vz = v[2] - w[1] * rx;
+      const vn = vx * hit.nx + vz * hit.nz;
+      if (vn >= 0) continue;
+      impact = Math.max(impact, -vn);
+      const rn = rz * hit.nx - rx * hit.nz;
+      const den = 1 / CAR.mass + rn * rn / CAR.inertiaYaw;
+      const j = -(1 + 0.18) * vn / den;
+      // трение о стену вдоль неё
+      const tx = -hit.nz, tz = hit.nx;
+      const vt = vx * tx + vz * tz, rt = rz * tx - rx * tz;
+      const jt = clamp(-vt / (1 / CAR.mass + rt * rt / CAR.inertiaYaw), -0.25 * j, 0.25 * j);
+      v[0] += (j * hit.nx + jt * tx) / CAR.mass; v[2] += (j * hit.nz + jt * tz) / CAR.mass;
+      w[1] = clamp(w[1] + (j * rn + jt * rt) / CAR.inertiaYaw, -3.2, 3.2);
+      this._hold = false;
+    }
+    if (impact > 3) this.crash = Math.max(this.crash, Math.min(1, impact / 20));
   }
 }
 
+// ------------------------------------------------------------------ модель
+// КОНТРАКТ МОДЕЛИ (его ждут main.js и физика):
+//   • начало координат группы — на дороге, под серединой колёсной базы;
+//   • +Z — вперёд, +Y — вверх, +X — влево; единицы — метры;
+//   • userData.wheels — четыре узла в порядке ПЛ, ПП, ЗЛ, ЗП, каждый стоит в
+//     центре своего колеса: (±CAR.track/2, CAR.wheelRadius, ±CAR.wheelbase/2).
+//     main.js каждый кадр ставит им высоту (ход подвески car.wheelDrop[i]),
+//     поворот руля вокруг Y (car.steerVis) и прокрутку вокруг X (car.wheelSpin;
+//     по каждому колесу отдельно есть car.wheelAngle[i]).
+//
+// Внешняя модель (E63 из GLB) подставляется через loadCarModel() ниже; другую
+// модель — так же: кузов — любой Object3D,
+// выставленный по контракту выше; колёса — четыре Object3D с осью вращения
+// вдоль X и центром в нуле. В main.js достаточно заменить createCarMesh() на
+// mountCarModel(body, [fl, fr, rl, rr]). Если у модели другие база, колея или
+// радиус колеса — править CAR.wheelbase / track / wheelRadius: по ним же
+// считается физика, и колёса встанут туда, где они касаются дороги.
+export function mountCarModel(body, wheels) {
+  const g = new THREE.Group();
+  g.add(body);
+  const hw = CAR.track / 2, hb = CAR.wheelbase / 2;
+  const at = [[hw, hb], [-hw, hb], [hw, -hb], [-hw, -hb]];
+  g.userData.wheels = at.map(([x, z], i) => {
+    const node = new THREE.Group();
+    node.add(wheels[i]);
+    node.position.set(x, CAR.wheelRadius, z);
+    g.add(node);
+    return node;
+  });
+  return g;
+}
+
+// Настоящая модель: Mercedes-AMG E 63 S (W213), Mona x Supercars, CC BY 4.0
+// (models/e63/ATTRIBUTION.md; подпись в HUD обязательна). В файле узлы body и
+// wheel_FL/FR/RL/RR, метры, нос в +Z, ноль на земле под серединой базы; у
+// колёс начало в центре. Центры колёс в файле стоят не на одной высоте
+// (передние приподняты на 4 см — так была выставлена подвеска у автора), а
+// мы их ставим туда, где колесо касается дороги, — по CAR.
+// Лак без отражений. У сцены нет карты окружения, и лакированный кузов под
+// одним солнцем выходит матово-бурым — так красят пластилин, а не машину.
+// Даём отражения только машине: студийное окружение, свёрнутое в PMREM один
+// раз. Городу его не даём — у домов своё освещение, и оно подобрано.
+let carEnv = null;
+function envFor(renderer) {
+  if (!carEnv && renderer) {
+    const pm = new THREE.PMREMGenerator(renderer);
+    carEnv = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+    pm.dispose();
+  }
+  return carEnv;
+}
+
+export function loadCarModel(url = '../data/models/e63.glb', renderer = null) {
+  const v = document.querySelector('meta[name="build"]')?.content || '';
+  return new GLTFLoader().loadAsync(url + (v ? '?v=' + v : '')).then(g => {
+    const root = g.scene;
+    const wheels = ['wheel_FL', 'wheel_FR', 'wheel_RL', 'wheel_RR'].map(n => root.getObjectByName(n));
+    const body = root.getObjectByName('body');
+    if (!body || wheels.some(w => !w)) throw new Error('в e63.glb нет узлов body / wheel_*');
+    for (const w of wheels) { w.removeFromParent(); w.position.set(0, 0, 0); }
+    body.removeFromParent();
+    const car = mountCarModel(body, wheels);
+    const env = envFor(renderer);
+    car.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = true;
+      const ms = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of ms) {
+        if (!m.isMeshStandardMaterial) continue;
+        if (env) { m.envMap = env; m.envMapIntensity = 0.9; }
+        // кузов, двери и бамперы в файле — матовые (шероховатость 0.5–1):
+        // лаку нужна гладкость, иначе отражения размазываются в серость
+        if (/chassis|door|bump|hood|trunk/i.test(m.name)) { m.roughness = 0.22; m.metalness = 0.35; }
+      }
+    });
+    return car;
+  });
+}
+
+// Поза модели по состоянию машины: кузов — по крену и клевку, колёса — ход
+// подвески, руль у передних, прокрутка у каждого своя (под ручником задние
+// стоят). Годится и для модели из примитивов, и для GLB.
+export function placeCarMesh(mesh, car) {
+  mesh.position.copy(car.pos);
+  mesh.rotation.set(0, 0, 0);
+  mesh.rotateY(car.yaw);
+  mesh.rotateX(car.pitch);
+  mesh.rotateZ(car.roll);
+  const ws = mesh.userData.wheels;
+  if (!ws) return;
+  for (let i = 0; i < ws.length && i < 4; i++) {
+    ws[i].position.y = CAR.wheelRadius + car.wheelDrop[i];
+    ws[i].rotation.set(0, i < 2 ? car.steerVis : 0, 0);
+    ws[i].rotateX(car.wheelAngle[i]);
+  }
+}
+
+// Модель из примитивов — запасная, пока грузится GLB.
 export function createCarMesh() {
   // Кузов седана в пропорциях W213: длина 4.99, ширина 1.91, высота 1.46,
   // колёсная база 2.94, колея 1.62. Коробками такой силуэт не собрать —
@@ -408,8 +1071,10 @@ export function createCarMesh() {
 
   // ---- колёса: покрышка, обод и пятиспицевый диск
   const wheels = [];
-  const R = 0.355, W = 0.275;
-  for (const [x, z] of [[0.81, 1.47], [-0.81, 1.47], [0.81, -1.47], [-0.81, -1.47]]) {
+  // места колёс — из тех же параметров, по которым считает физика
+  const R = CAR.wheelRadius, W = 0.275;
+  const hw = CAR.track / 2, hb = CAR.wheelbase / 2;
+  for (const [x, z] of [[hw, hb], [-hw, hb], [hw, -hb], [-hw, -hb]]) {
     const w = new THREE.Group();
     const tyre = new THREE.CylinderGeometry(R, R, W, 18);
     tyre.rotateZ(Math.PI / 2);
