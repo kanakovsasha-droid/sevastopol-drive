@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=551c1705';
+import { PolyGrid } from './worldgen.js?v=4fd612b8';
 
 // Оборудование детских площадок и машины на парковках. Места берутся из OSM
 // (data/areas.json -> world.areas): качели и горки ставим только там, где в
@@ -312,9 +312,9 @@ export function buildYards(world, terrain) {
   };
 
   const swings = [], slides = [], boxes = [], rides = [];
-  const carsBy = PAINTS.map(() => []);
+  const cars = [];
 
-  for (const a of world.areas || []) {
+  for (const a of world.__areasDraw || world.areas || []) {
     // Рамку берём ТУ ЖЕ, что посчитал buildAreas для разметки. Своя рамка на
     // почти квадратном контуре выбирала другую сторону, и машины вставали
     // поперёк мест.
@@ -345,39 +345,15 @@ export function buildYards(world, terrain) {
     }
 
     if (a.k === 'parking') {
-      // Ряды те же, что рисует шейдер: полоса 5.3 м, проезд 6 м, место 2.5 м.
-      // Занимаем примерно каждое третье место — пустая парковка выглядит мёртво.
-      // Ряды: шейдер кладёт места в полосах v 0..5.3 и 10.6..15.9 при периоде
-      // 16.6. Центры этих полос — 2.65 и 13.25. Я брал v + 7.95, и весь второй
-      // ряд (461 машина) вставал на кромку и наполовину торчал в проезд.
-      for (let v = 2.65; v < f.L; v += 16.6) {
-        for (const vv of [v, v + 10.6]) {
-          if (vv > f.L - 1.5) continue;
-          // Штрих между местами шейдер рисует при fract(u/2.5) == 0.5, то есть
-          // на u = 1.25 + 2.5k. Я ставил машины ровно туда же — 1102 из 1172
-          // стояли центром НА разделительной линии, занимая по половине двух
-          // соседних мест. Центр места — на 2.5k.
-          for (let u = 2.5; u < f.W; u += 2.5) {
-            if (rand() > 0.42) continue;
-            const [x, z] = f.at(u, vv);
-            // Треугольник полотна выбрасывается, если ХОТЬ ОДНА из семи проб
-            // попала на дорогу, а машина проверяла только свой центр — и 158
-            // машин зависали на 32 см над голой землёй в дырах полотна.
-            // Проверяем те же семь точек вокруг машины.
-            if (!inPoly(x, z, a.poly)) continue;
-            let hole = false;
-            for (const [ox2, oz2] of [[0, 0], [-1.2, 0], [1.2, 0], [0, -2.4], [0, 2.4], [-1.2, -2.4], [1.2, 2.4]]) {
-              const qx = x + f.ux * ox2 - f.uz * oz2, qz = z + f.uz * ox2 + f.ux * oz2;
-              if (onAsphalt(qx, qz) || !inPoly(qx, qz, a.poly)) { hole = true; break; }
-            }
-            if (hole) continue;
-            const c = (Math.floor(u * 7 + vv * 3) >>> 0) % PAINTS.length;
-            // Машина стоит НОСОМ вдоль места, то есть поперёк ряда: длина
-            // места 5.3 м идёт по оси v, а ширина 2.5 м по u. Раньше кузов
-            // разворачивался вдоль u и машины лежали поперёк разметки.
-            carsBy[c].push({ x, z, a: ang + Math.PI / 2 + (vv > v ? Math.PI : 0) });
-          }
-        }
+      // Места уже разложены buildAreas (web/js/parking.js) — по ним же
+      // нарисована разметка. Занимаем примерно три места из пяти: пустая
+      // парковка выглядит мёртвой, забитая — свалкой.
+      for (const st of a.__stalls || []) {
+        const h = Math.abs(Math.sin(st.x * 12.9898 + st.z * 78.233) * 43758.5453) % 1;
+        if (h > 0.6) continue;
+        const nose = (h * 7.3) % 1 < 0.75 ? 1 : -1;     // чаще заезжают носом
+        cars.push({ x: st.x, z: st.z, fx: st.nx * nose, fz: st.nz * nose, lift: a.__lift ?? 0.1,
+                    c: PAINTS[Math.floor(h * 97) % PAINTS.length] });
       }
     }
   }
@@ -386,23 +362,36 @@ export function buildYards(world, terrain) {
   place(slideGeo(), slides, 'горок');
   place(sandboxGeo(), boxes, 'песочниц');
   place(carouselGeo(), rides, 'каруселей');
-  let cars = 0;
-  carsBy.forEach((list, i) => {
-    if (!list.length) return;
-    cars += list.length;
-    const m = new THREE.InstancedMesh(carGeo(PAINTS[i]), mat(), list.length);
+  // Машины — ОДНИМ InstancedMesh с цветом на экземпляр: восемь сеток по
+  // цвету кузова стоили восемь вызовов отрисовки (и столько же в тени) на
+  // каждый квартал. Кузов в геометрии белый, цвет даёт instanceColor.
+  // Машина стоит по склону: крен и тангаж — по рельефу под колёсами.
+  if (cars.length) {
+    const m = new THREE.InstancedMesh(carGeo([1, 1, 1]), mat(), cars.length);
     m.castShadow = true;
-    const mx = new THREE.Matrix4(), q = new THREE.Quaternion(),
-          up = new THREE.Vector3(0, 1, 0), pv = new THREE.Vector3(), sv = new THREE.Vector3(1, 1, 1);
-    list.forEach((p, k) => {
-      pv.set(p.x, H(p.x, p.z) + 0.02, p.z);
-      q.setFromAxisAngle(up, p.a);
-      m.setMatrixAt(k, mx.compose(pv, q, sv));
+    const mx = new THREE.Matrix4(), col = new THREE.Color();
+    const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), pv = new THREE.Vector3();
+    const G = (x, z) => terrain.gridHeightAt(x, z);
+    cars.forEach((p, k) => {
+      const rx = p.fz, rz = -p.fx;                  // вправо от носа
+      const hF = G(p.x + p.fx * 1.9, p.z + p.fz * 1.9), hB = G(p.x - p.fx * 1.9, p.z - p.fz * 1.9);
+      const hR = G(p.x + rx * 0.85, p.z + rz * 0.85), hL = G(p.x - rx * 0.85, p.z - rz * 0.85);
+      Z.set(p.fx, (hF - hB) / 3.8, p.fz).normalize();
+      X.set(-rx, (hL - hR) / 1.7, -rz).normalize();
+      Y.crossVectors(Z, X).normalize();
+      if (Y.y < 0) { X.negate(); Y.crossVectors(Z, X).normalize(); }
+      X.crossVectors(Y, Z);
+      pv.set(p.x, (hF + hB + hR + hL) / 4 + p.lift + 0.01, p.z);
+      mx.makeBasis(X, Y, Z).setPosition(pv);
+      m.setMatrixAt(k, mx);
+      m.setColorAt(k, col.setRGB(s2l(p.c[0]), s2l(p.c[1]), s2l(p.c[2])));
     });
     m.instanceMatrix.needsUpdate = true;
+    m.instanceColor.needsUpdate = true;
+    m.computeBoundingSphere();
     group.add(m);
-  });
-  stats['машин'] = cars;
+  }
+  stats['машин'] = cars.length;
   group.userData.stats = stats;
   return group;
 }

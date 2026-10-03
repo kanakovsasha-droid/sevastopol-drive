@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=551c1705';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=4fd612b8';
 
 // Здания, которые нельзя оставлять коробкой. Массу берём из контура OSM,
 // а сверху ставим то, что делает здание узнаваемым: колоннаду, портик,
@@ -482,6 +482,23 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       continue;
     }
 
+    // ---- готовая модель вместо контура: дом из OSM не рисуем вовсе ----
+    // (ox, oz) — точка мира, в которой у модели начало координат; ноль высоты
+    // модели — тротуар у этой точки. Поворота нет: модель строится сразу в
+    // осях мира.
+    if (d.style === 'model') {
+      const holder = new THREE.Group();
+      holder.name = 'model:' + d.file;
+      holder.position.set(d.ox, d.y ?? terrain.gridHeightAt(d.ox, d.oz), d.oz);
+      placeModel(holder, d.file);
+      group.add(holder);
+      // Модель снимает только те контуры, что перечислены в skip: у памятника
+      // своего контура нет, и «ближайший дом» рядом с ним — чужой.
+      if (d.skip) world.buildings.forEach((bb, i) => { if (d.skip.includes(bb.id)) skip.add(i); });
+      stats.push({ name: d.name, ok: true, stil: 'модель ' + d.file });
+      continue;
+    }
+
     // ближайший контур к заданной точке
     let bi = -1, bd = Infinity;
     world.buildings.forEach((b, i) => {
@@ -498,22 +515,6 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
     const box = obb(b.poly);
     if (!box) continue;
 
-    // ---- готовая модель вместо контура: дом из OSM не рисуем вовсе ----
-    // (ox, oz) — точка мира, в которой у модели начало координат; ноль высоты
-    // модели — тротуар у этой точки. Поворота нет: модель строится сразу в
-    // осях мира.
-    if (d.style === 'model') {
-      const holder = new THREE.Group();
-      holder.name = 'model:' + d.file;
-      holder.position.set(d.ox, d.y ?? terrain.gridHeightAt(d.ox, d.oz), d.oz);
-      placeModel(holder, d.file);
-      group.add(holder);
-      skip.add(bi);
-      // модель может заменять несколько контуров: пристройки, перемычки двора
-      if (d.skip) world.buildings.forEach((bb, i) => { if (d.skip.includes(bb.id)) skip.add(i); });
-      stats.push({ name: d.name, ok: true, kontur: bi, stil: 'модель ' + d.file });
-      continue;
-    }
 
     let gmin = Infinity, gmax = -Infinity;
     for (let i = 0; i < b.poly.length / 2; i++) {

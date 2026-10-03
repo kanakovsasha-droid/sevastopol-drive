@@ -1,21 +1,22 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=551c1705';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=551c1705';
-import { buildStreetProps } from './props.js?v=551c1705';
-import { updateFlora, floraStats, warmFlora } from './flora.js?v=551c1705';
-import { buildYards, buildStructures } from './yards.js?v=551c1705';
-import { buildFurniture } from './furniture.js?v=551c1705';
-import { buildLandmarks, setModelWarm } from './landmarks.js?v=551c1705';
-import { buildSigns } from './signs.js?v=551c1705';
-import { buildCemeteries } from './cemetery.js?v=551c1705';
-import { audit } from './audit.js?v=551c1705';
-import { buildMap, drawFull, mapUnproject } from './minimap.js?v=551c1705';
-import { Hud } from './hud.js?v=551c1705';
-import { ChunkManager } from './chunks.js?v=551c1705';
-import { Collider, RoadIndex } from './collision.js?v=551c1705';
-import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=551c1705';
-import { CarFX } from './carfx.js?v=551c1705';
-import { precompile } from './warm.js?v=551c1705';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=4fd612b8';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=4fd612b8';
+import { buildStreetProps } from './props.js?v=4fd612b8';
+import { updateFlora, floraStats, warmFlora } from './flora.js?v=4fd612b8';
+import { buildYards, buildStructures } from './yards.js?v=4fd612b8';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=4fd612b8';
+import { buildFurniture } from './furniture.js?v=4fd612b8';
+import { buildLandmarks, setModelWarm } from './landmarks.js?v=4fd612b8';
+import { buildSigns } from './signs.js?v=4fd612b8';
+import { buildCemeteries } from './cemetery.js?v=4fd612b8';
+import { audit } from './audit.js?v=4fd612b8';
+import { buildMap, drawFull, mapUnproject } from './minimap.js?v=4fd612b8';
+import { Hud } from './hud.js?v=4fd612b8';
+import { ChunkManager } from './chunks.js?v=4fd612b8';
+import { Collider, RoadIndex } from './collision.js?v=4fd612b8';
+import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=4fd612b8';
+import { CarFX } from './carfx.js?v=4fd612b8';
+import { precompile } from './warm.js?v=4fd612b8';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -147,6 +148,11 @@ async function boot() {
     await step('загружаю высоты…', 14);
     terrain = await loadTerrain(meta, V);
     lap('высоты');
+    // Поля и корты: рельеф под ними срезается до одной отметки ДО того, как
+    // по нему построится первый квадрат земли и первый профиль дороги.
+    await loadSport(V);
+    installFlats(terrain);
+    for (const id of sportSkipIds()) skipIds.add(id);
     // Для меню «куда поехать» и подписей на карте нужен ПОЛНЫЙ список — он
     // маленький (имя и точка), сами здания приезжают со своими чанками.
     landmarkDefs = far.landmarks
@@ -603,6 +609,7 @@ function* buildChunk(d, key) {
     // на это не рассчитаны и падают на первом же отсутствующем массиве.
     places: fill(d.places, ['paths', 'trees', 'features', 'fences', 'structures', 'trains']),
   };
+  w.allBuildings = d.allBuildings || w.buildings;   // парковкам и оградам: дома соседа на шве
   const furniture = fill(d.furniture, ['points', 'barriers']);
   const part = d.key || key;
   // ?prof=1 — разбивка сборки по этапам: без неё непонятно, что именно
@@ -653,12 +660,17 @@ function* buildChunk(d, key) {
   g.add(buildStructures(w, terrain));
   lap('сооружения');
   yield; pt = performance.now();
+  at('спорт');
+  g.add(buildSport(w, terrain));
+  lap('спорт');
+  yield; pt = performance.now();
   at('кладбища');
   g.add(yield* buildCemeteries(w, terrain, d));
   lap('кладбища');
   yield; pt = performance.now();
 
-  const defs = d.landmarks || [];
+  // мачты «Чайки» ставит sport.js по спутнику (data/sport-hand.json)
+  const defs = (d.landmarks || []).filter(x => !landmarkHidden(x.name));
   at('памятные');
   const lm = buildLandmarks(w, terrain, defs, roads);
   g.add(lm);

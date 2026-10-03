@@ -28,12 +28,14 @@ const chunk = f => {
 
 for (const n of names) {
   const P = JSON.parse(readFileSync(`models/${n}/placement.json`, 'utf8'));
-  const b = byId.get(P.skip?.[0]);
-  if (!b) { console.error(n, ': контура', P.skip?.[0], 'нет в world.json'); process.exit(1); }
-  const [cx, cz] = centre(b);
+  // У памятников и малых форм контура в OSM нет — тогда центр берём из
+  // placement (x, z) или из начала модели.
+  const b = P.skip?.length ? byId.get(P.skip[0]) : null;
+  if (P.skip?.length && !b) { console.error(n, ': контура', P.skip[0], 'нет в world.json'); process.exit(1); }
+  const [cx, cz] = b ? centre(b) : [P.x ?? P.ox, P.z ?? P.oz];
   const def = {
     name: P.name, style: 'model', x: +cx.toFixed(1), z: +cz.toFixed(1),
-    file: P.file, ox: P.ox, oz: P.oz, skip: P.skip,
+    file: P.file, ox: P.ox, oz: P.oz, skip: P.skip || [],
     source: `модель models/${n}/build.py; что видно на фото и что сделано наугад — models/${n}/NOTES.md`,
     checked: new Date().toISOString().slice(0, 10),
   };
@@ -52,7 +54,7 @@ for (const n of names) {
     if (c.j.landmarks.length !== before || f === home) c.dirty = true;
   }
   // контуры, которые модель замещает, — пометить во всех квадратах, где лежит копия
-  const ids = new Set(P.skip);
+  const ids = new Set(P.skip || []);
   for (const f of chunkFiles) {
     const c = chunk(f);
     for (const bb of c.j.buildings || []) if (ids.has(bb.id) && !bb.hide) { bb.hide = 1; c.dirty = true; }
