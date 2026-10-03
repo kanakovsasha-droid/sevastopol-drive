@@ -12,6 +12,7 @@ import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=6ce88
 import { ChunkManager } from './chunks.js?v=6ce88c24';
 import { Collider, RoadIndex } from './collision.js?v=6ce88c24';
 import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=6ce88c24';
+import { CarFX } from './carfx.js?v=6ce88c24';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -72,7 +73,7 @@ const FOG = HORIZON.clone().lerp(HAZE, 0.45);
 
 let renderer, scene, camera, sun, sky;
 let water = null;
-let terrain, far = null, landmarkDefs = [], collider, roads, carMesh, car;
+let terrain, far = null, landmarkDefs = [], collider, roads, carMesh, car, carFx;
 let cityMap = null, miniCtx = null, mapCtx = null, mapOpen = false, miniOn = true;
 let mapZoom = 1;                               // 1 — весь мир, больше — вокруг игрока
 // --- потоковая загрузка --------------------------------------------------
@@ -189,6 +190,9 @@ async function boot() {
       .catch(e => console.warn('модель машины не загрузилась, остаётся коробочная:', e.message));
     car.reset(SPAWN.x, SPAWN.z, 0);
     walk.x = SPAWN.x; walk.z = SPAWN.z;
+    // коробка и привод с клавиатуры, звук, дым — всё в carfx.js
+    carFx = new CarFX({ scene, camera, car: () => car,
+      driving: () => mode === 'car' && !$('menu').classList.contains('on'), inside: () => cam.mode === 2 });
 
     chunks.onBuild = buildChunk;
     chunks.onDrop = dropChunk;
@@ -1351,6 +1355,9 @@ function loop(now) {
       throttle: menuOpen ? 0 : (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0),
       steer: menuOpen ? 0 : (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0),
       handbrake: !menuOpen && keys.has('Space'),
+      // педали порознь: газ с тормозом вместе на месте — бёрнаут
+      gas: !menuOpen && (keys.has('KeyW') || keys.has('ArrowUp')),
+      brake: !menuOpen && (keys.has('KeyS') || keys.has('ArrowDown')),
     });
   } else if (mode === 'fly') {
     if (!$('menu').classList.contains('on')) updateFly(dt);
@@ -1387,6 +1394,7 @@ function loop(now) {
 
   // кузов по крену и клевку, колёса — ход подвески, руль и прокрутка
   placeCarMesh(carMesh, car);
+  carFx.update(dt);
 
   // тень едет за игроком, иначе карты теней не хватит на 5 км
   const t = mode === 'car' ? car.pos
