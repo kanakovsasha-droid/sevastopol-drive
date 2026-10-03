@@ -1,5 +1,5 @@
-import { E63Sound } from './engine-audio.js?v=4fd612b8';
-import { TireSmoke } from './smoke.js?v=4fd612b8';
+import { E63Sound } from './engine-audio.js?v=68ffa255';
+import { TireSmoke } from './smoke.js?v=68ffa255';
 
 // Всё, что машина делает «вокруг» физики: коробка и привод с клавиатуры,
 // звук мотора и шин, дым из-под колёс.

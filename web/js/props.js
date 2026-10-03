@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=4fd612b8';
-import { plantFlora, crownRadius, ST } from './flora.js?v=4fd612b8';
+import { PolyGrid } from './worldgen.js?v=68ffa255';
+import { plantFlora, crownRadius, ST } from './flora.js?v=68ffa255';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,

@@ -1,13 +1,5 @@
 [
   {
-    "name": "Памятник адмиралу Нахимову",
-    "style": "monument",
-    "x": -5,
-    "z": 1,
-    "facing": 0,
-    "note": "Площадь Нахимова. Ступенчатый стилобат, гранитный пьедестал с бронзовыми барельефами, фигура в адмиральской шинели лицом к бухте (на север)."
-  },
-  {
     "name": "Кедр на площади Лазарева",
     "style": "cedar",
     "x": -421,
@@ -386,6 +378,91 @@
       "w91447927"
     ],
     "source": "модель models/biblio_tolstogo/build.py; что видно на фото и что сделано наугад — models/biblio_tolstogo/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник адмиралу Нахимову",
+    "style": "model",
+    "x": -5.8,
+    "z": 1.7,
+    "file": "nahimov_monument.glb",
+    "ox": -5.8,
+    "oz": 1.7,
+    "skip": [],
+    "source": "модель models/nahimov_monument/build.py; что видно на фото и что сделано наугад — models/nahimov_monument/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник затопленным кораблям",
+    "style": "model",
+    "x": -88,
+    "z": -193.8,
+    "file": "sunken_ships.glb",
+    "ox": -88,
+    "oz": -193.8,
+    "skip": [],
+    "source": "модель models/sunken_ships/build.py; что видно на фото и что сделано наугад — models/sunken_ships/NOTES.md",
+    "checked": "2026-10-03",
+    "y": 0
+  },
+  {
+    "name": "Мемориал героической обороны Севастополя 1941–1942",
+    "style": "model",
+    "x": -80.3,
+    "z": 49,
+    "file": "memorial_oborony.glb",
+    "ox": -74.89,
+    "oz": 45.45,
+    "skip": [],
+    "source": "модель models/memorial_oborony/build.py; что видно на фото и что сделано наугад — models/memorial_oborony/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Памятник А. И. Казарскому",
+    "style": "model",
+    "x": -101.6,
+    "z": 81.1,
+    "file": "kazarsky.glb",
+    "ox": -101.6,
+    "oz": 81.1,
+    "skip": [],
+    "source": "модель models/kazarsky/build.py; что видно на фото и что сделано наугад — models/kazarsky/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Мост влюблённых (Драконий мостик)",
+    "style": "model",
+    "x": -108.4,
+    "z": -128.8,
+    "file": "drakon_most.glb",
+    "ox": -108.4,
+    "oz": -128.8,
+    "skip": [],
+    "source": "модель models/drakon_most/build.py; что видно на фото и что сделано наугад — models/drakon_most/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Летняя эстрада «Ракушка»",
+    "style": "model",
+    "x": -56.8,
+    "z": -112.1,
+    "file": "rakushka.glb",
+    "ox": -58.15,
+    "oz": -114.7,
+    "skip": [],
+    "source": "модель models/rakushka/build.py; что видно на фото и что сделано наугад — models/rakushka/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Фонтан Приморского бульвара",
+    "style": "model",
+    "x": -120.5,
+    "z": -67.5,
+    "file": "fontan_bulvar.glb",
+    "ox": -120.45,
+    "oz": -67.55,
+    "skip": [],
+    "source": "модель models/fontan_bulvar/build.py; что видно на фото и что сделано наугад — models/fontan_bulvar/NOTES.md",
     "checked": "2026-10-03"
   }
 ]
