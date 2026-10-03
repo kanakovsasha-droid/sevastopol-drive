@@ -222,12 +222,27 @@ function hoopGeo() {
   return merge(p);
 }
 // Сиденье трибуны: чаша и спинка, ширина 0.45 м. Лицом в +z.
+// Сидений на трибуне — тысячи, поэтому только видимые грани: верх и торец
+// чаши, лицо и верх спинки — восемь треугольников вместо тридцати шести.
+// Сзади их закрывает следующий ряд и задняя стенка.
 function seatGeo() {
-  const p = [];
-  box(0.44, 0.06, 0.38, 0, 0.42, 0.02, [1, 1, 1], p);
-  box(0.44, 0.36, 0.05, 0, 0.62, -0.17, [1, 1, 1], p);
-  box(0.06, 0.40, 0.30, 0, 0.20, 0, [0.30, 0.30, 0.30], p);
-  return merge(p);
+  const w = 0.22;
+  const P = [], N = [], I = [];
+  const quad = (a, b, c, d, n) => {
+    const o = P.length / 3;
+    for (const v of [a, b, c, d]) { P.push(...v); N.push(...n); }
+    I.push(o, o + 1, o + 2, o, o + 2, o + 3);
+  };
+  quad([-w, 0.44, 0.21], [w, 0.44, 0.21], [w, 0.44, -0.17], [-w, 0.44, -0.17], [0, 1, 0]);      // чаша
+  quad([-w, 0.36, 0.21], [w, 0.36, 0.21], [w, 0.44, 0.21], [-w, 0.44, 0.21], [0, 0, 1]);       // её торец
+  quad([-w, 0.44, -0.15], [w, 0.44, -0.15], [w, 0.80, -0.19], [-w, 0.80, -0.19], [0, 0.1, 1]); // спинка
+  quad([-w, 0.80, -0.19], [w, 0.80, -0.19], [w, 0.80, -0.23], [-w, 0.80, -0.23], [0, 1, 0]);  // её верх
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(N.map((v, i) => v), 3));
+  g.setIndex(I);
+  g.computeVertexNormals();
+  return merge([{ geo: g, color: [1, 1, 1] }]);
 }
 
 // ---------------------------------------------------------------- сборка
@@ -321,8 +336,11 @@ export function buildSport(world, terrain) {
       }
       fence(a.poly, 3.0);
     } else if (s.as === 'basketball') {
-      const sc = Math.max(0.6, Math.min(1, (FL - 1) / 28));
-      for (const [x, dx, dz] of [[0.5 + 1.575 * sc - 0.2, lx, lz], [FL - 0.5 - 1.575 * sc + 0.2, -lx, -lz]]) {
+      // те же размеры, что у разметки в шейдере: площадка 28 × 15 по центру
+      // контура, ужатая, если контур меньше; кольцо в 1.575 от лицевой
+      const sc = Math.max(0.4, Math.min(1, (FL - 1) / 28, (FW - 1) / 15));
+      const end = FL / 2 - 14 * sc;
+      for (const [x, dx, dz] of [[end + 1.575 * sc - 0.2, lx, lz], [FL - end - 1.575 * sc + 0.2, -lx, -lz]]) {
         const [px, pz] = at(x, FW / 2);
         hoops.push({ x: px, z: pz, y: top(a, px, pz), a: ang(dx, dz), s: 1 });
       }

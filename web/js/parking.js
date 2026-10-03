@@ -120,7 +120,10 @@ export function roadSegIndex(roads, paths) {
         for (const s of map.get(i * 100003 + j) || []) out.add(s);
     return out;
   };
-  return { near, segs };
+  // то же для одной точки: место 2.5 × 5 м целиком лежит в своей клетке и
+  // соседних, а сегмент записан во все клетки, которые задевает с запасом
+  const at = (x, z) => map.get(Math.floor(x / CELL) * 100003 + Math.floor(z / CELL)) || [];
+  return { near, at, segs };
 }
 
 // a — площадка-парковка; ctx — { segs (roadSegIndex), buildings (PolyGrid),
@@ -135,7 +138,6 @@ export function planParking(a, ctx) {
     x0 = Math.min(x0, poly[i * 2]); x1 = Math.max(x1, poly[i * 2]);
     z0 = Math.min(z0, poly[i * 2 + 1]); z1 = Math.max(z1, poly[i * 2 + 1]);
   }
-  const near = ctx.segs.near(x0 - 8, z0 - 8, x1 + 8, z1 + 8);
   const trees = [];
   for (let i = 0; i < (ctx.trees || []).length; i += 2) {
     const tx = ctx.trees[i], tz = ctx.trees[i + 1];
@@ -160,7 +162,14 @@ export function planParking(a, ctx) {
     // целиком внутри контура и не вплотную к кромке
     for (const v of q) if (!inPoly(v[0], v[1], poly) || edgeD(v[0], v[1]) < 0.2) return false;
     // проезжая часть, тротуары, дорожки
-    for (const s of near) if (segRect(s.ax, s.az, s.bx, s.bz, q) < s.clear) return false;
+    // сегмент записан в клетки с запасом на свой просвет — хватает клеток углов
+    const seen = new Set();
+    for (const v of q)
+      for (const s of ctx.segs.at(v[0], v[1])) {
+        if (seen.has(s)) continue;
+        seen.add(s);
+        if (segRect(s.ax, s.az, s.bx, s.bz, q) < s.clear) return false;
+      }
     // дома: углы, середины сторон и центр
     if (ctx.buildings) {
       const pts = [...q, [cx, cz], [(q[0][0] + q[1][0]) / 2, (q[0][1] + q[1][1]) / 2],
