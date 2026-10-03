@@ -1355,6 +1355,24 @@ export function* buildRoads(world, terrain, chunk = 500) {
 
   // offA/offB — либо число (постоянная полуширина), либо массив на вершину:
   // проезжая часть ужимается там, где под неё лезет соседняя улица.
+  // ГДЕ АСФАЛЬТ УЖЕ ЛЁГ. Каждый треугольник полотна, фартука и подложки
+  // отмечаем в растре поля (клетка 1 м). В конце всё, что по полю — асфальт,
+  // а по этому растру не накрыто ничем, заливаем подложкой: какой бы ни была
+  // причина дыры (обрезка по приоритету, перекрученный пролёт), до земли
+  // сквозь перекрёсток больше не светит.
+  let asphCov = null;
+  const markTri = (ch, a, b, c) => {
+    if (!asphCov) return;
+    const P = ch.P, ox = FLD.ox, oz = FLD.oz, W = FLD.W;
+    const x1 = P[a * 3] - ox, z1 = P[a * 3 + 2] - oz, x2 = P[b * 3] - ox, z2 = P[b * 3 + 2] - oz;
+    const x3 = P[c * 3] - ox, z3 = P[c * 3 + 2] - oz;
+    const i0 = Math.max(0, Math.floor(Math.min(x1, x2, x3))), i1 = Math.min(W - 1, Math.ceil(Math.max(x1, x2, x3)));
+    const j0 = Math.max(0, Math.floor(Math.min(z1, z2, z3))), j1 = Math.min(FLD.H - 1, Math.ceil(Math.max(z1, z2, z3)));
+    if ((i1 - i0) * (j1 - j0) > 4000) return;           // вырожденный гигант — не наш случай
+    for (let j = j0; j <= j1; j++)
+      for (let i = i0; i <= i1; i++)
+        if (inTri(i + 0.5, j + 0.5, x1, z1, x2, z2, x3, z3)) asphCov[j * W + i] = 1;
+  };
   // jn — расстояние от вершины до пятна ближайшего настоящего перекрёстка:
   // по нему шейдер обрывает разметку ровной чертой поперёк улицы.
   const strip = (ch, pts, mt, offA, offB, lift, cls, uW, skipJ, skipFn, own = -1, lanes = 0, surf = 0, hFn = H, jn = null) => {
@@ -1444,6 +1462,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
       if (skipFn && skipFn(i)) continue;
       const a = start + i * 2, b = a + 1, c = a + 2, d = a + 3;
       ch.I.push(a, b, c, b, d, c);
+      if (cls <= 3) { markTri(ch, a, b, c); markTri(ch, b, d, c); }
     }
     ch.base += mt.n * 2;
   };
@@ -1478,7 +1497,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
 
   const SIDEWALK = 2.6, KERB_H = 0.17, ROAD_Y = 0.14;
   const drawn = new Set();
-  let zebras = 0;
+  let zebras = 0, holes = 0;
 
   // Единый растр покрытия: им же пользуются расстановка деревьев и аудит.
   yield;
@@ -1497,6 +1516,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
   const ctx = world.roads.ctx || null;
   const ALL = ctx ? ctx.all : world.roads;
   const FLD = ctx ? yield* roadFieldGen(ALL, ctx.x0, ctx.z0, ctx.x1, ctx.z1) : null;
+  if (FLD) asphCov = new Uint8Array(FLD.W * FLD.H);
   yield;
 
   // Осевые всех проезжих улиц в сетке: «какая улица под этой точкой и куда
@@ -2025,7 +2045,11 @@ export function* buildRoads(world, terrain, chunk = 500) {
     let jn = null;
     if (lanesR && r.c <= 2) {
       jn = new Float32Array(mtR.n);
-      for (let i = 0; i < mtR.n; i++) jn[i] = junctionDist(ext[i * 2], ext[i * 2 + 1]);
+      // На кольце разметка не обрывается у каждого съезда — иначе её там нет
+      // вовсе: съезды стоят через 20–40 м. Шейдеру метим кольцо добавкой
+      // 1000, и он рвёт только наружную краевую линию напротив съезда.
+      const rb = ring.has(r) ? 1000 : 0;
+      for (let i = 0; i < mtR.n; i++) jn[i] = rb + junctionDist(ext[i * 2], ext[i * 2 + 1]);
     }
     // Пешеходная дорожка декоративна: под ней и так либо асфальт улицы, либо
     // плитка тротуара. Проверять одну середину пролёта было мало — шестиметровая
@@ -2060,6 +2084,11 @@ export function* buildRoads(world, terrain, chunk = 500) {
       if (r.c > 3 || r.w < 4) return false;
       // от обрезанного досуха пролёта остаются только вырожденные треугольники
       if (cut && cut.offR[i] - cut.offL[i] < 0.25 && cut.offR[i + 1] - cut.offL[i + 1] < 0.25) return true;
+      // У полотна с приоритетом нахлёст уже срезан по вершинам, а выкидывать
+      // пролёт целиком по растру покрытия нельзя: растр говорит «тут чужая
+      // улица», но та улица сама могла быть ужата здесь кем-то третьим — и
+      // посреди перекрёстка оставалась треугольная дыра до земли.
+      if (lane && FLD) return false;
       const pts3 = [0.15, 0.5, 0.85].map(s2 => [
         ext[i * 2] + (ext[i * 2 + 2] - ext[i * 2]) * s2,
         ext[i * 2 + 1] + (ext[i * 2 + 3] - ext[i * 2 + 1]) * s2]);
@@ -2182,6 +2211,15 @@ export function* buildRoads(world, terrain, chunk = 500) {
         rot.push(mx, mz);
         sp = rot; n = sp.length / 2;
       }
+      // АСФАЛЬТОВЫЙ ФАРТУК. Полотно улицы — ломаная с вершинами через 6 м, а
+      // бордюр — гладкая линия поля. На изгибе хорда полотна отходила от
+      // бордюра, и между ними светила земля зубцами. Под всеми полотнами
+      // вдоль каждой кромки кладём полосу асфальта шириной 1.6 м внутрь:
+      // фактура мировая, и там, где она видна, шва нет.
+      {
+        const dp2 = densify(sp), mt2 = miters(dp2);
+        strip(bucket(dp2[0], dp2[1]), dp2, mt2, -1.6, 0, ROAD_Y - 0.03, 1, 3.2, false, null);
+      }
       // Чья это кромка: смотрим на полметра ВНУТРЬ асфальта от середины
       // стороны. Бордюр с тротуаром положены улице, а не дворовому проезду.
       const on = new Uint8Array(n - 1);
@@ -2206,7 +2244,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
         fillPoly(bucket(sp[0], sp[1]), sp.slice(0, sp.length - 2), ROAD_Y - 0.03, 1, ROAD_COLORS[1]);
         continue;
       }
-      if (chn.closed && area > 0 && area < 2200 && onLen > allLen * 0.7) {
+      if (chn.closed && area > 0 && area < 3500 && onLen > allLen * 0.7) {
         let bb = [1e9, 1e9, -1e9, -1e9];
         for (let i = 0; i < n; i++) {
           bb[0] = Math.min(bb[0], sp[i * 2]); bb[1] = Math.min(bb[1], sp[i * 2 + 1]);
@@ -2217,10 +2255,14 @@ export function* buildRoads(world, terrain, chunk = 500) {
           const mt = miters(dpts);
           const ch = bucket(dpts[0], dpts[1]);
           kerb(ch, dpts, mt, 0, ROAD_Y - 0.04, TOP, null, -1, false, true);
-          // Узкий островок мостим целиком; на широком — камень по кромке и газон.
-          const wide = area > 30 && 2 * area / per > 1.7;
-          const BAND = wide ? 0.32 : 0;
-          if (wide) strip(ch, dpts, mt, 0, BAND, TOP, 6, 0.3, false, null);
+          // Как в натуре: островок-разделитель на въезде (до 300 м²) мощён
+          // плиткой целиком, крупный — газон в каменной кромке, а центр
+          // кольца ещё и обходит светлая дорожка в пару метров.
+          const wide = area > 300 && 2 * area / per > 1.7;
+          const BAND = !wide ? 0 : area > 1000 ? 1.8 : 0.32;
+          // массивы смещений — чтобы шейдер получил метры от бордюра (камень по кромке)
+          if (BAND > 1) strip(ch, dpts, mt, new Float64Array(mt.n), new Float64Array(mt.n).fill(BAND), TOP, 5, SIDEWALK, false, null);
+          else if (wide) strip(ch, dpts, mt, 0, BAND, TOP, 6, 0.3, false, null);
           const inner = [];
           for (let i = 0; i < mt.n - 1; i++)
             inner.push(dpts[i * 2] + mt.NX[i] * mt.S[i] * BAND, dpts[i * 2 + 1] + mt.NZ[i] * mt.S[i] * BAND);
@@ -2260,6 +2302,11 @@ export function* buildRoads(world, terrain, chunk = 500) {
           while (w > 0.5 && (inBuilding(px + nx * w, pz + nz * w) || inBuilding(px + nx * w * 0.5, pz + nz * w * 0.5))) w -= 0.7;
           wd[q] = w > 0.5 ? w : 0;
         }
+        // Ширина ступеньками по 0.44 м давала пилу по внешнему краю тротуара.
+        // Сглаживаем, но не шире найденного: предел — чужая кромка или стена.
+        for (let pass = 0; pass < 2; pass++)
+          for (let q = 1; q < mt.n - 1; q++)
+            if (wd[q] > 0) wd[q] = Math.min(wd[q], (wd[q - 1] + 2 * wd[q] + wd[q + 1]) / 4 + 0.05);
         const ch = bucket(dpts[0], dpts[1]);
         strip(ch, dpts, mt, zero, wd, TOP, 5, SIDEWALK, false, q => wd[q] < 0.1 && wd[q + 1] < 0.1);
         kerb(ch, dpts, mt, 0, ROAD_Y - 0.04, TOP, null, -1, false, true);
@@ -2355,8 +2402,71 @@ export function* buildRoads(world, terrain, chunk = 500) {
       ch.R.push(0, 0, 6, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);
     }
     for (let k = 0; k < SEG; k++)
-      ch.I.push(start, start + 1 + (k + 1) % SEG, start + 1 + k);
+    { ch.I.push(start, start + 1 + (k + 1) % SEG, start + 1 + k);
+      markTri(ch, start, start + 1 + (k + 1) % SEG, start + 1 + k); }
     ch.base += SEG + 1;
+  }
+
+  // Заливка дыр (см. asphCov). Клетка — дыра, если все четыре её угла по
+  // полю на асфальте, а ни один треугольник её центр не накрыл. Подряд
+  // идущие дыры строки сливаем в одну полосу и раздуваем на полметра —
+  // под полотном это не видно, а щелей по краю не остаётся.
+  if (FLD) {
+    yield;
+    const { F, W, ox, oz } = FLD;
+    const i0 = ctx.x0 - ox, i1 = ctx.x1 - ox, j0 = ctx.z0 - oz, j1 = ctx.z1 - oz;
+    const col = ROAD_COLORS[1], lift = ROAD_Y - 0.035;
+    // Улицы, построенные соседним чанком, в этот растр не попали — их место
+    // дырой не считаем: смотрим, чья клетка по полю, и берём только свои.
+    const mine = new Set(world.roads);
+    const O = FLD.O;
+    const own = c => O[c] >= 0 && mine.has(ALL[O[c]]);
+    const hole = (i, j) => {
+      const c = j * W + i;
+      return !asphCov[c] && F[c] < -0.2 && F[c + 1] < -0.2 && F[c + W] < -0.2 && F[c + W + 1] < -0.2
+          && own(c) && own(c + 1) && own(c + W) && own(c + W + 1);
+    };
+    // Клетку с накрытым центром треугольник мог задеть только краем: вокруг
+    // найденной дыры прихватываем ещё по две клетки асфальта во все стороны.
+    const hm = new Uint8Array(W * FLD.H);
+    let any = false;
+    for (let j = j0; j < j1; j++)
+      for (let i = i0; i < i1; i++)
+        if (hole(i, j)) { hm[j * W + i] = 1; any = true; }
+    if (any) {
+      const seed = hm.slice();
+      for (let j = j0; j < j1; j++)
+        for (let i = i0; i < i1; i++) {
+          if (!seed[j * W + i]) continue;
+          for (let dj = -2; dj <= 2; dj++)
+            for (let di = -2; di <= 2; di++) {
+              const ii = i + di, jj = j + dj;
+              if (ii < i0 || jj < j0 || ii >= i1 || jj >= j1) continue;
+              const c = jj * W + ii;
+              if (F[c] < -0.05 && F[c + 1] < -0.05 && F[c + W] < -0.05 && F[c + W + 1] < -0.05) hm[c] = 1;
+            }
+        }
+    }
+    const isH = (i, j) => hm[j * W + i] === 1;
+    for (let j = j0; any && j < j1; j++) {
+      for (let i = i0; i < i1; i++) {
+        if (!isH(i, j)) continue;
+        let e = i;
+        while (e + 1 < i1 && e - i < 6 && isH(e + 1, j)) e++;
+        const xa = ox + i - 0.5, xb = ox + e + 1.5, za = oz + j - 0.5, zb = oz + j + 1.5;
+        const ch = bucket(xa, za), st = ch.base;
+        for (const [x, z] of [[xa, za], [xb, za], [xa, zb], [xb, zb]]) {
+          ch.P.push(x, H(x, z) + lift, z);
+          ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
+          ch.R.push(0, 0, 6, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);
+        }
+        ch.I.push(st, st + 2, st + 1, st + 1, st + 2, st + 3);
+        ch.base += 4;
+        holes++;
+        i = e;
+      }
+      if ((j & 127) === 127) yield;
+    }
   }
 
   // Порядок высот на асфальте:
@@ -2378,9 +2488,11 @@ export function* buildRoads(world, terrain, chunk = 500) {
     if (ns) {
       rd = ns.r; ux = ns.ux; uz = ns.uz; x0 = ns.qx; z0 = ns.qz; half = rd.w * 0.5;
       if (ring.has(rd)) continue;                      // на кольце зебр не бывает
-      // И на крутой дуге съезда тоже: меряем поворот оси на 24 м.
-      const h0 = headingAt(rd.pts, ns.k, ns.t, -12), h1 = headingAt(rd.pts, ns.k, ns.t, 12);
-      if (h0[0] * h1[0] + h0[1] * h1[1] < 0.866) continue;      // круче 30°
+      // И на крутой дуге съезда тоже.
+      // Меряем на ±6 м и до 40°: на 24 м и 30° выкидывались зебры на всех
+      // подходах к кольцу — подход к нему всегда дугой, а сама зебра на прямой.
+      const h0 = headingAt(rd.pts, ns.k, ns.t, -6), h1 = headingAt(rd.pts, ns.k, ns.t, 6);
+      if (h0[0] * h1[0] + h0[1] * h1[1] < 0.766) continue;      // круче 40°
     }
     const nx = -uz, nz = ux;                            // поперёк
     let eL = 0, eR = 0;
@@ -2443,12 +2555,78 @@ export function* buildRoads(world, terrain, chunk = 500) {
     }
   }
 
+  // «УСТУПИ ДОРОГУ» на въездах в кольцо: поперечная линия зубцами (1.13)
+  // там, где улица упирается в круговую проезжую часть. Ставим у самой
+  // кромки кольца, на полосе въезжающих.
+  if (FLD) {
+    const ringNear = (x, z) => {
+      const a = sgrid.get(Math.floor(x / SGC) * 100003 + Math.floor(z / SGC));
+      let best = 1e9, bw = 0;
+      if (a) for (let q = 0; q < a.length; q += 2) {
+        const r = ALL[a[q]];
+        if (!ring.has(r)) continue;
+        const p = r.pts, k = a[q + 1];
+        const ax = p[k * 2], az = p[k * 2 + 1], dx = p[k * 2 + 2] - ax, dz = p[k * 2 + 3] - az;
+        const L2 = dx * dx + dz * dz || 1;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+        const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+        if (d - r.w / 2 < best) { best = d - r.w / 2; bw = r.w; }
+      }
+      return best;
+    };
+    for (const r of ALL) {
+      if (r.c > 3 || r.w < 5 || r.pts.length < 4 || ring.has(r) || r.br || r.tn) continue;
+      const p = r.pts, n = p.length / 2;
+      for (const end of [n - 1, 0]) {
+        if (r.ow && end === 0) continue;                 // односторонняя въезжает концом
+        const ex = p[end * 2], ez = p[end * 2 + 1];
+        if (ex < ctx.x0 || ex >= ctx.x1 || ez < ctx.z0 || ez >= ctx.z1) continue;
+        if (ringNear(ex, ez) > 1.0) continue;
+        // идём от конца назад, пока не выйдем за кромку кольца на 0.9 м
+        const dir = end === 0 ? 1 : -1;
+        let px = ex, pz = ez, ux = 0, uz = 0, ok = false, run = 0;
+        for (let i = end; i + dir >= 0 && i + dir < n && run < 30; i += dir) {
+          const qx = p[(i + dir) * 2], qz = p[(i + dir) * 2 + 1];
+          const L = Math.hypot(qx - p[i * 2], qz - p[i * 2 + 1]);
+          if (L < 0.1) continue;
+          ux = (p[i * 2] - qx) / L; uz = (p[i * 2 + 1] - qz) / L;   // к кольцу
+          for (let t = 0; t <= L; t += 0.5) {
+            px = p[i * 2] - ux * t; pz = p[i * 2 + 1] - uz * t; run += 0.5;
+            if (ringNear(px, pz) > 0.9) { ok = true; break; }
+          }
+          if (ok) break;
+        }
+        if (!ok || !FLD.has(px, pz) || FLD.at(px, pz) > KERB_ISO) continue;
+        const nx = -uz, nz = ux, half = r.w / 2;
+        let eL = 0, eR = 0;
+        for (let t = 0.2; t <= half + 1e-6; t += 0.2) { if (FLD.at(px - nx * t, pz - nz * t) > KERB_ISO - 0.08) break; eL = t; }
+        for (let t = 0.2; t <= half + 1e-6; t += 0.2) { if (FLD.at(px + nx * t, pz + nz * t) > KERB_ISO - 0.08) break; eR = t; }
+        // правая сторона по ходу к кольцу — +n (см. стоп-линию)
+        const b0 = r.ow ? -eL : 0.15, b1 = eR;
+        if (b1 - b0 < 2) continue;
+        const ch = bucket(px, pz), col = ROAD_COLORS[1], st = ch.base, Wm = 2 * Math.max(-b0, b1);
+        const cs = [];
+        for (const a of [-0.3, 0.3]) for (const b of [b0, b1]) cs.push([px + ux * a + nx * b, pz + uz * a + nz * b, a, b]);
+        const lift2 = upNear(Math.min(...cs.map(c => c[0])), Math.min(...cs.map(c => c[1])),
+                             Math.max(...cs.map(c => c[0])), Math.max(...cs.map(c => c[1])));
+        for (const [x, z, a, b] of cs) {
+          ch.P.push(x, H(x, z) + ROAD_Y + 0.055 + lift2, z);
+          ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
+          ch.R.push(b / (Wm * 0.5), a, Wm, 0); ch.K.push(10); ch.O.push(-1); ch.S.push(0);
+        }
+        ch.I.push(st, st + 1, st + 2, st + 1, st + 3, st + 2);
+        ch.base += 4;
+      }
+    }
+  }
+
   yield;
   const group = new THREE.Group();
   group.name = 'roads';
   group.userData.drawn = drawn;      // какие улицы реально попали в геометрию
   group.userData.coverage = COV;     // тот же растр отдаём аудиту
   group.userData.zebras = zebras;    // и сколько зебр легло на асфальт
+  group.userData.holes = holes;      // сколько дыр в асфальте залито подложкой
   const mat = roadMaterial();
   let made = 0;
   for (const ch of chunks.values()) {
