@@ -4,7 +4,7 @@ import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildB
 import { buildStreetProps } from './props.js?v=6ce88c24';
 import { buildYards, buildStructures } from './yards.js?v=6ce88c24';
 import { buildFurniture } from './furniture.js?v=6ce88c24';
-import { buildLandmarks } from './landmarks.js?v=6ce88c24';
+import { buildLandmarks, setModelWarm } from './landmarks.js?v=6ce88c24';
 import { buildSigns } from './signs.js?v=6ce88c24';
 import { buildCemeteries } from './cemetery.js?v=6ce88c24';
 import { audit } from './audit.js?v=6ce88c24';
@@ -12,6 +12,8 @@ import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=6ce88
 import { ChunkManager } from './chunks.js?v=6ce88c24';
 import { Collider, RoadIndex } from './collision.js?v=6ce88c24';
 import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=6ce88c24';
+import { CarFX } from './carfx.js?v=6ce88c24';
+import { precompile } from './warm.js?v=6ce88c24';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -72,7 +74,7 @@ const FOG = HORIZON.clone().lerp(HAZE, 0.45);
 
 let renderer, scene, camera, sun, sky;
 let water = null;
-let terrain, far = null, landmarkDefs = [], collider, roads, carMesh, car;
+let terrain, far = null, landmarkDefs = [], collider, roads, carMesh, car, carFx;
 let cityMap = null, miniCtx = null, mapCtx = null, mapOpen = false, miniOn = true;
 let mapZoom = 1;                               // 1 — весь мир, больше — вокруг игрока
 // --- потоковая загрузка --------------------------------------------------
@@ -184,14 +186,25 @@ async function boot() {
     car = new Car(terrain, collider);
     carMesh = createCarMesh();
     scene.add(carMesh);
-    // настоящая модель приезжает позже, коробочная стоит до неё
-    loadCarModel(undefined, renderer).then(m => { scene.remove(carMesh); carMesh = m; scene.add(m); })
+    // настоящая модель приезжает позже, коробочная стоит до неё. Меняем их,
+    // только когда шейдеры модели собраны в фоне: у E63 их с десяток (лак с
+    // клиркоутом, фары, текстуры), и сборка прямо в кадре — полсекунды стоп-кадра.
+    loadCarModel(undefined, renderer).then(m => {
+      cheapGlass(m);
+      trimCarShadows(m);
+      return precompile(renderer, scene, camera, m, sun).then(() => m);
+    }).then(m => { scene.remove(carMesh); carMesh = m; scene.add(m); })
       .catch(e => console.warn('модель машины не загрузилась, остаётся коробочная:', e.message));
     car.reset(SPAWN.x, SPAWN.z, 0);
     walk.x = SPAWN.x; walk.z = SPAWN.z;
+    // коробка и привод с клавиатуры, звук, дым — всё в carfx.js
+    carFx = new CarFX({ scene, camera, car: () => car,
+      driving: () => mode === 'car' && !$('menu').classList.contains('on'), inside: () => cam.mode === 2 });
 
     chunks.onBuild = buildChunk;
     chunks.onDrop = dropChunk;
+    chunks.onBuilt = chunkBuilt;
+    setModelWarm(root => precompile(renderer, scene, camera, root, sun));
     chunks.canBuild = chunkTerrainReady;
     chunks.prof = chunkProf;
 
@@ -202,6 +215,10 @@ async function boot() {
     lap('первый квартал');
     respawn(SPAWN.x, SPAWN.z);
     walk.x = car.pos.x; walk.z = car.pos.z;
+
+    await step('собираю шейдеры…', 98);
+    await prewarm();
+    lap('шейдеры');
 
     await step('поехали', 100);
     buildMenu();
@@ -237,6 +254,7 @@ async function boot() {
     window.G.tileProf = tileProf;
     window.G.chunkProf = chunkProf;
     window.G.counts = counts;
+    window.G.loopProf = loopProf;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
     console.log(`до старта ${window.G.boot} мс, чанков в манифесте ${chunks.cells.size}`);
@@ -352,6 +370,9 @@ class TerrainTiles {
         if (r.value) {
           r.value.userData.cell = j.cell;
           scene.add(r.value);
+          // первый кадр — без отсечения: квадрат земли уезжает на GPU сразу,
+          // а не пачкой при первом взгляде в его сторону (см. revealSome)
+          if (r.value.frustumCulled) { r.value.frustumCulled = false; unculled.push(r.value); }
           this.mesh.set(j.key, r.value);
         }
         this.job = null;
@@ -587,9 +608,11 @@ function* buildChunk(d, key) {
   const g = new THREE.Group();
   g.name = 'чанк ' + part;
   g.userData.part = part;
+  // Квартал прячем, пока он не собран целиком и его шейдеры не готовы:
+  // показанный по частям, он собирал программы прямо в кадре (см. reveal).
+  // До тех пор на его месте стоит дальний силуэт.
+  g.visible = false;
   scene.add(g);
-  const fc = farCells.get(key);
-  if (fc) fc.visible = false;       // под детальным кварталом силуэт не нужен
   // Группу отдаём менеджеру СРАЗУ, первым же yield: если сборка развалится на
   // середине, он всё равно будет знать, что снимать со сцены и из индексов.
   yield g;
@@ -670,6 +693,99 @@ function* buildChunk(d, key) {
   if (prof) console.log('чанк ' + part + ': ' + prof.join(' · ') + ' мс');
 }
 
+// Показ готового квартала. Сначала шейдеры: precompile отдаёт их сборку в фон
+// (KHR_parallel_shader_compile), и квартал появляется, только когда всё готово,
+// — вместо 150–600 мс стоп-кадра на каждой новой программе. Показываем не
+// больше одного квартала за кадр: в кадре показа его геометрия уезжает в
+// видеопамять, и два-три сразу — снова рывок.
+const reveals = [];
+// Зовёт менеджер, когда квартал (или пачка сирот) собран — и при ошибке в
+// сборщике тоже: показываем то, что успело собраться.
+function chunkBuilt(key, groups) {
+  for (const g of groups) if (g.isObject3D && !g.visible) queueReveal(g, key);
+}
+function queueReveal(g, key) {
+  const r = { g, key, ready: false };
+  try {
+    precompile(renderer, scene, camera, g, sun).then(() => { r.ready = true; }, () => { r.ready = true; });
+  } catch (e) { console.warn('прогрев шейдеров:', e); r.ready = true; }
+  reveals.push(r);
+}
+// Выгрузка в видеопамять. Three отправляет геометрию на GPU лениво — в кадре,
+// где предмет впервые попал в поле зрения. Квартал целиком в кадр не попадает,
+// и его «невиданные» части выгружались потом пачкой: взлёт над городом или
+// разворот камеры — и полтысячи буферов в одном кадре (bufferData 200+ мс).
+// Поэтому квартал показываем порциями по UPLOAD_BYTES за кадр, и каждую
+// порцию один кадр рисуем БЕЗ отсечения по пирамиде видимости — её буферы
+// уезжают на GPU сразу, по кусочку, а не тогда, когда на них посмотрят.
+const UPLOAD_BYTES = 3 << 20;
+let staging = null;                              // квартал, который сейчас выгружается
+const unculled = [];                             // нарисованы целиком в прошлом кадре
+const bytesOf = o => {
+  const g = o.geometry;
+  let b = 0;
+  for (const k in g.attributes) b += g.attributes[k].array?.byteLength || 0;
+  if (g.index) b += g.index.array.byteLength;
+  if (o.isInstancedMesh) b += o.instanceMatrix.array.byteLength + (o.instanceColor ? o.instanceColor.array.byteLength : 0);
+  return b;
+};
+// Мелочь, которую дальше userData.far метров от камеры не рисуем (фонари,
+// кусты — props.js). Пересчёт раз в несколько кадров: за 8 кадров на 200 км/ч
+// камера проходит 7 м, порог в сотни метров этого не заметит.
+const farCull = [];
+let farCullTick = 0;
+const _sph = new THREE.Sphere();
+function cullFar() {
+  if (++farCullTick % 8) return;
+  const cp = camera.position;
+  for (let i = farCull.length - 1; i >= 0; i--) {
+    const c = farCull[i];
+    if (c.g.parent !== scene) { farCull[i] = farCull[farCull.length - 1]; farCull.pop(); continue; }
+    if (!c.s) {
+      const g = c.o.geometry;
+      if (c.o.isInstancedMesh && !c.o.boundingSphere) c.o.computeBoundingSphere();
+      const bs = c.o.isInstancedMesh ? c.o.boundingSphere : (g.boundingSphere || (g.computeBoundingSphere(), g.boundingSphere));
+      c.s = _sph.copy(bs).applyMatrix4(c.o.matrixWorld).clone();
+    }
+    c.o.visible = cp.distanceTo(c.s.center) - c.s.radius < c.o.userData.far;
+  }
+}
+
+function revealSome() {
+  for (const o of unculled) o.frustumCulled = true;
+  unculled.length = 0;
+  if (!staging) {
+    const i = reveals.findIndex(r => r.ready);
+    if (i < 0) return;
+    const r = reveals.splice(i, 1)[0];
+    if (r.g.parent !== scene) return;            // квартал успели выгрузить
+    // прячем видимые листья и открываем их порциями; ровно их и вернём
+    const list = [];
+    r.g.traverse(o => { if (o.geometry && o.visible) { o.visible = false; list.push(o); } });
+    r.g.visible = true;
+    staging = { ...r, list, i: 0 };
+  }
+  const st = staging;
+  if (st.g.parent !== scene) {                   // выгрузили на середине
+    for (; st.i < st.list.length; st.i++) st.list[st.i].visible = true;
+    staging = null;
+    return;
+  }
+  let bytes = 0;
+  while (st.i < st.list.length && bytes < UPLOAD_BYTES) {
+    const o = st.list[st.i++];
+    o.visible = true;
+    if (o.frustumCulled) { o.frustumCulled = false; unculled.push(o); }
+    bytes += bytesOf(o);
+  }
+  if (st.i >= st.list.length) {
+    staging = null;
+    st.g.traverse(o => { if (o.userData.far) farCull.push({ o, g: st.g, s: null }); });
+    const fc = farCells.get(st.key);
+    if (fc) fc.visible = false;                  // под детальным кварталом силуэт не нужен
+  }
+}
+
 // Выгрузка. Геометрию освобождаем обязательно — без dispose видеопамять
 // растёт с каждым проездом. Материалы каждый сборщик создаёт свои, на чанк,
 // поэтому их тоже освобождаем; общие (рельеф, вода, силуэт) сюда не попадают.
@@ -692,7 +808,8 @@ function drainJunk(ms = 2) {
       // Вывески магазинов и указатели — это CanvasTexture, и material.dispose()
       // их НЕ трогает: за десять проездов по городу набегает под сотню
       // неубираемых картинок в видеопамяти.
-      for (const k in m) { const v = m[k]; if (v && v.isTexture) v.dispose(); }
+      // общие на все кварталы (атлас знаков) не трогаем — их держат соседи
+      for (const k in m) { const v = m[k]; if (v && v.isTexture && !v.userData.shared) v.dispose(); }
       m.dispose();
     }
   }
@@ -700,14 +817,17 @@ function drainJunk(ms = 2) {
 }
 
 function dropChunk(g, key) {
+  const wasShown = g.visible;
   scene.remove(g);
   g.traverse(o => { if (o.geometry || o.material) junk.push(o); });
   const part = g.userData.part;
   roads.remove(part);
   collider.remove(part);
   if (deckParts.delete(part)) installDeck();
+  // Силуэт возвращаем, только если этот квартал его и прятал: пачка сирот
+  // хозяина выгружается вместе с ним, а недособранный квартал силуэт не трогал.
   const fc = farCells.get(key);
-  if (fc) fc.visible = true;
+  if (fc && wasShown) fc.visible = true;
 }
 
 // Мосты всех загруженных чанков одним полем: полотно ищем по всем частям и
@@ -737,6 +857,7 @@ async function warmup(x, z, timeout = 4000) {
   let tick = 0;
   while (performance.now() - t0 < timeout) {
     chunks.update(x, z);
+    revealSome();
     if (chunks.has(key)) break;                                  // под колёсами есть улица
     if (!chunks.cells.has(key) && !chunks.pending) break;         // здесь просто пусто
     if ((tick++ & 7) === 7) {
@@ -745,6 +866,67 @@ async function warmup(x, z, timeout = 4000) {
     } else await new Promise(r => setTimeout(r, 0));
   }
   chunks.radius = full;
+}
+
+// Шейдеры всего, что уже стоит на сцене, — до первого кадра, за экраном
+// загрузки. Без этого первый кадр собирал два-три десятка программ подряд, а
+// квартал, приехавший следом, — ещё по одной. Порядок важен: сперва основной
+// проход в фоне (параллельно), потом один кадр — он создаёт карту теней, —
+// и уже по ней варианты глубины для теней. Ждём не дольше limit: пустая
+// земля лучше вечного экрана загрузки.
+async function prewarm(limit = 6000) {
+  const t0 = performance.now();
+  const until = p => Promise.race([p, new Promise(r => setTimeout(r, Math.max(0, limit - (performance.now() - t0))))]);
+  updateCamera(1 / 60);
+  sun.target.position.copy(camera.position);
+  sun.position.copy(camera.position).addScaledVector(SUN, 420);
+  // кварталы, собранные за загрузку, — показать (их шейдеры уже в работе)
+  while ((reveals.length || staging) && performance.now() - t0 < limit) {
+    revealSome();
+    if (reveals.length) await new Promise(r => setTimeout(r, 16));
+  }
+  await until(precompile(renderer, scene, camera, scene, null));
+  renderer.render(scene, camera);
+  await until(precompile(renderer, scene, camera, scene, sun));
+}
+
+// В E63 92 сетки, и в карту теней шла каждая: значки, зеркала, салон, стёкла
+// — ещё 92 вызова отрисовки за кадр ради тени, которую целиком даёт кузов.
+// Тень оставляем колёсам и непрозрачным сеткам больше 1.2 м по диагонали
+// (панели кузова, бамперы, капот, днище) — силуэт тени тот же.
+function trimCarShadows(root) {
+  const box = new THREE.Box3(), v = new THREE.Vector3();
+  root.updateMatrixWorld(true);
+  let kept = 0, off = 0;
+  root.traverse(o => {
+    if (!o.isMesh || !o.castShadow) return;
+    const ms = Array.isArray(o.material) ? o.material : [o.material];
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    box.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
+    let wheel = false;
+    for (let p = o; p; p = p.parent) if ((root.userData.wheels || []).includes(p)) wheel = true;
+    const big = wheel || box.getSize(v).length() > 1.2;
+    if (!big || ms.every(m => m.transparent)) { o.castShadow = false; off++; } else kept++;
+  });
+  root.userData.shadowCasters = kept;
+}
+
+// Стекло E63 в файле — со «светопропусканием» (KHR_materials_transmission).
+// Ради одного такого материала three каждый кадр рисует ВСЮ непрозрачную
+// сцену второй раз, в отдельную текстуру: вызовов отрисовки вдвое больше, пока
+// машина в кадре, то есть всегда. Обычное полупрозрачное стекло с теми же
+// цветом и прозрачностью отличить на фонаре нельзя.
+function cheapGlass(root) {
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!(m.transmission > 0)) continue;
+      m.transmission = 0;
+      m.transparent = true;
+      m.depthWrite = false;
+      m.needsUpdate = true;
+    }
+  });
 }
 
 // Включить отбрасывание тени у пачек InstancedMesh. receiveShadow им не даём:
@@ -765,7 +947,9 @@ function initScene() {
   // укладывается; проседает — опускаемся. Ниже 1.0 не уходим: буквы HUD и
   // разметка на асфальте расплываются.
   const PR_MAX = Math.min(devicePixelRatio, 2);
-  let prNow = Math.min(PR_MAX, 1.25);
+  // 1.5, а не 1.25: каждая смена — перевыделение буфера кадра (см.
+  // tunePixelRatio), и с 1.5 до рабочего разрешения на ретине — шаг-два.
+  let prNow = Math.min(PR_MAX, 1.5);
   renderer.setPixelRatio(prNow);
   window.__setPR = v => {
     const nv = Math.max(0.85, Math.min(PR_MAX, v));
@@ -1264,24 +1448,41 @@ function updateCamera(dt) {
 let fpsAcc = 0, fpsN = 0, hudT = 0, lastStreet = null;
 // Регулятор разрешения: держим кадр около 60. Считаем по среднему за секунду,
 // чтобы одиночная просадка на загрузке чанка не дёргала картинку.
-let prAcc = 0, prN = 0, prCool = 0, prBest = 0;
+//
+// Прежний регулятор равнялся на ЛУЧШИЙ fps за сеанс. На ProMotion (MacBook
+// Pro, 120 Гц) лучший — 120, и любая подгрузка квартала (кадр 70–90) уже
+// считалась просадкой: разрешение сползало до пола 0.85 — на ретине это
+// мыло, — а подняться могло, только снова держа 115. Теперь цель — 60 кадров
+// при любой развёртке: опускаем, когда кадр реально хуже 52 в секунду;
+// поднимаем, когда три секунды подряд есть запас (почти развёртка на 60 Гц,
+// от 80 на 120 Гц).
+//
+// И КАЖДАЯ смена разрешения — это перевыделение буфера кадра на GPU (со
+// сглаживанием — несколько буферов по 4 мегапикселя): кадр смены стоит
+// 40–90 мс, и это были последние залипания после всех прочих правок. Поэтому
+// шаг крупный (0.25), а разрешение, на котором уже проседали, — потолок на
+// минуту: без этого регулятор качается «вверх-вниз», и каждый качок — рывок.
+let prAcc = 0, prN = 0, prCool = 0, prBest = 0, prCeil = Infinity, prCeilT = 0, prGood = 0;
 function tunePixelRatio(dt) {
   if (!window.__setPR) return;
   prAcc += dt; prN++;
   prCool -= dt;
+  prCeilT -= dt;
+  if (prCeilT <= 0) prCeil = Infinity;
   if (prAcc < 1.0) return;
   const fps = prN / prAcc;
   prAcc = 0; prN = 0;
   if (prCool > 0) return;
   const pr = window.__getPR();
-  // Порог «поднимать» нельзя ставить по абсолютному числу кадров: на мониторе
-  // 60 Гц кадр упирается в развёртку и выше 60 не поднимется никогда, даже
-  // если видеокарта простаивает. Смотрим на ЗАПАС: если держим почти столько
-  // же, сколько лучший результат за сеанс, значит упёрлись в развёртку и можно
-  // рисовать честнее.
-  if (fps > prBest) prBest = fps;
-  if (fps < prBest * 0.72 && pr > 0.86) { window.__setPR(pr - 0.2); prCool = 2.5; }
-  else if (fps > prBest * 0.96 && pr < 2) { window.__setPR(pr + 0.15); prCool = 3; }
+  if (fps > prBest) prBest = Math.min(fps, 125);       // это и есть развёртка экрана
+  prGood = fps > Math.min(prBest * 0.95, 80) ? prGood + 1 : 0;
+  // Ниже 1.0 — только если совсем тяжело (меньше 40): на ретине это мыло.
+  if ((fps < 52 && pr > 1.01) || (fps < 40 && pr > 0.86)) {
+    prCeil = pr - 0.05; prCeilT = 60; prGood = 0;
+    window.__setPR(fps < 40 ? pr - 0.5 : Math.max(1, pr - 0.25)); prCool = 2;
+  } else if (prGood >= 3 && pr + 0.1 < Math.min(prCeil, 2)) {
+    window.__setPR(Math.min(pr + 0.25, prCeil)); prCool = 2; prGood = 0;
+  }
 }
 
 function updateHUD(dt) {
@@ -1339,7 +1540,11 @@ function updateHUD(dt) {
 // ------------------------------------------------------------------ цикл
 let prev = performance.now();
 let lastPruneX = Infinity, lastPruneZ = Infinity;
+// ?prof: куда ушло время последнего кадра цикла по участкам (G.loopProf)
+const loopProf = { t: 0, last: {} };
+const lt = PROF ? n => { const t = performance.now(); loopProf.last[n] = t - loopProf.t; loopProf.t = t; } : () => {};
 function loop(now) {
+  if (PROF) loopProf.t = performance.now();
   const dt = Math.min((now - prev) / 1000, 0.1);
   prev = now;
   const wu = water?.material?.userData?.uniforms;
@@ -1351,6 +1556,9 @@ function loop(now) {
       throttle: menuOpen ? 0 : (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0),
       steer: menuOpen ? 0 : (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0),
       handbrake: !menuOpen && keys.has('Space'),
+      // педали порознь: газ с тормозом вместе на месте — бёрнаут
+      gas: !menuOpen && (keys.has('KeyW') || keys.has('ArrowUp')),
+      brake: !menuOpen && (keys.has('KeyS') || keys.has('ArrowDown')),
     });
   } else if (mode === 'fly') {
     if (!$('menu').classList.contains('on')) updateFly(dt);
@@ -1365,7 +1573,9 @@ function loop(now) {
   // Бюджет кадра делим: сперва земля (по ней сядет всё остальное), потом
   // кварталы. Пока земли под ногами нет — старт, прыжок через полкарты —
   // даём больше: несколько кадров по 35 мс лучше, чем дыра под машиной.
+  lt('ввод');
   drainJunk(2);
+  lt('выгрузка');
   const tGround = performance.now();
   // Бюджет на достройку мира — ДОЛЯ кадра, а не константа. На быстрой машине
   // это десяток миллисекунд, и кадр остаётся шестидесятым; на медленной (или
@@ -1377,6 +1587,7 @@ function loop(now) {
   ground.update(sx, sz, budget * (ground.has(ground.keyAt(sx, sz)) ? 0.5 : 0.8));
   chunks.msBudget = Math.max(3, budget - (performance.now() - tGround));
   chunks.update(sx, sz);
+  lt('сборка');
   settleJump();
   // Детальные высоты под собой квадраты земли просят сами; здесь только
   // выгружаем дальние, иначе за поездку через город наберётся весь охват.
@@ -1385,8 +1596,10 @@ function loop(now) {
     terrain.prune(sx, sz, DETAIL_KEEP);
   }
 
+  lt('высоты');
   // кузов по крену и клевку, колёса — ход подвески, руль и прокрутка
   placeCarMesh(carMesh, car);
+  carFx.update(dt);
 
   // тень едет за игроком, иначе карты теней не хватит на 5 км
   const t = mode === 'car' ? car.pos
@@ -1397,8 +1610,14 @@ function loop(now) {
   sky.position.copy(camera.position);
 
   updateCamera(dt);
+  lt('камера');
   updateHUD(dt);
+  lt('HUD');
+  revealSome();
+  cullFar();
+  lt('показ');
   renderer.render(scene, camera);
+  lt('отрисовка');
   requestAnimationFrame(loop);
 }
 

@@ -60,6 +60,8 @@ export class ChunkManager {
 
     this.onBuild = null;
     this.onDrop = null;
+    // Квартал (или пачка сирот) собран целиком — его можно показывать.
+    this.onBuilt = null;
     // Разрешение на сборку. Геометрия квадрата сажается по высотам ОДИН раз,
     // при сборке: если в этот момент детального рельефа под ним ещё нет,
     // дороги и дома встанут по грубой сетке и потом окажутся в склоне.
@@ -218,7 +220,11 @@ export class ChunkManager {
         if (r && typeof r.next === 'function') {
           this.building = { key: j.host, gen: r, out: [], ms: 0, host: j.host };
           this._step(t0);
-        } else if (r) this.groups.get(j.host).push(...(Array.isArray(r) ? r : [r]));
+        } else if (r) {
+          const out = Array.isArray(r) ? r : [r];
+          this.groups.get(j.host).push(...out);
+          this._built(j.host, out);
+        }
       } catch (e) { console.error('сироты для', j.host, e); }
       return;
     }
@@ -272,7 +278,7 @@ export class ChunkManager {
         this.building = null;
         if (b.host) {                       // пачка сирот — она живёт у хозяина
           const g = this.groups.get(b.host);
-          if (g) g.push(...b.out);
+          if (g) { g.push(...b.out); this._built(b.host, b.out); }
           else for (const o of b.out) { try { this.onDrop && this.onDrop(o, b.host); } catch { /* уже выгружен */ } }
           return;
         }
@@ -283,8 +289,13 @@ export class ChunkManager {
     b.ms += performance.now() - t0;
   }
 
+  _built(key, groups) {
+    if (this.onBuilt) try { this.onBuilt(key, groups); } catch (e) { console.error(e); }
+  }
+
   _done(key, groups, ms) {
     this.groups.set(key, groups);
+    this._built(key, groups);
     this.stats.buildMs += ms;
     if (ms > this.stats.worstMs) this.stats.worstMs = ms;
     this.stats.built++;

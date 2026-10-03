@@ -30,11 +30,21 @@ const COLORS = {
   civic:     ['#2f3a2b', '#f2efe4'],
 };
 
+// Высота листа — по числу занятых строк (степень двойки), а не всегда 2048:
+// в квартале обычно десяток-другой вывесок, это три строки из шестидесяти
+// четырёх, а лист 2048² с мипмапами — 21 МБ видеопамяти на квартал и долгая
+// выгрузка в кадре показа. Тридцать кварталов держали так ~600 МБ.
+const sheetRows = count => {
+  let h = CELL_H;
+  while (h < Math.ceil(count / COLS) * CELL_H) h *= 2;
+  return Math.min(h, SHEET) / CELL_H;
+};
+
 function sheetTexture(names, from, count) {
   const cv = document.createElement('canvas');
-  cv.width = SHEET; cv.height = SHEET;
+  cv.width = SHEET; cv.height = sheetRows(count) * CELL_H;
   const g = cv.getContext('2d');
-  g.clearRect(0, 0, SHEET, SHEET);
+  g.clearRect(0, 0, cv.width, cv.height);
   g.textAlign = 'center'; g.textBaseline = 'middle';
   for (let i = 0; i < count; i++) {
     const s = names[from + i];
@@ -142,6 +152,7 @@ export function buildSigns(world, terrain, roadIndex) {
   for (let sh = 0; sh < sheets; sh++) {
     const from = sh * PER, count = Math.min(PER, names.length - from);
     const tex = sheetTexture(names, from, count);
+    const rows = sheetRows(count);
     const P = [], N = [], U = [], I = [];
     let v = 0;
     for (let i = 0; i < count; i++) {
@@ -157,7 +168,7 @@ export function buildSigns(world, terrain, roadIndex) {
       for (let q = 0; q < 4; q++) N.push(o.nx, 0, o.nz);
       const col = i % COLS, row = (i / COLS) | 0;
       const u0 = col / COLS, u1 = (col + 1) / COLS;
-      const t1 = 1 - row / ROWS, t0 = 1 - (row + 1) / ROWS;
+      const t1 = 1 - row / rows, t0 = 1 - (row + 1) / rows;
       // u идёт справа налево: лицевая сторона квада смотрит наружу, и при
       // прямых координатах название читалось задом наперёд.
       U.push(u1, t0, u0, t0, u0, t1, u1, t1);

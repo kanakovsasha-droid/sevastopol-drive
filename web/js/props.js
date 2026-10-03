@@ -598,7 +598,10 @@ export function buildStreetProps(world, terrain, roadIndex) {
   // добавляет мало (их и так мало), а вызовов экономит вдвое.
   const CHUNK = 400;
   const chunkFor = n => n >= 6000 ? CHUNK : n >= 2000 ? CHUNK * 1.5 : CHUNK * 2;
-  const place = (geoFn, arr, cast) => {
+  // far — дальше этого (м от края куска) предмет не рисуется: main.js гасит
+  // такие куски по расстоянию до камеры. Фонарь и куст за полкилометра —
+  // доли пикселя, а вызов отрисовки стоит как за целый.
+  const place = (geoFn, arr, cast, far = 0) => {
     const n = arr.length / ST;
     if (!n) return 0;
     const cs = chunkFor(n);
@@ -612,6 +615,7 @@ export function buildStreetProps(world, terrain, roadIndex) {
     for (const idxs of buckets.values()) {
       const mesh = new THREE.InstancedMesh(geo, MAT, idxs.length);
       mesh.castShadow = cast;
+      if (far) mesh.userData.far = far;
       idxs.forEach((i, k) => {
         const o = i * ST;
         pv.set(arr[o], arr[o + 1], arr[o + 2]);
@@ -635,10 +639,10 @@ export function buildStreetProps(world, terrain, roadIndex) {
   let nT = 0;
   const byKind = {};
   for (const k in TREE_GEO) { const c = place(TREE_GEO[k], bins[k], false); byKind[k] = c; nT += c; }
-  const nB = place(bushGeo, bushes, false);
-  const nH = place(hedgeGeo, hedges, false);
+  const nB = place(bushGeo, bushes, false, 450);
+  const nH = place(hedgeGeo, hedges, false, 450);
   let nL = 0;
-  for (const k in LAMP_GEO) nL += place(LAMP_GEO[k], lampBins[k], false);
+  for (const k in LAMP_GEO) nL += place(LAMP_GEO[k], lampBins[k], false, 400);
 
   group.userData.counts = { деревья: nT, 'из них обмеренных': measured, 'снято с асфальта': onAsphalt, кусты: nB, изгороди: nH, фонари: nL, чанков: group.children.length };
   group.userData.species = byKind;
