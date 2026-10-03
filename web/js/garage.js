@@ -90,7 +90,11 @@ export class Garage {
       if (e.code === 'Escape') this.close();
     });
     // меню закрыли своим способом (M, щелчок мимо) — гараж закрывается с ним
-    if (menu) new MutationObserver(() => { if (!menu.classList.contains('on')) menu.classList.remove('garage'); })
+    // (снимаем класс, только если он есть: remove() пишет атрибут и без него,
+    // а это новая мутация — наблюдатель зациклился бы и повесил вкладку)
+    if (menu) new MutationObserver(() => {
+      if (!menu.classList.contains('on') && menu.classList.contains('garage')) menu.classList.remove('garage');
+    })
       .observe(menu, { attributes: true, attributeFilter: ['class'] });
   }
 
