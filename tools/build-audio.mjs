@@ -109,6 +109,21 @@ for (const [name, id, a, b] of LOOPS) {
     const t = i / X;
     y[i] = x[i] * Math.sin(t * Math.PI / 2) + x[L + i] * Math.cos(t * Math.PI / 2);
   }
+  // Выровнять огибающую: в записи мотор «гуляет» — провалы на 4–7 дБ внутри
+  // петли (обороты и газ у оригинала не постоянные). Прокрученные по кругу на
+  // ровном ходу, они звучали как переключения, которых нет. Делим на плавную
+  // огибающую (RMS по 0.09 с, по кругу — шов петли не трогаем) в степени 0.9.
+  if (name.startsWith('eng')) {
+    const W = Math.floor(SR * 0.045), e = new Float32Array(L);
+    let acc = 0;
+    for (let i = -W; i <= W; i++) acc += y[(i + L) % L] ** 2;
+    for (let i = 0; i < L; i++) {
+      e[i] = Math.sqrt(acc / (2 * W + 1));
+      acc += y[(i + W + 1) % L] ** 2 - y[(i - W + L) % L] ** 2;
+    }
+    const m = rms(y);
+    for (let i = 0; i < L; i++) y[i] *= Math.min(2, Math.max(0.5, Math.pow(m / Math.max(e[i], 1e-6), 0.9)));
+  }
   const k = 0.18 / rms(y);                    // все петли — к одной громкости
   for (let i = 0; i < L; i++) y[i] *= k;
   writeFileSync(`${OUT}/${name}.wav`, wav(y));

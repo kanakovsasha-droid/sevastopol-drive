@@ -231,7 +231,13 @@ export class E63Sound {
     }
     const pick = pre => Object.keys(bufs).filter(k => k.startsWith(pre)).map(k => bufs[k]);
     this._dropSamples(t0);
-    this.smp = { loops, lp, bus, squeal, pops: pick('pop_'), bangs: pick('bang_'), mix: 0, t0 };
+    // Низ — из самой записи: та же смесь петель через ФНЧ 150 Гц отдельным
+    // голосом. Синус на полупорядке вспышек, который подпирал низ раньше,
+    // биением с такой же гармоникой петли давал на холостых медленный «вой».
+    const lowLP = ctx.createBiquadFilter(); lowLP.type = 'lowpass'; lowLP.frequency.value = 150; lowLP.Q.value = 0.7;
+    const low = g(0);
+    lp.connect(lowLP).connect(low).connect(this.master);
+    this.smp = { loops, lp, bus, squeal, low, pops: pick('pop_'), bangs: pick('bang_'), mix: 0, t0 };
   }
 
   // Звуковой пакет из мода (только локальная игра, см. carfx.js) — ровно как
@@ -282,8 +288,13 @@ export class E63Sound {
     if (S.squeal) { S.squeal.g.gain.setTargetAtTime(0, t, 0.05); S.squeal.src.stop(t + 0.4); }
   }
 
+  // Хлопки и треск на сбросе — из пакета мода (w212-tuning), а голос мотора
+  // остаётся открытый: так понравилось владельцу. Только локально.
+  usePops(bufs) { this.extPops = bufs && bufs.decel ? { decel: bufs.decel, bonus: bufs.bonus || bufs.decel } : null; }
+
   _pop(big, t, gain, rate) {
-    const S = this.smp;
+    const S0 = this.smp;
+    const S = S0 && S0.kind === 'mod' ? S0 : (this.extPops ? { kind: 'mod', ...this.extPops } : S0);
     if (S && S.kind === 'mod') {
       // сброс газа — запись сброса оборотов с треском; дальше — короткие
       // куски «бонуса» в случайных местах
@@ -319,6 +330,8 @@ export class E63Sound {
   set(s, t) {
     const P = (param, v, tc = 0.03) => param.setTargetAtTime(v, t, tc);
     const st = this.st;
+    const dtA = Math.min(0.1, Math.max(0, t - st.lastT));
+    st.loadS = (st.loadS || 0) + ((s.throttle || 0) - (st.loadS || 0)) * Math.min(1, dtA / 0.25);
     const rpm = Math.max(500, s.rpm || 900), thr = s.throttle || 0;
     const fc = rpm / 120;                                   // частота цикла
     const r = Math.min(1, (rpm - 800) / 6200);              // доля оборотов
@@ -357,7 +370,8 @@ export class E63Sound {
     // он остаётся и при записях: на высоких оборотах вспышки уходят за 300 Гц,
     // а низ должен давить в любой момент
     if (S) P(this.sub.frequency, rpm / 30, 0.012);
-    P(this.subGain.gain, S ? (0.08 + 0.22 * load) * (0.6 + 0.4 * r) * S.mix * (S.kind === 'mod' ? 1.5 : 1) + (0.10 + 0.25 * load) * (1 - r * 0.6) * syn
+    // у записей низ свой (smp.low) — синус оставлен только синтезу
+    P(this.subGain.gain, S ? (0.10 + 0.25 * load) * (1 - r * 0.6) * syn
       : (0.10 + 0.25 * load) * (1 - r * 0.6), 0.04);
     if (S && S.kind === 'mod') P(this.subGain.gain, 0, 0.05);
     P(this.intakeBP.frequency, 500 + rpm * 0.35, 0.05);
@@ -385,10 +399,14 @@ export class E63Sound {
         P(lp.g.gain, w, 0.03);
         P(lp.src.playbackRate, Math.min(2.2, Math.max(0.45, rpm / lp.rpm)), 0.012);
       }
-      // газ — громко и открыто, сброс — тише и глуше (выхлоп «булькает»)
-      const vol = 1.5 * (0.45 + 0.35 * r) * (0.5 + 0.5 * load) * (cut ? 0.4 : 1) * dip * S.mix;
-      P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.03);
-      P(S.lp.frequency, 900 + 8000 * Math.max(load, r * 0.3), 0.04);
+      // Газ — громче и открытее, сброс — тише и глуше. Берём сглаженный газ
+      // (0.25 с): на ровном ходу клавиша W щёлкает 0↔1, и громкость с фильтром
+      // прыгали за ней — на слух это были «провалы», похожие на переключения.
+      const vol = 1.5 * (0.45 + 0.35 * r) * (0.55 + 0.45 * st.loadS) * (cut ? 0.4 : 1) * dip * S.mix;
+      P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.05);
+      P(S.lp.frequency, 2000 + 7000 * Math.max(st.loadS, r * 0.4), 0.06);
+      // низ: отдельным голосом на всех оборотах, на высоких — чуть меньше
+      P(S.low.gain, 1.4 * (1 - 0.2 * r) * (0.75 + 0.25 * st.loadS) * dip * S.mix, 0.06);
     }
 
     // турбины
