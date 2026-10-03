@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=0bf13da6';
 
 // Физика машины. Третий заход.
 //
@@ -36,9 +37,11 @@ import * as THREE from 'three';
 export const CAR = {
   // габариты — для модели и для столкновений
   length: 4.99, width: 1.91, height: 1.46,
-  wheelbase: 2.94,          // колёсная база, м
-  track: 1.62,              // колея, м
-  wheelRadius: 0.355,       // радиус колеса, м
+  // база, колея и радиус сняты с модели data/models/e63.glb (центры колёс
+  // z = ±1.4695, x = ±0.805..0.827, шина 0.336) — по ним стоят и колёса в сцене
+  wheelbase: 2.939,         // колёсная база, м
+  track: 1.632,             // колея, м
+  wheelRadius: 0.336,       // радиус колеса, м
   // массы
   mass: 1950,               // кг
   frontWeight: 0.55,        // доля веса на передней оси
@@ -788,7 +791,8 @@ export class Car {
 //     поворот руля вокруг Y (car.steerVis) и прокрутку вокруг X (car.wheelSpin;
 //     по каждому колесу отдельно есть car.wheelAngle[i]).
 //
-// СЮДА ПОДСТАВЛЯЕТСЯ ВНЕШНЯЯ МОДЕЛЬ (GLB E63). Кузов — любой Object3D,
+// Внешняя модель (E63 из GLB) подставляется через loadCarModel() ниже; другую
+// модель — так же: кузов — любой Object3D,
 // выставленный по контракту выше; колёса — четыре Object3D с осью вращения
 // вдоль X и центром в нуле. В main.js достаточно заменить createCarMesh() на
 // mountCarModel(body, [fl, fr, rl, rr]). Если у модели другие база, колея или
@@ -809,7 +813,46 @@ export function mountCarModel(body, wheels) {
   return g;
 }
 
-// Временная модель из примитивов — до прихода GLB.
+// Настоящая модель: Mercedes-AMG E 63 S (W213), Mona x Supercars, CC BY 4.0
+// (models/e63/ATTRIBUTION.md; подпись в HUD обязательна). В файле узлы body и
+// wheel_FL/FR/RL/RR, метры, нос в +Z, ноль на земле под серединой базы; у
+// колёс начало в центре. Центры колёс в файле стоят не на одной высоте
+// (передние приподняты на 4 см — так была выставлена подвеска у автора), а
+// мы их ставим туда, где колесо касается дороги, — по CAR.
+export function loadCarModel(url = '../data/models/e63.glb') {
+  const v = document.querySelector('meta[name="build"]')?.content || '';
+  return new GLTFLoader().loadAsync(url + (v ? '?v=' + v : '')).then(g => {
+    const root = g.scene;
+    const wheels = ['wheel_FL', 'wheel_FR', 'wheel_RL', 'wheel_RR'].map(n => root.getObjectByName(n));
+    const body = root.getObjectByName('body');
+    if (!body || wheels.some(w => !w)) throw new Error('в e63.glb нет узлов body / wheel_*');
+    for (const w of wheels) { w.removeFromParent(); w.position.set(0, 0, 0); }
+    body.removeFromParent();
+    const car = mountCarModel(body, wheels);
+    car.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    return car;
+  });
+}
+
+// Поза модели по состоянию машины: кузов — по крену и клевку, колёса — ход
+// подвески, руль у передних, прокрутка у каждого своя (под ручником задние
+// стоят). Годится и для модели из примитивов, и для GLB.
+export function placeCarMesh(mesh, car) {
+  mesh.position.copy(car.pos);
+  mesh.rotation.set(0, 0, 0);
+  mesh.rotateY(car.yaw);
+  mesh.rotateX(car.pitch);
+  mesh.rotateZ(car.roll);
+  const ws = mesh.userData.wheels;
+  if (!ws) return;
+  for (let i = 0; i < ws.length && i < 4; i++) {
+    ws[i].position.y = CAR.wheelRadius + car.wheelDrop[i];
+    ws[i].rotation.set(0, i < 2 ? car.steerVis : 0, 0);
+    ws[i].rotateX(car.wheelAngle[i]);
+  }
+}
+
+// Модель из примитивов — запасная, пока грузится GLB.
 export function createCarMesh() {
   // Кузов седана в пропорциях W213: длина 4.99, ширина 1.91, высота 1.46,
   // колёсная база 2.94, колея 1.62. Коробками такой силуэт не собрать —
