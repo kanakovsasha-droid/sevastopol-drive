@@ -416,5 +416,19 @@
     ],
     "source": "модель models/vladimir_sobor/build.py; что видно на фото и что сделано наугад — models/vladimir_sobor/NOTES.md",
     "checked": "2026-10-03"
+  },
+  {
+    "name": "Церковь святого Климента (костёл Климента Римского, б. кинотеатр «Дружба»)",
+    "style": "model",
+    "x": -204.8,
+    "z": 1698,
+    "file": "kostel_klimenta.glb",
+    "ox": -186.3,
+    "oz": 1689.5,
+    "skip": [
+      "w91446750"
+    ],
+    "source": "модель models/kostel_klimenta/build.py; что видно на фото и что сделано наугад — models/kostel_klimenta/NOTES.md",
+    "checked": "2026-10-03"
   }
 ]
