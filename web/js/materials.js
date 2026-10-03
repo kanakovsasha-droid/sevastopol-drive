@@ -524,16 +524,30 @@ export function buildingMaterial() {
 // ---------------------------------------------------------------- дороги
 // aRoad: x — поперёк [-1..1], y — метры вдоль, z — ширина в метрах
 // aCls: 0 магистраль · 1 главная · 2 улица · 3 проезд · 4 пешеходная · 5 тротуар · 6 бордюр
+//       7 зебра · 8 сплошная краска (стоп-линия) · 9 газон островка
+// aJn: метры до пятна ближайшего перекрёстка — ближе порога разметки нет
+//
+// ФАКТУРА АСФАЛЬТА СЧИТАЕТСЯ ПО МИРОВЫМ КООРДИНАТАМ. Раньше зерно бралось по
+// (метры поперёк, метры вдоль) своей улицы, а вдоль оси ещё шли тёмные полосы
+// наката. У каждого полотна координаты свои, и на перекрёстке, где полотна
+// ложатся друг на друга, рисунок и яркость менялись ровно по кромке ленты —
+// перекрёсток читался сшитым из лоскутов. Мировая фактура одна на всё, что
+// называется асфальтом: полотно, подложка узла, основа под зеброй.
 export function roadMaterial() {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: 0.90, metalness: 0.0,
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -6,
   });
   return inject(mat, 'sev-road', {
-    vertHead: `attribute vec4 aRoad; attribute float aCls; attribute float aSurf;
-               varying vec4 vRoad; varying float vCls; varying float vSurf;`,
-    vertBody: `vRoad = aRoad; vCls = aCls; vSurf = aSurf;`,
-    fragHead: `varying vec4 vRoad; varying float vCls; varying float vSurf;`,
+    vertHead: `attribute vec4 aRoad; attribute float aCls; attribute float aSurf; attribute float aJn;
+               varying vec4 vRoad; varying float vCls; varying float vSurf; varying float vJn; varying vec2 vXZ;`,
+    vertBody: `vRoad = aRoad; vCls = aCls; vSurf = aSurf; vJn = aJn;
+               vXZ = (modelMatrix * vec4(position, 1.0)).xz;`,
+    fragHead: `varying vec4 vRoad; varying float vCls; varying float vSurf; varying float vJn; varying vec2 vXZ;
+      float asphaltTone(vec2 p) {
+        // зерно ~40 см и крупные пятна ~10 м: выгоревшие и подлатанные места
+        return (0.86 + 0.22 * fbm(p * 2.7)) * (0.93 + 0.13 * fbm(p * 0.105));
+      }`,
     fragBody: `
       {
         vec3 c = diffuseColor.rgb;
@@ -550,13 +564,35 @@ export function roadMaterial() {
           float grout = smoothstep(0.40, 0.48, max(f.x, f.y));
           c *= 1.0 - 0.13 * grout;
           c *= 0.95 + 0.09 * hash21(floor(g));
+          // У тротуара первые 22 см от проезжей части — бордюрный камень:
+          // светлая полоса с поперечными швами и тёмным стыком с плиткой.
+          if (vCls > 4.5 && m < 0.27) {
+            vec3 stone = diffuseColor.rgb * 1.10;
+            stone *= 0.93 + 0.10 * hash21(vec2(floor(v / 0.95), 3.0));
+            stone *= 1.0 - 0.30 * band(fract(v / 0.95), 0.0, 0.04);
+            c = mix(stone, stone * 0.62, smoothstep(0.215, 0.235, m));
+          }
+        } else if (vCls > 8.5) {
+          // ---- газон островка ----
+          float g1 = fbm(vXZ * 0.95), g2 = fbm(vXZ * 0.14);
+          c *= 0.72 + 0.52 * g1;
+          c = mix(c, c * vec3(1.20, 1.08, 0.76), smoothstep(0.50, 0.82, g2));
+          c *= 0.94 + 0.10 * hash21(floor(vXZ * 5.0));
+          rough = 0.97;
+        } else if (vCls > 7.5) {
+          // ---- сплошная краска: стоп-линия ----
+          float wear = 0.84 + 0.16 * hash21(floor(vXZ * 2.2));
+          c = mix(c * asphaltTone(vXZ), vec3(0.66, 0.645, 0.60) * wear, 0.92);
+          rough = 0.64;
         } else if (vCls > 6.5) {
           // ---- зебра: полосы вдоль движения, белая и жёлтая вперемешку ----
           float k = floor(m / 0.88);
           float on = step(fract(m / 0.88), 0.52);
           float wear = 0.58 + 0.42 * hash21(floor(vec2(m * 1.3, v * 2.2)));
           vec3 stripe = (mod(abs(k), 2.0) < 0.5 ? vec3(0.64, 0.62, 0.58) : vec3(0.62, 0.49, 0.16)) * wear;
-          vec3 asph = vec3(0.030, 0.030, 0.033) * (0.88 + 0.24 * hash21(floor(vec2(m * 2.0, v * 2.0))));
+          // основа — тот же асфальт, что вокруг: раньше под зеброй был свой,
+          // почти чёрный, и переход лежал на улице тёмной заплатой
+          vec3 asph = c * asphaltTone(vXZ);
           c = mix(asph, stripe, on);
           rough = mix(0.92, 0.66, on);
         } else if (vCls > 5.5) {
@@ -606,10 +642,7 @@ export function roadMaterial() {
             vec3 slab = vec3(0.372, 0.369, 0.357) * (0.94 + 0.11 * hash21(floor(g2)));
             c = mix(slab, slab * 0.74, seam);
           }
-          c *= 0.89 + 0.16 * hash21(floor(vec2(m * 1.6, v * 1.6)));
-          c *= 0.96 + 0.07 * hash21(floor(vec2(m * 0.3, v * 0.22)));
-          // накат от колёс
-          c *= 1.0 - 0.10 * (band(am, halfW * 0.42, 0.55) + band(am, halfW * 0.42, 1.1) * 0.4);
+          c *= asphaltTone(vXZ);
 
           // vRoad.w: целая часть — число полос, десятая — флаги (1 автобусная,
           // 2 парковочная), знак минус — движение в обе стороны.
@@ -661,7 +694,9 @@ export function roadMaterial() {
             }
             float wear = 0.55 + 0.45 * hash21(floor(vec2(v * 0.7, m * 2.5)));
             vec3 paint = vec3(0.66, 0.645, 0.60) * wear;
-            float k = clamp(line, 0.0, 1.0) * 0.92;
+            // У перекрёстка разметка кончается: 7.4 м до пятна узла — это
+            // место стоп-линии (зебра 3.4 м, отступ, сама линия).
+            float k = clamp(line, 0.0, 1.0) * 0.92 * smoothstep(7.3, 7.5, vJn);
             c = mix(c, paint, k);
             rough = mix(rough, 0.62, k);
           }
