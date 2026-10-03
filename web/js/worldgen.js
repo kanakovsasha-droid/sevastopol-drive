@@ -308,30 +308,52 @@ function roadProfile(terrain, r) {
     h[i] = terrain.heightAt(sx[i], sz[i]);
     if (full && terrain.hasDetail && !terrain.hasDetail(sx[i], sz[i])) full = false;
   }
-  // Низкочастотный фильтр [1,2,1]. Но сглаживание тянет профиль к среднему,
-  // и на пологом месте дорога уезжает вверх — вокруг неё коридор достраивает
-  // насыпь, которой в жизни нет. Поэтому после сглаживания возвращаем профиль
-  // к реальной земле: выемка не глубже 1.5 м, насыпь не выше 0.9 м.
+  // ОТКУДА БРАЛИСЬ «БУГРЫ». Высоты — модель поверхности (SRTM/Copernicus):
+  // крыши и кроны в неё входят, и вдоль улицы между домами профиль ходил
+  // волной в метр-два. Прежний фильтр сглаживал на ~12 м и затем мягко
+  // возвращал профиль к СЫРОЙ земле — вместе с её буграми: на Большой
+  // Морской уклон гулял от −13% до +6% на десятках метров при том, что в
+  // жизни там ровный подъём.
+  //
+  // Теперь по шагам:
+  //   1. «Открытие» (минимум, затем максимум по ±12 м): срезает положительные
+  //      выбросы уже 24 м — дом или дерево, попавшие в отсчёт, — и не трогает
+  //      настоящий рельеф, который шире.
+  //   2. Опора для возврата к земле — то же открытие, слегка сглаженное:
+  //      если возвращать к ступенчатой опоре, ступени вернутся в профиль.
+  //   3. Сглаживание на ~±35 м (σ ≈ 14 м), ограничение уклона, мягкий
+  //      возврат к опоре в пределах выемки 2 м и насыпи 1.3 м — и в конце
+  //      ещё сглаживание, а не обрезка: изломы больше не возвращаются.
   const raw = Float32Array.from(h);
   const tmp = new Float32Array(n);
-  const MAX_CUT = 1.5, MAX_FILL = 0.9;
-  const smooth = passes => {
+  const R = 3;                                   // ±3 отсчёта = ±12 м
+  for (let i = 0; i < n; i++) {
+    let m = Infinity;
+    for (let k = Math.max(0, i - R); k <= Math.min(n - 1, i + R); k++) if (raw[k] < m) m = raw[k];
+    tmp[i] = m;
+  }
+  for (let i = 0; i < n; i++) {
+    let m = -Infinity;
+    for (let k = Math.max(0, i - R); k <= Math.min(n - 1, i + R); k++) if (tmp[k] > m) m = tmp[k];
+    h[i] = m;
+  }
+  const smooth = (arr, passes) => {
     for (let pass = 0; pass < passes; pass++) {
       for (let i = 0; i < n; i++) {
-        const a = h[Math.max(0, i - 1)], b = h[i], c = h[Math.min(n - 1, i + 1)];
+        const a = arr[Math.max(0, i - 1)], b = arr[i], c = arr[Math.min(n - 1, i + 1)];
         tmp[i] = (a + 2 * b + c) / 4;
       }
-      h.set(tmp);
+      arr.set(tmp);
     }
   };
-  // Жёсткое подрезание возвращает в профиль изломы исходного рельефа —
-  // это и есть «дорога идёт буграми». Сжимаем отклонение мягко (tanh):
-  // у земли профиль держится, но кривая остаётся гладкой везде.
+  const base = Float32Array.from(h);
+  smooth(base, 6);                               // σ ≈ 7 м: опора без ступеней
+  const MAX_CUT = 2.0, MAX_FILL = 1.3;
   const soft = () => {
     for (let i = 0; i < n; i++) {
-      const d = h[i] - raw[i];
+      const d = h[i] - base[i];
       const lim = d < 0 ? MAX_CUT : MAX_FILL;
-      h[i] = raw[i] + lim * Math.tanh(d / lim);
+      h[i] = base[i] + lim * Math.tanh(d / lim);
     }
   };
   // Ограничение уклона. Замер показал участки в 25% — это стена, а не улица.
@@ -351,25 +373,20 @@ function roadProfile(terrain, r) {
       }
     }
   };
-  // Проходов больше, и после каждого возврата к земле — ещё сглаживание.
-  // При переломе в 11 пунктов на пять метров машина на 25 м/с получает
-  // вертикальное ускорение больше g и физически взлетает: на спуске
-  // Котовского замер дал 27 ударов сильнее 3 g на 330 метрах.
-  smooth(9); soft(); limitGrade(); smooth(5); soft(); limitGrade(); smooth(3);
+  smooth(h, 24); soft(); limitGrade(); smooth(h, 12); soft(); limitGrade(); smooth(h, 6); soft(); smooth(h, 3);
   // Последняя проверка на кривизну: где профиль всё ещё ломается круче
-  // 4 пунктов уклона на шаг, сглаживаем это место точечно.
-  for (let pass = 0; pass < 6; pass++) {
+  // 2 пунктов уклона на шаг, сглаживаем это место точечно.
+  for (let pass = 0; pass < 8; pass++) {
     let worst = 0;
     for (let i = 1; i < n - 1; i++) {
       const c = h[i - 1] - 2 * h[i] + h[i + 1];   // вторая разность = перелом
-      if (Math.abs(c) > 0.04 * STEP) {
+      if (Math.abs(c) > 0.02 * STEP) {
         h[i] += c * 0.5;
         worst = Math.max(worst, Math.abs(c));
       }
     }
-    if (worst < 0.04 * STEP) break;
+    if (worst < 0.02 * STEP) break;
   }
-  soft();
   // Ключ узла берём по ИСХОДНЫМ концам улицы из OSM, а не по растянутым:
   // extendEnds добавляет до пяти метров, и растянутые концы соседних улиц
   // между собой не совпадают — свести их не удавалось.
@@ -439,6 +456,8 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
   lap('к:узлы');
   tgt = new Float32Array(W * H); wgt = new Float32Array(W * H);
   cap = new Float32Array(W * H).fill(Infinity);
+  const dmin = new Float32Array(W * H).fill(Infinity);
+  const cown = new Int32Array(W * H).fill(-1);
 
   // ---- СТЫКИ. Профиль каждой улицы сглаживался сам по себе, и в общем узле
   // они расходились: на спуске Котовского это давало перелом в 13 пунктов на
@@ -473,11 +492,62 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
       }
     }
   }
+  // ---- ПРИМЫКАНИЯ. Улица, упирающаяся в более широкую, которая идёт
+  // НАСКВОЗЬ, в общем узле её не находит (у той там не конец, а середина),
+  // и подходила к ней на своей высоте. На перекрёстке высоту задаёт широкая
+  // (см. растр ниже), и на стыке выходила ступенька, размазанная на десять
+  // метров, — удар на скорости. Конец узкой улицы подводим к профилю
+  // широкой в точке примыкания.
+  {
+    const CG = 8, sg = new Map();
+    profiles.forEach((q, qi) => {
+      const { sx, sz, n } = q.pr;
+      for (let i = 0; i < n; i++) {
+        const k = Math.floor(sx[i] / CG) * 100003 + Math.floor(sz[i] / CG);
+        let a = sg.get(k); if (!a) sg.set(k, a = []);
+        a.push(qi, i);
+      }
+    });
+    const wideAt = (x, z, w0) => {
+      let best = null, bd = Infinity;
+      for (let cx = Math.floor(x / CG) - 1; cx <= Math.floor(x / CG) + 1; cx++)
+        for (let cz = Math.floor(z / CG) - 1; cz <= Math.floor(z / CG) + 1; cz++) {
+          const a = sg.get(cx * 100003 + cz);
+          if (!a) continue;
+          for (let t = 0; t < a.length; t += 2) {
+            const o = profiles[a[t]];
+            if (o.w <= w0 + 0.5) continue;
+            const d = (o.pr.sx[a[t + 1]] - x) ** 2 + (o.pr.sz[a[t + 1]] - z) ** 2;
+            if (d < bd && d < (o.w / 2 + 1.5) ** 2) { bd = d; best = o.h[a[t + 1]]; }
+          }
+        }
+      return best;
+    };
+    for (const q of profiles) {
+      const pr = q.pr;
+      const hA = wideAt(pr.ax, pr.az, q.w), hB = wideAt(pr.bx, pr.bz, q.w);
+      const dA = hA === null ? 0 : Math.max(-2, Math.min(2, hA - q.h[pr.iA]));
+      const dB = hB === null ? 0 : Math.max(-2, Math.min(2, hB - q.h[pr.iB]));
+      if (Math.abs(dA) < 0.02 && Math.abs(dB) < 0.02) continue;
+      // поправку гасим на 40 м от конца, а не тянем через всю улицу
+      let accA = 0, accB = 0;
+      const L = new Float32Array(pr.n);
+      for (let i = 1; i < pr.n; i++) L[i] = L[i - 1] + Math.hypot(pr.sx[i] - pr.sx[i - 1], pr.sz[i] - pr.sz[i - 1]);
+      for (let i = 0; i < pr.n; i++) {
+        const fa = Math.max(0, 1 - Math.abs(L[i] - L[pr.iA]) / 40), fb = Math.max(0, 1 - Math.abs(L[i] - L[pr.iB]) / 40);
+        const sa = fa * fa * (3 - 2 * fa), sb = fb * fb * (3 - 2 * fb);
+        q.h[i] += dA * sa + dB * sb;
+      }
+    }
+  }
   yield;
 
   lap('к:растр');
-  profiles.sort((a, b) => a.rank - b.rank);
-  for (const q of profiles) {
+  // Широкая улица главнее: на перекрёстке высоту задаёт она, а узкая к ней
+  // подходит. При равной ширине — постоянный номер из far.json (см. выше).
+  profiles.sort((a, b) => b.w - a.w || a.rank - b.rank);
+  for (let qi = 0; qi < profiles.length; qi++) {
+    const q = profiles[qi];
     if (!q.draw) continue;
     const { sx, sz, n } = q.pr, h = q.h;
     const inner = q.w / 2 + FLAT, rad = inner + FEATHER;
@@ -486,6 +556,11 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
     // не нужно вовсе, снаружи считаем обычным sqrt по квадратам.
     const rad2 = rad * rad, inner2 = inner * inner;
     for (let i = 0; i < n; i++) {
+      // Касательная и уклон в отсчёте: высоту ячейки продолжаем от него по
+      // уклону, а не берём ступенькой.
+      const ia = Math.max(0, i - 1), ib = Math.min(n - 1, i + 1);
+      const tx = sx[ib] - sx[ia], tz = sz[ib] - sz[ia], tl = Math.hypot(tx, tz) || 1;
+      const ux = tx / tl, uz = tz / tl, gr = (h[ib] - h[ia]) / tl;
       // отсчёты, чей круг не задевает окно, пропускаем сразу: длинная улица
       // лежит в окне куском, а точек у неё тысячи
       if (sx[i] < x0 - rad || sx[i] > x1 + rad || sz[i] < z0 - rad || sz[i] > z1 + rad) continue;
@@ -503,10 +578,17 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
           // Потолок ОБЯЗАН считаться по той же улице, что задала высоту ячейки.
           // Минимум по всем дорогам в радиусе продавливал грунт под нижней улицей,
           // и соседняя верхняя оставалась висеть в воздухе на несколько метров.
-          if (w > wgt[idx]) {
-            wgt[idx] = w;
-            tgt[idx] = h[i];
-            cap[idx] = h[i] + Math.max(0, d - inner) * CAP_SLOPE;
+          // При равном весе (вся плоская зона — вес 1) побеждает БЛИЖАЙШИЙ
+          // отсчёт той же улицы. Раньше побеждал первый по порядку, а он отстоял от ячейки
+          // вдоль улицы на 15–17 м: на уклоне 6% это метр запаздывания, разный
+          // у оси и у кромки, — полотно перекашивало поперёк, а на стыке двух
+          // улиц высота прыгала в зависимости от того, кто нарисован первым.
+          // При равном весе чужая (младшая) улица ячейку не перехватывает.
+          if (w > wgt[idx] || (w === wgt[idx] && cown[idx] === qi && d2 < dmin[idx])) {
+            wgt[idx] = w; dmin[idx] = d2; cown[idx] = qi;
+            const ht = h[i] + gr * Math.max(-STEP, Math.min(STEP, ddx * ux + ddz * uz));
+            tgt[idx] = ht;
+            cap[idx] = ht + Math.max(0, d - inner) * CAP_SLOPE;
           }
         }
     }
