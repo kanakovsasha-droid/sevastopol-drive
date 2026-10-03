@@ -490,6 +490,8 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       placeModel(holder, d.file);
       group.add(holder);
       skip.add(bi);
+      // модель может заменять несколько контуров: пристройки, перемычки двора
+      if (d.skip) world.buildings.forEach((bb, i) => { if (d.skip.includes(bb.id)) skip.add(i); });
       stats.push({ name: d.name, ok: true, kontur: bi, stil: 'модель ' + d.file });
       continue;
     }
