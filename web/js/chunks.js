@@ -324,6 +324,17 @@ export class ChunkManager {
     // Это только ссылка на уже разобранный массив — памяти не стоит.
     out.allBuildings = data.buildings || [];
     for (const f of FIELDS) if (data[f]) out[f] = take(data[f], f, null);
+    // Кромке проезжей части (бордюр, тротуар, островки) нужна ВСЯ сеть улиц
+    // квадрата, а не только те, что достались этой сборке: улица, построенная
+    // соседом, всё равно образует здесь перекрёсток. Вешаем контекст прямо на
+    // массив улиц — так он доезжает до сборщика дорог без правок в main.js.
+    // Заодно сообщаем сам квадрат: кромка — принадлежность места, а не улицы,
+    // и каждый чанк рисует её строго в своих границах.
+    if (out.roads) {
+      const S = this.chunk;
+      out.roads.ctx = { all: data.roads, x0: data.cx * S, z0: data.cz * S,
+                        x1: (data.cx + 1) * S, z1: (data.cz + 1) * S };
+    }
     for (const [f, subs] of Object.entries(SUBFIELDS)) {
       if (!data[f]) continue;
       out[f] = {};
