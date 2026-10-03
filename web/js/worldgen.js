@@ -1342,7 +1342,15 @@ function densify(pts, step = 6) {
 // следующем кадре.
 export function* buildRoads(world, terrain, chunk = 500) {
   const chunks = new Map();
+  // Корзина меша — по точке, ПРИЖАТОЙ к своему квадрату: полотно кладётся
+  // только в его границах, а улица, начавшаяся у соседа, заводила бы по
+  // лишнему мешу (и вызову отрисовки) на каждый соседний квадрат.
+  const sq0 = world.roads.ctx && !world.roads.ctx.orphan ? world.roads.ctx : null;
   const bucket = (x, z) => {
+    if (sq0) {
+      x = Math.min(sq0.x1 - 1, Math.max(sq0.x0, x));
+      z = Math.min(sq0.z1 - 1, Math.max(sq0.z0, z));
+    }
     const k = Math.floor(x / chunk) + ',' + Math.floor(z / chunk);
     let c = chunks.get(k);
     if (!c) chunks.set(k, c = { P: [], C: [], R: [], K: [], O: [], S: [], I: [], JI: [], JV: [], base: 0 });
