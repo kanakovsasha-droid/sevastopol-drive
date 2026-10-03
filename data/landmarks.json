@@ -254,22 +254,6 @@
     "note": "Круг вписан МНК в 15-угольник контура way 167790144: центр (−163.3, 2346.2), радиус 20.1 м. Заданный центр (−169, 2347) — центроид ВСЕГО полигона со входным выступом, по нему цилиндр вставал со сдвигом на запад."
   },
   {
-    "name": "Железнодорожный вокзал Севастополя",
-    "style": "portico",
-    "x": 294,
-    "z": 2401,
-    "wall": [
-      303.9,
-      2418.6,
-      309.3,
-      2381.4
-    ],
-    "stairs": true,
-    "sign": "ВОКЗАЛ",
-    "source": "OSM way 93712574 (building=transportation, station=train, description=Железнодорожный вокзал) — найден по тегам, в радиусе 200 м от касс way 93252089 его нет, он в 265 м западнее; контур через tools/contour.mjs. Даты и авторство: ru.wikipedia.org/wiki/Севастополь_(станция) и sevastopol.su/news/sevastopolskiy-vokzal-vnov-priznali-obektom-kulturnogo-naslediya (в феврале 2026 включён в перечень выявленных ОКН). Стиль «сталинский ампир», арочные окна, лепнина, башенка — krymania.ru/zheleznodorozhnyy-vokzal-v-sevastopole. Внешний вид снят с фото: commons.wikimedia.org File:Sevastopol 04-14 img01 ra",
-    "checked": "2026-08-30"
-  },
-  {
     "name": "Графская пристань",
     "style": "colonnade",
     "x": 80,
@@ -489,6 +473,20 @@
       "w90983967"
     ],
     "source": "модель models/petropavl_hram/build.py; что видно на фото и что сделано наугад — models/petropavl_hram/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Железнодорожный вокзал Севастополя",
+    "style": "model",
+    "x": 294.3,
+    "z": 2400.8,
+    "file": "zd_vokzal.glb",
+    "ox": 306.7,
+    "oz": 2400,
+    "skip": [
+      "w93712574"
+    ],
+    "source": "модель models/zd_vokzal/build.py; что видно на фото и что сделано наугад — models/zd_vokzal/NOTES.md",
     "checked": "2026-10-03"
   }
 ]
