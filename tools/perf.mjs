@@ -1,7 +1,7 @@
 // Стенд кадров: node tools/perf.mjs <порт|адрес> [метка] [out.json] [--quick]
 //
 // Мерит НЕ в headless: там всегда ~10 кадров и до, и после, и замер ничего не
-// говорит. Открывает настоящее окно Chromium (ретина, 1400×880 точек), ждёт
+// говорит. Открывает настоящее окно Chromium (ретина, 1512×900 точек — окно MacBook Pro 14), ждёт
 // загрузки и проходит один и тот же маршрут через тяжёлые места:
 //   старт    — стоим на остановке пл. Лазарева, пока догружается круг 2.6 км;
 //   езда     — автопилот по проспекту Нахимова до площади и дальше по Ленина;
@@ -31,7 +31,7 @@ const browser = await chromium.launch({
     '--disable-renderer-backgrounding', '--window-position=0,0',
   ],
 });
-const page = await browser.newPage({ viewport: { width: 1400, height: 880 }, deviceScaleFactor: 2 });
+const page = await browser.newPage({ viewport: { width: 1512, height: 900 }, deviceScaleFactor: 2 });
 const prof = [], laps = [];
 // Холодный кеш шейдеров. macOS хранит собранные Metal-шейдеры между запусками
 // браузера, и второй прогон компиляцию уже почти не видит — а игрок после
@@ -143,13 +143,13 @@ if (args.includes('--census')) {
 // (сборка мусора, приём чанка от воркера, ожидание GPU).
 const traceArg = args.find(a => a.startsWith('--trace='));
 if (traceArg) await browser.startTracing(page, { path: traceArg.slice(8), screenshots: false,
-  categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'v8', 'v8.gc', 'blink.user_timing', 'gpu', 'toplevel'] });
+  categories: ['devtools.timeline', 'v8.gc', 'toplevel'] });
 
 const res = await page.evaluate(async ({ quick }) => {
   const G = window.G;
   const now = () => performance.now();
   // ---- приборы: оборачиваем то, что зовёт цикл игры, на экземплярах
-  const cur = { build: 0, ground: 0, phys: 0, stage: '', key: '' };
+  const cur = { build: 0, ground: 0, phys: 0, prune: 0, near: 0, stage: '', key: '' };
   const frames = [];                 // по одному на отрисовку игры
   const wrap = (obj, name, field) => {
     const f = obj[name].bind(obj);
@@ -157,6 +157,12 @@ const res = await page.evaluate(async ({ quick }) => {
   };
   wrap(G.chunks, 'update', 'build');
   wrap(G.ground, 'update', 'ground');
+  if (G.terrain.prune) wrap(G.terrain, 'prune', 'prune');
+  wrap(G.roads, 'nearest', 'near');
+  // длительность всего кадра игры (колбэк цикла) — остальное в нём «прочее»
+  let loopMs = 0;
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = cb => raf(t => { if (cb.name !== 'loop') return cb(t); const s = now(); try { cb(t); } finally { loopMs = now() - s; } });
   const r = G.renderer;
   const render = r.render.bind(r);
   let progs = r.info.programs ? r.info.programs.length : 0;
@@ -171,12 +177,14 @@ const res = await page.evaluate(async ({ quick }) => {
     const gl = {};
     for (const k in window.__glf) { const v = window.__glf[k]; if (v > 2) gl[k.replace(/Instanced|Elements|Arrays/g, m => m[0])] = Math.round(v); window.__glf[k] = 0; }
     const pn = p > progs ? r.info.programs.slice(progs).map(x => (x.name || x.cacheKey.slice(0, 24))).join(',') : '';
-    frames.push({ progNames: pn, gl: Object.entries(gl).map(([k, v]) => k + ' ' + v).join(' '), t: e, render: e - st, build: cur.build, ground: cur.ground, phys: cur.phys,
+    // участки ЭТОГО кадра до отрисовки (main.js под ?prof пишет G.loopProf)
+    const lpv = G.loopProf ? Object.entries(G.loopProf.last).filter(([k, v]) => k !== 'отрисовка' && v > 4).map(([k, v]) => k + ' ' + Math.round(v)).join(' ') : '';
+    frames.push({ lp: lpv, prune: cur.prune, near: cur.near, loopPrev: loopMs, progNames: pn, gl: Object.entries(gl).map(([k, v]) => k + ' ' + v).join(' '), t: e, render: e - st, build: cur.build, ground: cur.ground, phys: cur.phys,
                   stage: cur.key ? cur.stage + ' ' + cur.key : '', newProg: p - progs,
                   newGeo: r.info.memory.geometries - geoms, newTex: r.info.memory.textures - texs,
                   calls: r.info.render.calls, tris: r.info.render.triangles });
     progs = p; geoms = r.info.memory.geometries; texs = r.info.memory.textures;
-    cur.build = cur.ground = cur.phys = 0;
+    cur.build = cur.ground = cur.phys = cur.prune = cur.near = 0;
   };
   // Разбор GLB идёт вне цикла (колбэк загрузчика) — его время видно только тут.
   const glb = [];
@@ -232,7 +240,9 @@ const res = await page.evaluate(async ({ quick }) => {
   // ---- этапы
   const phases = [];
   let phase = null;
-  const begin = name => { phase = { name, t0: now(), dts: [] }; phases.push(phase); };
+  const begin = name => { phase = { name, t0: now(), dts: [], pr: [] }; phases.push(phase); };
+  // разрешение раз в секунду: куда уводит его регулятор
+  const prTimer = setInterval(() => phase && window.__getPR && phase.pr.push(+window.__getPR().toFixed(2)), 1000);
   let prev = now();
   const fly = G.fly;
   let path = null;           // [{x,z,h}], скорость м/с
@@ -289,6 +299,7 @@ const res = await page.evaluate(async ({ quick }) => {
     requestAnimationFrame(t => { prev = t; requestAnimationFrame(tick); });
   });
 
+  clearInterval(prTimer);
   // ---- итог
   const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
   const summary = phases.map(ph => {
@@ -297,7 +308,7 @@ const res = await page.evaluate(async ({ quick }) => {
     const worst1 = d.slice(Math.floor(n * 0.99));
     const fr = frames.filter(f => f.t >= ph.t0 && f.t <= ph.t0 + total + 50);
     return {
-      phase: ph.name, frames: n, sec: +(total / 1000).toFixed(1),
+      phase: ph.name, frames: n, pr: ph.pr.join(' '), sec: +(total / 1000).toFixed(1),
       fps: +(n / total * 1000).toFixed(1),
       low1: +(1000 / (sum(worst1, x => x) / Math.max(1, worst1.length))).toFixed(1),
       p99: +d[Math.floor(n * 0.99)]?.toFixed(1),
@@ -314,14 +325,14 @@ const res = await page.evaluate(async ({ quick }) => {
     };
   });
   // длинные кадры: что было в отрисовке, предшествующей концу интервала
-  const long = frames.map((f, i) => ({ ...f, gap: i ? f.t - frames[i - 1].t : 0 }))
+  const long = frames.map((f, i) => ({ ...f, gap: i ? f.t - frames[i - 1].t : 0, loop: frames[i + 1] ? frames[i + 1].loopPrev : 0 }))
     .filter(f => f.gap > 45).sort((a, b) => b.gap - a.gap).slice(0, 25)
     .map(f => {
       const ph = [...phases].reverse().find(p => p.t0 <= f.t);
       const g = glb.filter(x => x.t && x.t <= f.t && x.t >= f.t - f.gap - 5);
-      return { at: ph ? ph.name + ' +' + ((f.t - ph.t0) / 1000).toFixed(1) + 'с' : '',
+      return { lp: f.lp, loop: Math.round(f.loop), at: ph ? ph.name + ' +' + ((f.t - ph.t0) / 1000).toFixed(1) + 'с' : '',
                gap: Math.round(f.gap), render: +f.render.toFixed(1), build: +f.build.toFixed(1),
-               ground: +f.ground.toFixed(1), phys: +f.phys.toFixed(1), stage: f.stage,
+               ground: +f.ground.toFixed(1), prune: +f.prune.toFixed(1), near: +f.near.toFixed(1), phys: +f.phys.toFixed(1), stage: f.stage,
                gl: f.gl, newProg: f.newProg, progNames: f.progNames, newGeo: f.newGeo, newTex: f.newTex,
                glb: g.map(x => `${(x.bytes / 1e6).toFixed(1)}МБ ${x.sync.toFixed(0)}мс`).join(', ') };
     });
@@ -368,9 +379,10 @@ console.log(`\n== ${label}: старт ${bootMs} мс (${laps.join(', ')}), пр
 console.log('этап      кадров  fps   1%low  p99мс  худший  >33  >50  >100  вызовов(ср/макс)  треуг.тыс(ср/макс)  отрис.мс  сборка.мс');
 for (const s of res.summary)
   console.log(`${s.phase.padEnd(8)} ${pad(s.frames, 6)} ${pad(s.fps, 5)} ${pad(s.low1, 6)} ${pad(s.p99, 6)} ${pad(s.worst, 7)} ${pad(s.over33, 4)} ${pad(s.over50, 4)} ${pad(s.over100, 5)}   ${pad(s.callsAvg, 6)}/${pad(s.callsMax, 5)}       ${pad(s.trisAvgK, 6)}/${pad(s.trisMaxK, 5)}     ${pad(s.renderMs, 6)}   ${pad(s.buildMs, 6)}`);
+console.log('pixelRatio по секундам:'); for (const s of res.summary) console.log(`  ${s.phase}: ${s.pr}`);
 console.log('\nсамые длинные кадры (мс): где | интервал | отрисовка сборка земля физика | этап сборки | новых программ/геом/текстур | GLB');
 for (const l of res.long)
-  console.log(`  ${l.at.padEnd(14)} ${pad(l.gap, 5)} | ${pad(l.render, 6)} ${pad(l.build, 6)} ${pad(l.ground, 5)} ${pad(l.phys, 5)} | ${(l.stage || '-').padEnd(22)} | ${l.newProg}/${l.newGeo}/${l.newTex} | ${l.glb} ${l.progNames ? '[' + l.progNames + ']' : ''} ${l.gl ? '{' + l.gl + '}' : ''}`);
+  console.log(`  ${l.at.padEnd(14)} ${pad(l.gap, 5)} | цикл ${pad(l.loop, 4)} | ${pad(l.render, 6)} ${pad(l.build, 6)} ${pad(l.ground, 5)} ${pad(l.phys, 5)} | ${(l.stage || '-').padEnd(22)} | ${l.newProg}/${l.newGeo}/${l.newTex} | ${l.glb} ${l.prune > 2 ? 'prune ' + l.prune : ''} ${l.near > 2 ? 'nearest ' + l.near : ''} ${l.progNames ? '[' + l.progNames + ']' : ''} ${l.lp ? '<' + l.lp + '>' : ''} ${l.gl ? '{' + l.gl + '}' : ''}`);
 console.log('\nGLB (МБ, синхронно мс, до готовности мс):', res.glb.map(g => `${g.mb}/${g.sync}/${g.total}`).join('  '));
 console.log('сборка кварталов:', JSON.stringify(res.chunks), '\n  этапы сумма мс:', JSON.stringify(res.chunkProf.sum), '\n  худший шаг мс:', JSON.stringify(res.chunkProf.worst));
 console.log('земля: сумма', JSON.stringify(res.tileProf.sum), 'худший', JSON.stringify(res.tileProf.worst));
