@@ -110,10 +110,16 @@ export const CAR = {
   rolling: 0.013,           // сопротивление качению
   // руль
   maxSteer: 0.66,           // угол колёс до упора на стоянке, рад
-  steerTime: 0.19,          // время выкручивания до упора, с
+  steerTime: 0.17,          // время выкручивания до упора на малом ходу, с
+  steerTimeFast: 0.9,       // на скорости от 110 км/ч — дольше на эту долю
   steerReturn: 0.12,        // возврат в ноль, с
   steerLatG: 1.30,          // на скорости упор руля — столько g бокового…
-  steerSlip: 1.10,          // …плюс запас на увод передних шин, в долях пика
+  steerSlip: 1.00,          // …плюс запас на увод передних шин, в долях пика
+  // «Стабилизация» уровня Forza: машина вращается не быстрее, чем просит руль.
+  // Гасит бросок рыскания на входе в поворот моментом без торможения; под
+  // газом на заднем приводе слабеет (дрифт газом остаётся), ручник отключает.
+  yawDamp: 90000,           // Н·м на рад/с лишнего рыскания
+  yawDampMax: 12000,
   counterSteer: 0.70,       // самовозврат руля в занос (стабилизирующий момент шин)
   // курсовая устойчивость (ESP в спортивном режиме): 0 — выключена, 1 — строгая.
   // Подтормаживает колёса, когда кузов крутится быстрее, чем просит руль.
@@ -151,7 +157,7 @@ export const CARS = {
       wheelbase: 2.874, track: 1.55, wheelRadius: 0.315,
       mass: 1845, frontWeight: 0.53, cgHeight: 0.52,
       inertiaYaw: 3600, inertiaPitch: 3050, inertiaRoll: 740,
-      muLong: 1.25, muLat: 1.06, rearGrip: 1.15,           // задние 285 против 255
+      muLong: 1.25, muLat: 1.10, rearGrip: 1.15,           // задние 285 против 255
       torque: [[900, 330], [1500, 560], [1750, 700], [5000, 700], [5500, 670],
                [6000, 600], [6400, 540], [6600, 0]],
       redline: 6400, stall: 2400,
@@ -160,7 +166,7 @@ export const CARS = {
       frontTorque: 0.33,                                  // 4MATIC W212: 33/67
       // задний привод тут родной, а не режим Drift: противобуксовочная и ESP
       // работают (у W213 на заднем приводе они выключены)
-      tcRwd: true, espRwd: 0.45, tcMin: 0.2, tcSlip: 0.04, tcBand: 0.10,   // держит шину у пика тяги
+      tcRwd: true, espRwd: 0.3, tcMin: 0.45, tcSlip: 0.06, tcBand: 0.12,   // на старте держит у пика, газом в повороте занести можно
       shiftTime: 0.16,
       brakeTorque: 10800,
       dragArea: 0.70, liftArea: 0.12,
@@ -567,8 +573,11 @@ export class Car {
     }
     want = clamp(want + assist, -CAR.maxSteer, CAR.maxSteer);
     const toZero = Math.abs(want) < Math.abs(this.steer) || want * this.steer < 0;
-    // к нулю и в занос руль идёт быстро, от нуля — за steerTime до упора
-    const steerRate = (toZero || Math.abs(assist) > 0.02 ? CAR.maxSteer / CAR.steerReturn * 0.5 : lim / CAR.steerTime) * h;
+    // К нулю и в занос руль идёт быстро. От нуля — за steerTime до упора на
+    // малом ходу и вдвое дольше на трассе: клавиша — это рывок руля, и на 100
+    // км/ч он давал бросок рыскания в полтора раза выше установившегося.
+    const tSteer = CAR.steerTime * (1 + clamp((Math.abs(vLong) - 8) / 22, 0, 1) * CAR.steerTimeFast);
+    const steerRate = (toZero || Math.abs(assist) > 0.02 ? CAR.maxSteer / CAR.steerReturn * 0.5 : lim / tSteer) * h;
     this.steer += clamp(want - this.steer, -steerRate, steerRate);
     const cs = Math.cos(this.steer), sn = Math.sin(this.steer);
 
@@ -650,12 +659,20 @@ export class Car {
       let g = this._ground(bx[i], bz[i], gfx, gfz, L);
       // Поправка до асфальта — ступенчатая: пролёты полотна плоские, углы
       // приподняты провисанием на разную высоту, на стыках улиц — уступы. Колесо
-      // идёт за ней с уклоном не круче 12% по ходу (и 15 см/с на месте) — иначе
+      // идёт за ней с уклоном не круче 8% по ходу (и 15 см/с на месте) — иначе
       // каждый стык пролётов отдаётся в кузов ударом (замер: тряска ×2.3).
+      // Потолок поправки — 12 см. На перекрёстках провисание поднимает полотно
+      // горбом до 45 см на 10 м (замер у Большой Морской, −410, 517): колесо,
+      // честно идущее по такому горбу, на 80 км/ч отрывалось, руль переставал
+      // работать, а при посадке машину рвало в занос. Там колесо немного уходит
+      // в асфальт — это видно, но ехать можно; сам горб — дело сборки дорог.
       {
         const so = this._so || (this._so = [0, 0, 0, 0]);
-        const lim = (0.12 * speed + 0.15) * h;
-        so[i] = this._fresh ? this._sOff : so[i] + clamp(this._sOff - so[i], -lim, lim);
+        const lim = (0.08 * speed + 0.15) * h;
+        // и только вверх: где нарисованное полотно НИЖЕ профиля (узкий проезд
+        // поперёк широкой улицы — до 20 см), колесо за ним не ныряет
+        const want = clamp(this._sOff, 0, 0.12);
+        so[i] = this._fresh ? want : so[i] + clamp(want - so[i], -lim, lim);
         g += so[i];
       }
       // Ступенька в данных: край дорожного коридора стоит над голой сеткой
@@ -867,6 +884,26 @@ export class Car {
         const dragF = Math.abs(M) / CAR.track;            // цена момента: тормозная сила
         Fx -= fX * dragF; Fy -= fY * dragF; Fz -= fZ * dragF;
         this.espActive = act;
+      }
+    }
+
+    // ---- стабилизация вращения (см. CAR.yawDamp). Эталон — рыскание, которое
+    // просит руль (с потолком по сцеплению). Машина ведётся к нему в обе
+    // стороны, как подруливание тормозами у современных систем: и бросок на
+    // входе в поворот гасится, и «провал» после него, когда передок на миг
+    // срывает, добирается — машина едет туда, куда смотрит руль. Зазор 8%
+    // эталона — в нём не вмешиваемся. Газ (просьба о заносе) и уже идущий
+    // занос (кузов боком больше 12°) её отпускают, ручник — выключает.
+    if (CAR.yawDamp > 0 && !hand && vLong > 5 && contacts >= 3) {
+      const rMax = 0.95 * CAR.muLat * GRAV / vLong;
+      const rRef = clamp(vLong * Math.tan(this.steer) / (CAR.wheelbase * (1 + (vLong / 32) ** 2)), -rMax, rMax);
+      const err = w[1] - rRef;
+      const band = 0.08 * Math.abs(rRef) + 0.015;
+      const beta = Math.abs(Math.atan2(vLat, vLong));
+      if (Math.abs(err) > band && beta < 0.21) {
+        const soft = (1 - 0.85 * gas) * clamp((vLong - 5) / 5, 0, 1) * clamp(1 - (beta - 0.12) / 0.09, 0, 1);
+        const M = -Math.sign(err) * Math.min(CAR.yawDamp * (Math.abs(err) - band), CAR.yawDampMax) * soft;
+        Tx += uX * M; Ty += uY * M; Tz += uZ * M;
       }
     }
 
