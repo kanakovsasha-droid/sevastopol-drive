@@ -27,7 +27,10 @@ export const KERB_ISO = -0.15;
 
 // all — ВСЕ улицы квадрата, включая те, что уже построены соседом: кромке
 // нужна вся сеть, а не только то, что досталось этой сборке.
-export function* roadFieldGen(all, bx0, bz0, bx1, bz1) {
+// keep(r, x, z) — брать ли в поле кусок улицы r с серединой (x, z). Нужен
+// мостам и тоннелям: они идут НЕ по земле, и их полотно в поле сливалось
+// с улицей внизу — бордюр и фартук ложились на землю под мостом.
+export function* roadFieldGen(all, bx0, bz0, bx1, bz1, keep = null) {
   const M = 16;
   const ox = Math.floor(bx0) - M, oz = Math.floor(bz0) - M;
   const W = Math.ceil(bx1) - Math.floor(bx0) + 2 * M + 1;
@@ -74,6 +77,7 @@ export function* roadFieldGen(all, bx0, bz0, bx1, bz1) {
       for (let q = 0; q < parts; q++) {
         const ax = sx + tx * q / parts, az = sz + tz * q / parts;
         const dx = tx / parts, dz = tz / parts;
+        if (keep && !keep(r, ax + dx / 2, az + dz / 2)) continue;
         const L2 = dx * dx + dz * dz;
         const i0 = Math.max(0, Math.ceil(Math.min(ax, ax + dx) - R) - ox);
         const i1 = Math.min(W - 1, Math.floor(Math.max(ax, ax + dx) + R) - ox);

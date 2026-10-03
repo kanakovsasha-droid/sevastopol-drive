@@ -1515,7 +1515,29 @@ export function* buildRoads(world, terrain, chunk = 500) {
   // остаётся той, что построил хозяин квадрата.
   const ctx = world.roads.ctx || null;
   const ALL = ctx ? ctx.all : world.roads;
-  const FLD = ctx ? yield* roadFieldGen(ALL, ctx.x0, ctx.z0, ctx.x1, ctx.z1) : null;
+  // Мост и тоннель в поле только у самых концов — там они стыкуются с
+  // улицей на земле, и кромка должна их обойти, а не перегородить проезд.
+  // Концы цепочки — узлы, куда приходит ровно один мостовой (тоннельный) кусок.
+  const decoEnds = [];
+  {
+    const key = (x, z) => Math.round(x * 2) + ',' + Math.round(z * 2);
+    const deg = new Map(), at = new Map();
+    for (const r of ALL) {
+      if (!(r.br || r.tn) || r.pts.length < 4) continue;
+      const p = r.pts, n = p.length / 2;
+      for (const e of [0, n - 1]) {
+        const k = (r.br ? 'b' : 't') + key(p[e * 2], p[e * 2 + 1]);
+        deg.set(k, (deg.get(k) || 0) + 1); at.set(k, [p[e * 2], p[e * 2 + 1]]);
+      }
+    }
+    for (const [k, d] of deg) if (d === 1) decoEnds.push(at.get(k));
+  }
+  const keepPiece = (r, x, z) => {
+    if (!r.br && !r.tn) return true;
+    for (const [ex, ez] of decoEnds) if ((ex - x) ** 2 + (ez - z) ** 2 < 144) return true;
+    return false;
+  };
+  const FLD = ctx ? yield* roadFieldGen(ALL, ctx.x0, ctx.z0, ctx.x1, ctx.z1, keepPiece) : null;
   if (FLD) asphCov = new Uint8Array(FLD.W * FLD.H);
   yield;
 
@@ -1974,7 +1996,10 @@ export function* buildRoads(world, terrain, chunk = 500) {
   };
   // Тротуар теперь идёт вдоль общей кромки, и «занято ли место тротуаром»
   // отвечает само поле: полоса от бордюра наружу у улицы, которой он положен.
-  const walkRoad = ri => { const r = ALL[ri]; return !!r && r.c <= 3 && r.w >= 5 && !r.br && !r.tn; };
+  // Тротуар положен любой городской улице (класс до 2), даже узкой в данных:
+  // узкие улочки старого центра без него читались грунтовками. Проезду
+  // (класс 3) — только широкому, дворовые выезды обходимся без него.
+  const walkRoad = ri => { const r = ALL[ri]; return !!r && !r.br && !r.tn && (r.c <= 2 ? r.w >= 3 : r.c === 3 && r.w >= 6); };
   const onSidewalk = (x, z) => {
     if (!FLD) return false;
     const f = FLD.at(x, z);
@@ -1995,7 +2020,14 @@ export function* buildRoads(world, terrain, chunk = 500) {
     const ext = lane ? lane.ext : densify(extendEnds(r.pts, Math.min(hw, 5)));
     // широкая улица лежит чуть выше узкой: там, где полотна всё же перекрылись,
     // это снимает мерцание вместо случайной борьбы за глубину
-    const lift = ROAD_Y + r.w * 0.0016;
+    // Пешеходная дорожка — НИЖЕ асфальта и тротуара: где она в данных
+    // пересекает проезжую часть (а это каждый переход, и не всегда в своём
+    // чанке, где мы можем это проверить), асфальт её просто накрывает, а не
+    // она ложится светлой полосой поперёк улицы. Над землёй и газоном видна.
+    // Мост: палуба сооружения (structures) стоит на ~17 см над осью — на
+    // сантиметр выше полотна, и с высоты асфальт тонул в ней рваными
+    // светлыми пятнами. Кладём полотно моста на 12 см выше.
+    const lift = r.c === 4 ? ROAD_Y - 0.05 : ROAD_Y + r.w * 0.0016 + (r.br ? 0.12 : 0);
     const mtR = lane ? lane.mt : miters(ext);
     // Проезжей части режем полуширину по вершинам; пешеходной дорожке — нет,
     // она в приоритетах не участвует и уступает целыми пролётами.
@@ -2089,6 +2121,10 @@ export function* buildRoads(world, terrain, chunk = 500) {
       // улица», но та улица сама могла быть ужата здесь кем-то третьим — и
       // посреди перекрёстка оставалась треугольная дыра до земли.
       if (lane && FLD) return false;
+      // Мост идёт НАД чужим полотном: растр покрытия под ним занят улицей
+      // внизу, и пролёты путепровода выкидывались — палуба зияла рваными
+      // дырами ровно над каждой улицей, которую он перекрывает.
+      if (r.br || r.tn) return false;
       const pts3 = [0.15, 0.5, 0.85].map(s2 => [
         ext[i * 2] + (ext[i * 2 + 2] - ext[i * 2]) * s2,
         ext[i * 2 + 1] + (ext[i * 2 + 3] - ext[i * 2 + 1]) * s2]);
@@ -2218,7 +2254,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
       // фактура мировая, и там, где она видна, шва нет.
       {
         const dp2 = densify(sp), mt2 = miters(dp2);
-        strip(bucket(dp2[0], dp2[1]), dp2, mt2, -1.6, 0, ROAD_Y - 0.03, 1, 3.2, false, null);
+        strip(bucket(dp2[0], dp2[1]), dp2, mt2, -1.6, 0, ROAD_Y - 0.015, 1, 3.2, false, null);
       }
       // Чья это кромка: смотрим на полметра ВНУТРЬ асфальта от середины
       // стороны. Бордюр с тротуаром положены улице, а не дворовому проезду.
@@ -2241,7 +2277,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
       // Щель тоньше метра между двумя почти касающимися полотнами — это не
       // островок, а недоразумение растра: заливаем асфальтом, без бордюра.
       if (chn.closed && area > 0 && 2 * area / per < 0.9) {
-        fillPoly(bucket(sp[0], sp[1]), sp.slice(0, sp.length - 2), ROAD_Y - 0.03, 1, ROAD_COLORS[1]);
+        fillPoly(bucket(sp[0], sp[1]), sp.slice(0, sp.length - 2), ROAD_Y - 0.015, 1, ROAD_COLORS[1]);
         continue;
       }
       if (chn.closed && area > 0 && area < 3500 && onLen > allLen * 0.7) {
@@ -2266,8 +2302,8 @@ export function* buildRoads(world, terrain, chunk = 500) {
           const inner = [];
           for (let i = 0; i < mt.n - 1; i++)
             inner.push(dpts[i * 2] + mt.NX[i] * mt.S[i] * BAND, dpts[i * 2 + 1] + mt.NZ[i] * mt.S[i] * BAND);
-          // газон ниже пешеходных дорожек (0.144+): аллеи через сквер видны поверх
-          if (wide) fillPoly(ch, inner, ROAD_Y - 0.06, 9, LAWN);
+          // газон ниже пешеходных дорожек: аллеи через сквер видны поверх
+          if (wide) fillPoly(ch, inner, ROAD_Y - 0.09, 9, LAWN);
           else fillPoly(ch, inner, TOP, 4, ROAD_COLORS[5]);
           continue;
         }
@@ -2294,7 +2330,10 @@ export function* buildRoads(world, terrain, chunk = 500) {
           const px = dpts[q * 2], pz = dpts[q * 2 + 1];
           const nx = mt.NX[q] * mt.S[q], nz = mt.NZ[q] * mt.S[q];
           let w = 0;
-          for (let t = 0.4; t <= SIDEWALK + 1e-6; t += 0.44) {
+          // у узкой улочки и тротуар узкий — 1.7 м, как в старом центре
+          const ow = ALL[FLD.own(px - nx * 0.6, pz - nz * 0.6)];
+          const maxW = ow && ow.w < 5 ? 1.7 : SIDEWALK;
+          for (let t = 0.4; t <= maxW + 1e-6; t += 0.44) {
             // поле в точке меньше, чем наш отступ, — значит, чужая кромка ближе своей
             if (FLD.at(px + nx * t, pz + nz * t) < t + KERB_ISO - 0.25) break;
             w = t;
@@ -2392,7 +2431,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
       ring.push([j.x + dx * rr, j.z + dz * rr]);
     }
     if (reach < 1.4) continue;
-    const lift = ROAD_Y - 0.03;
+    const lift = ROAD_Y - 0.015;
     ch.P.push(j.x, H(j.x, j.z) + lift, j.z);
     ch.C.push(enc(col[0]), enc(col[1]), enc(col[2]));
     ch.R.push(0, 0, 6, 0); ch.K.push(1); ch.O.push(-1); ch.S.push(0);
@@ -2415,7 +2454,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
     yield;
     const { F, W, ox, oz } = FLD;
     const i0 = ctx.x0 - ox, i1 = ctx.x1 - ox, j0 = ctx.z0 - oz, j1 = ctx.z1 - oz;
-    const col = ROAD_COLORS[1], lift = ROAD_Y - 0.035;
+    const col = ROAD_COLORS[1], lift = ROAD_Y - 0.015;
     // Улицы, построенные соседним чанком, в этот растр не попали — их место
     // дырой не считаем: смотрим, чья клетка по полю, и берём только свои.
     const mine = new Set(world.roads);
@@ -2469,8 +2508,10 @@ export function* buildRoads(world, terrain, chunk = 500) {
     }
   }
 
-  // Порядок высот на асфальте:
-  //   подложка узла    ROAD_Y − 0.03           (0.110)
+  // Порядок высот (между соседними слоями не меньше 2 см):
+  //   газон островка   ROAD_Y − 0.09           (0.050)
+  //   пешеходная дорожка ROAD_Y − 0.05         (0.090) — под асфальтом
+  //   подложки асфальта ROAD_Y − 0.015         (0.125) — узел, фартук, дыры
   //   полотно улицы    ROAD_Y + ширина*0.0016  (0.146 .. 0.162)
   //   зебра, стоп-линия ROAD_Y + 0.055         (0.195)
   //   тротуар, бордюр  KERB_H + 0.03           (0.200)
