@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=0bf13da6';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=6ce88c24';
 
 // Физика машины. Третий заход.
 //
