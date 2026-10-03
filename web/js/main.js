@@ -1,16 +1,16 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=8ca68630';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=8ca68630';
-import { buildStreetProps } from './props.js?v=8ca68630';
-import { buildYards, buildStructures } from './yards.js?v=8ca68630';
-import { buildFurniture } from './furniture.js?v=8ca68630';
-import { buildLandmarks } from './landmarks.js?v=8ca68630';
-import { buildSigns } from './signs.js?v=8ca68630';
-import { audit } from './audit.js?v=8ca68630';
-import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=8ca68630';
-import { ChunkManager } from './chunks.js?v=8ca68630';
-import { Collider, RoadIndex } from './collision.js?v=8ca68630';
-import { Car, createCarMesh } from './vehicle.js?v=8ca68630';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=0bf13da6';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=0bf13da6';
+import { buildStreetProps } from './props.js?v=0bf13da6';
+import { buildYards, buildStructures } from './yards.js?v=0bf13da6';
+import { buildFurniture } from './furniture.js?v=0bf13da6';
+import { buildLandmarks } from './landmarks.js?v=0bf13da6';
+import { buildSigns } from './signs.js?v=0bf13da6';
+import { audit } from './audit.js?v=0bf13da6';
+import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=0bf13da6';
+import { ChunkManager } from './chunks.js?v=0bf13da6';
+import { Collider, RoadIndex } from './collision.js?v=0bf13da6';
+import { Car, createCarMesh } from './vehicle.js?v=0bf13da6';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -210,6 +210,22 @@ async function boot() {
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam, get mode() { return mode; } };
     window.G.audit = () => audit(window.G);
+    // Отладочный вид: ?at=x,z,высота&look=x,z,высота — камера полёта сразу
+    // стоит в точке и смотрит на цель. Обзор в игре идёт через захват мыши, а
+    // в управляемом браузере его нет; без этого здание в кадр не поймать.
+    if (P.get('at')) {
+      const a = P.get('at').split(',').map(Number);
+      const l = (P.get('look') || '').split(',').map(Number);
+      toggleFly();
+      fly.x = a[0]; fly.z = a[1];
+      fly.y = terrain.gridHeightAt(a[0], a[1]) + (a[2] ?? 2);
+      if (l.length >= 2 && l.every(isFinite)) {
+        const dx = l[0] - fly.x, dz = l[1] - fly.z;
+        const dy = terrain.gridHeightAt(l[0], l[1]) + (l[2] ?? 2) - fly.y;
+        fly.yaw = Math.atan2(dx, dz);
+        fly.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+      }
+    }
     window.G.fly = fly;
     window.G.walk = walk;
     window.G.setInvertY = v => { invertY = !!v; };
