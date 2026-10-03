@@ -14,7 +14,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, 'src', 'mercedes-amg_e_63_s_w213.glb')
 OUT = os.path.normpath(os.path.join(HERE, '..', '..', 'data', 'models', 'e63.glb'))
 WHEELBASE = 2.939            # м, паспорт W213
-RATIO = 0.36                 # доля треугольников, что остаётся у тяжёлых деталей
+RATIO = 0.42                 # доля треугольников, что остаётся у тяжёлых деталей
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=SRC)
@@ -51,24 +51,6 @@ yf = max(c.y for c, r, o in corner.values()); yr = min(c.y for c, r, o in corner
 S = WHEELBASE / (yf - yr)
 cx = sum(c.x for c, r, o in corner.values()) / 4
 print('МАСШТАБ', round(S, 4), 'радиус шины, м', [round(r * S, 3) for c, r, o in corner.values()])
-
-# Диски у исходника слиты в одну сетку на все четыре колеса. Всё, что задевает
-# цилиндр какого-нибудь колеса, режем на связные куски — и разбираем уже их.
-def near_wheel(o):
-    a, b = bbox(o)
-    for wc, wr, wo in corner.values():
-        if a.y < wc.y + wr and b.y > wc.y - wr and a.z < wc.z + wr and b.z > wc.z - wr \
-           and a.x < wc.x + wr * 0.6 and b.x > wc.x - wr * 0.6:
-            return True
-    return False
-tire_objs = {o for c, r, o in corner.values()}
-for o in list(meshes):
-    if o in tire_objs or not near_wheel(o): continue
-    bpy.ops.object.select_all(action='DESELECT')
-    o.select_set(True); bpy.context.view_layer.objects.active = o
-    bpy.ops.mesh.separate(type='LOOSE')
-meshes = [o for o in bpy.data.objects if o.type == 'MESH']
-print('КУСКОВ', len(meshes))
 
 # детали колеса: габарит целиком внутри цилиндра шины (диски, гайки, колпачки)
 wheels = {k: [] for k in corner}
