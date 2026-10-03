@@ -10,7 +10,7 @@ import { audit } from './audit.js?v=6ce88c24';
 import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=6ce88c24';
 import { ChunkManager } from './chunks.js?v=6ce88c24';
 import { Collider, RoadIndex } from './collision.js?v=6ce88c24';
-import { Car, createCarMesh } from './vehicle.js?v=6ce88c24';
+import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=6ce88c24';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -183,6 +183,9 @@ async function boot() {
     car = new Car(terrain, collider);
     carMesh = createCarMesh();
     scene.add(carMesh);
+    // настоящая модель приезжает позже, коробочная стоит до неё
+    loadCarModel().then(m => { scene.remove(carMesh); carMesh = m; scene.add(m); })
+      .catch(e => console.warn('модель машины не загрузилась, остаётся коробочная:', e.message));
     car.reset(SPAWN.x, SPAWN.z, 0);
     walk.x = SPAWN.x; walk.z = SPAWN.z;
 
@@ -1373,19 +1376,8 @@ function loop(now) {
     terrain.prune(sx, sz, DETAIL_KEEP);
   }
 
-  carMesh.position.copy(car.pos);
-  carMesh.rotation.set(0, 0, 0);
-  carMesh.rotateY(car.yaw);
-  carMesh.rotateX(car.pitch);
-  carMesh.rotateZ(car.roll);
-  // колёса ходят вертикально каждое своё — кузов плитой земле не следует
-  const ws = carMesh.userData.wheels;
-  if (ws) for (let i = 0; i < ws.length && i < 4; i++) ws[i].position.y = 0.355 + car.wheelDrop[i];
-  const w = carMesh.userData.wheels;
-  for (let i = 0; i < 4; i++) {
-    w[i].rotation.set(0, i < 2 ? car.steerVis : 0, 0);
-    w[i].rotateX(car.wheelSpin);
-  }
+  // кузов по крену и клевку, колёса — ход подвески, руль и прокрутка
+  placeCarMesh(carMesh, car);
 
   // тень едет за игроком, иначе карты теней не хватит на 5 км
   const t = mode === 'car' ? car.pos
