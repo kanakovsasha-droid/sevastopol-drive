@@ -4,6 +4,8 @@ import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMat
 import { buildCoverage } from './coverage.js?v=551c1705';
 import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=551c1705';
 import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=551c1705';
+import { resolveAreas, sportSkipIds } from './sport.js';
+import { planParking, roadSegIndex } from './parking.js';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -3248,6 +3250,9 @@ function garageBoxes(poly, terrain, pushV, rnd) {
 // ГЕНЕРАТОР: дома плотного квартала — до 37 мс в одном шаге. Возвращаем
 // управление менеджеру каждые несколько десятков домов.
 export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
+  // Контуры всех домов квадрата — тентам рынка: не заходить в соседа.
+  let mktGrid = null;
+  const MKT_GRID = { find: (x, z) => (mktGrid ||= new PolyGrid((world.allBuildings || world.buildings).map(b => ({ poly: b.poly })), 60)).find(x, z) };
   const chunks = new Map();
   const bucket = (x, z) => {
     const k = Math.floor(x / chunk) + ',' + Math.floor(z / chunk);
@@ -3398,8 +3403,13 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
     // Рыночный ряд: длинный сарай под двускатной ребристой кровлей, по бокам
     // тент над проходом. Вальма из общего кода тут не годится — ряд узкий
     // и длинный, у него конёк во всю длину, а не четыре ската.
-    if (market) {
-      const box = obb(poly);
+    // Рыночный ряд строим своей кровлей только у прямоугольного пятна: у
+    // Г-образного или скошенного рамка выходит далеко за стены, и кровля с
+    // тентами накрывала соседний павильон и корпус ДЮСШ «Чайка» — «павильон
+    // входит в дом». Такие ряды кроет общая юбка по контуру ниже.
+    const mbox = market ? obb(poly) : null;
+    if (mbox && area / mbox.area >= 0.9) {
+      const box = mbox;
       if (box) {
         const { ux, uz } = box;
         const toXZ = (u, v) => [u * ux - v * uz, u * uz + v * ux];
@@ -3481,6 +3491,17 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
           const cO = cW + side * 1.65;                      // вынос наружу
           const A = P(a0 + 0.4, cW), B = P(a1 - 0.4, cW);
           const C = P(a1 - 0.4, cO), D = P(a0 + 0.4, cO);
+          // тент не заводим в соседний дом или павильон: ряды стоят впритык
+          let blocked = false;
+          for (let t = 0; t <= 1.0001 && !blocked; t += 0.125) {
+            const q = P(a0 + 0.4 + (a1 - a0 - 0.8) * t, cO);
+            const q2 = P(a0 + 0.4 + (a1 - a0 - 0.8) * t, cW + side * 0.9);
+            for (const [qx, qz] of [q, q2]) {
+              const hitB = MKT_GRID.find(qx, qz);
+              if (hitB && hitB.poly !== poly) { blocked = true; break; }
+            }
+          }
+          if (blocked) continue;
           quad(A, yA, B, yA, C, yA - 0.42, D, yA - 0.42, 6, awn,
                [[a0, 0], [a1, 0], [a1, 1.7], [a0, 1.7]]);
         }
@@ -3820,55 +3841,124 @@ export function buildTrees(world, terrain, limit = 40000) {
 }
 
 // ---------------------------------------------------------------- площадки
-// Парковки, футбольные поля, беговые дорожки, детские площадки и кладбища.
-// Всё из OSM (data/areas.json), ничего не выдумано. Каждая площадка ложится
-// на рельеф своим полотном: контур триангулируется, треугольники дробятся,
-// пока сторона не станет меньше 5 м, и каждая вершина садится на землю.
+// Парковки, футбольные поля, беговые дорожки, корты, детские площадки и
+// кладбища. Всё из OSM (data/areas.json → чанки) плюс ручные правки
+// data/sport-hand.json, сведённые в data/sport.json (см. web/js/sport.js).
+//
+// Полотно ЛЕЖИТ НА ЗЕМЛЕ: каждая вершина садится на нарисованную сетку
+// рельефа. Раньше беговой овал, парковки и АЗС выравнивались одной отметкой
+// по контуру, и на склоне полотно с одной стороны висело плитой со стенкой, с
+// другой — уходило под траву вместе с машинами. Ровными поля и корты делает
+// теперь сам рельеф: под ними он срезан и подсыпан (installFlats), и полотно,
+// посаженное на него, ровное само собой.
+//
 // В атрибут пишем локальные метры от габаритной рамки — по ним шейдер кладёт
-// разметку машиномест, линии поля и дорожки.
-// ГЕНЕРАТОР: площадки триангулируются целиком и на большом спортивном ядре
-// или кладбище это до 170 мс в одном кадре — самый заметный рывок из
-// оставшихся. Возвращаем управление менеджеру между площадками.
+// линии поля, корта и дорожек. Разметка парковки — геометрией: штрихи только
+// у тех мест, что реально помещаются (web/js/parking.js), и машины встают
+// ровно в них.
+// ГЕНЕРАТОР: на большом спортивном ядре или кладбище триангуляция стоит
+// десятки миллисекунд — возвращаем управление менеджеру между площадками.
 export function* buildAreas(world, terrain) {
   // Растр покрытия построен в buildRoads и лежит в мире: по нему проверяем,
   // не накрыла ли площадка проезжую часть.
   const COVA = world.__coverage;
   const onAsphalt = COVA ? (x, z) => COVA.onRoad(x, z) : () => false;
-  // Высоту берём тем же способом, что и дороги: сетка рельефа триангулирована
-  // двумя треугольниками на клетку, и билинейная выборка внутри клетки лежит
-  // то выше, то ниже настоящей поверхности. При подъёме в 5 см из полотна
-  // проступали чёрные заплаты — классическая борьба глубин. Поднимаем на
-  // 16 см, как проезжую часть, и берём рельеф там же.
+  // Высоту берём тем же способом, что и дороги: по нарисованным треугольникам
+  // сетки рельефа, а не по сырым высотам.
   const H = (x, z) => terrain.gridHeightAt(x, z);
-  // Площадки в OSM ЛЕЖАТ ДРУГ НА ДРУГЕ: спортивное ядро накрывает и поле, и
-  // беговую дорожку, и парковку рядом с ним. На одной высоте они дерутся за
-  // глубину, и полотно шло пятнами — то асфальт, то газон. Разводим по слоям:
-  // чем мельче и «главнее» площадка, тем выше она лежит.
-  // Парковка и площадка АЗС ложатся ПОД дорогу (слой −1), и потому не режутся
-  // по ней вовсе: улица и тротуар просто рисуются поверх. Обрезка по кромке
-  // давала рваный зигзаг по всему периметру — растр покрытия блочный, и как
-  // мелко ни дроби, край остаётся пилой.
-  const LAYER = { parking: -1, fuel: -1, cemetery: 0, sportsground: 1, pitch: 2, football: 3, track: 4, playground: 6, path: 7 };
+  // Площадки в OSM ЛЕЖАТ ДРУГ НА ДРУГЕ: беговая дорожка вокруг поля, поле на
+  // спортядре. Разводим по слоям: чем «главнее» площадка, тем выше она лежит.
+  // Поле выше дорожки: внутренняя кромка дорожки в OSM и контур поля
+  // расходятся на метр-другой, и тартан с белыми линиями ложился на газон.
+  // Парковка и АЗС — ПОД дорогой (слой −1): улица и тротуар рисуются поверх.
+  const LAYER = { parking: -1, fuel: -1, market: -1, cemetery: 0, track: 1, sport: 3, playground: 6, path: 7 };
   const LIFT0 = 0.13;
-  // Подъём каждой площадки отдаём наружу: машины и качели ставились по
-  // рельефу, а полотно лежит выше — машины оказывались ПОД парковкой.
   const liftOf = new Map();
-  const KIND = { parking: 0, football: 1, pitch: 2, track: 3, playground: 4, sportsground: 5, cemetery: 6, path: 7, fuel: 8 };
-  const COL = {
-    parking:      [0.168, 0.166, 0.172],
-    football:     [0.196, 0.373, 0.161],
-    pitch:        [0.376, 0.302, 0.208],
-    track:        [0.435, 0.259, 0.204],
-    playground:   [0.400, 0.243, 0.196],
-    sportsground: [0.267, 0.286, 0.243],
-    cemetery:     [0.318, 0.361, 0.243],
-    path:         [0.573, 0.549, 0.494],
-    fuel:         [0.176, 0.176, 0.184],
+  // Код вида для шейдера (areaMaterial): 0 парковка, 1 футбол, 3 дорожка,
+  // 4 детская, 5 гладкое (бордюр), 6 кладбище, 7 аллея, 8 АЗС, 9 теннис,
+  // 10 баскетбол, 11 волейбол, 12 мини-футбол и универсальная, 13 пляжный
+  // волейбол, 14 бетон (скейт-парк, шахматы), 15 краска (разметка геометрией).
+  const KIND = { parking: 0, football: 1, track: 3, playground: 4, plain: 5, cemetery: 6, path: 7, fuel: 8,
+    tennis: 9, basketball: 10, volleyball: 11, multi: 12, beach: 13, skate: 14, plaza: 14, market: 14, paint: 15 };
+  // Покрытие из OSM (surface=*): 1 трава, 2 искусственный газон, 3 резина и
+  // тартан, 4 асфальт, 5 грунт-корт (clay), 6 песок, 7 грунт, 8 гаревое, 9 бетон.
+  const SURF = { grass: 1, artificial_turf: 2, tartan: 3, rubber: 3, acrylic: 3, asphalt: 4, concrete: 9,
+    paving_stones: 9, clay: 5, sand: 6, ground: 7, dirt: 7, gravel: 7, unpaved: 7, compacted: 7, fine_gravel: 7,
+    earth: 7, cinder: 8 };
+  // Цвет полотна по виду и покрытию; разметку и узоры кладёт шейдер.
+  const BASE = {
+    parking: [0.168, 0.166, 0.172], fuel: [0.176, 0.176, 0.184], cemetery: [0.318, 0.361, 0.243],
+    path: [0.573, 0.549, 0.494], playground: [0.400, 0.243, 0.196], plain: [0.267, 0.286, 0.243],
+    football: [0.196, 0.380, 0.165], track: [0.580, 0.255, 0.196], tennis: [0.196, 0.400, 0.290],
+    basketball: [0.545, 0.247, 0.188], volleyball: [0.220, 0.400, 0.310], multi: [0.180, 0.420, 0.220],
+    beach: [0.760, 0.680, 0.500], skate: [0.600, 0.590, 0.560], plaza: [0.600, 0.590, 0.560],
+    market: [0.440, 0.430, 0.405],
   };
-  const P = [], C = [], U = [], K = [], I = [];
-  let base = 0, drawn = 0, work = 0;
+  const BY_SURF = {
+    2: [0.165, 0.440, 0.205], 3: [0.560, 0.250, 0.190], 4: [0.300, 0.300, 0.310], 5: [0.690, 0.370, 0.230],
+    6: [0.760, 0.680, 0.500], 7: [0.470, 0.400, 0.300], 8: [0.480, 0.300, 0.235],   // гарь: красно-бурая крошка 9: [0.600, 0.590, 0.560],
+  };
+  const P = [], C = [], U = [], K = [], S = [], I = [];
+  let base = 0, drawn = 0, work = 0, stalls = 0;
 
-  for (const a of world.areas || []) {
+  // Что рисовать: дубли выброшены, овал старого стадиона разложен на кольцо
+  // и поле. Тот же список берут машины (yards) и снаряжение (sport).
+  const list = resolveAreas(world.areas);
+  // Рынок (зона из data/zones.json) стоит не на буром грунте, а на бетоне и
+  // асфальте между рядами — как на спутнике. Ряды встают поверх.
+  for (const z of world.zones || [])
+    if (z.kind === 'market' && z.poly && z.poly.length >= 6) list.push({ id: 'zone:' + z.name, k: 'market', poly: z.poly });
+  world.__areasDraw = list;
+  // Дома квадрата ДО дедупликации: дом на шве принадлежит соседу, а парковку
+  // и ограду всё равно надо проверять по нему.
+  // Дом, отданный трибуне (sport-hand.json → skip), не рисуется — и мешать
+  // площадкам не должен.
+  const gone = new Set(sportSkipIds());
+  const BLD = new PolyGrid((world.allBuildings || world.buildings).filter(b => !gone.has(b.id))
+    .map(b => ({ poly: b.poly, holes: b.holes })), 60);
+  world.__buildGrid = BLD;
+  const allRoads = (world.roads && world.roads.ctx && world.roads.ctx.all) || world.roads;
+  const pl = world.places || {};
+  const segs = roadSegIndex(allRoads, pl.paths);
+  const treeXZ = [];
+  for (const t of pl.trees || []) treeXZ.push(t.x, t.z);
+  const blockers = list.filter(a => a.k !== 'parking' && a.k !== 'fuel' && a.k !== 'cemetery' && a.k !== 'market').map(a => a.poly);
+  // Деревьям, кустам и изгородям на асфальте парковки и на поле не место:
+  // посадки сыплются по зелени OSM и вдоль улиц и знать не знают о площадках.
+  {
+    const hard = list.filter(a => a.k !== 'cemetery').map(a => ({ poly: a.poly }));
+    const grid = hard.length ? new PolyGrid(hard, 60) : null;
+    world.__noPlant = grid ? (x, z) => !!grid.find(x, z) : () => false;
+  }
+
+  // Штрих разметки — лентой по земле: длинную линию по торцам ряда режем на
+  // пятиметровые звенья, иначе на склоне её середина уходит под асфальт.
+  const paint = (ax, az, bx, bz, w, lift) => {
+    const L = Math.hypot(bx - ax, bz - az);
+    if (L < 0.05) return;
+    const px = -(bz - az) / L * w / 2, pz = (bx - ax) / L * w / 2;
+    const k = Math.max(1, Math.ceil(L / 5));
+    const q = base;
+    for (let i = 0; i <= k; i++) {
+      const cx = ax + (bx - ax) * i / k, cz = az + (bz - az) * i / k;
+      for (const sg of [-1, 1]) {
+        const x = cx + px * sg, z = cz + pz * sg;
+        P.push(x, H(x, z) + lift, z);
+        C.push(enc(0.80), enc(0.80), enc(0.76));
+        U.push(x, z, 0, 0);
+        K.push(KIND.paint); S.push(0);
+        base++;
+      }
+    }
+    // обход к нормали вверх: у (v0, v1, v2) нормаль по y = 2(p.z·d.x − p.x·d.z)
+    const up = (bx - ax) * pz - (bz - az) * px > 0;
+    for (let i = 0; i < k; i++) {
+      const v0 = q + i * 2, v1 = v0 + 1, v2 = v0 + 2, v3 = v0 + 3;
+      if (up) I.push(v0, v1, v2, v1, v3, v2); else I.push(v0, v2, v1, v1, v2, v3);
+    }
+  };
+
+  for (const a of list) {
     const n = a.poly.length / 2;
     if ((work += n + 12) > 40) { work = 0; yield; }
     if (n < 3) continue;
@@ -3876,87 +3966,78 @@ export function* buildAreas(world, terrain) {
     const box = obbOf(a.poly);
     if (!box) continue;
     const { ox, oz, ux, uz, W, L } = box;
-    // Рамку считали ДВАЖДЫ и независимо: здесь для разметки, и отдельно в
-    // yards для машин. На почти квадратном контуре минимальная рамка выбирает
-    // разные стороны, и 223 машины из 584 вставали поперёк своих же мест,
-    // до 89 градусов скоса. Кладём рамку в саму площадку — источник один.
+    // Рамка одна на всех: разметка, места парковки, ворота и сетки. Считанная
+    // дважды независимо, на почти квадратном контуре она выбирала разные
+    // стороны, и машины вставали поперёк своих же мест.
     a.__f = { ox, oz, ux, uz, W, L };
-    const kind = KIND[a.k] ?? 5;
-    const col = COL[a.k] || COL.sportsground;
-    const LIFT = LIFT0 + (LAYER[a.k] ?? 1) * 0.035;
-    liftOf.set(a, { lift: LIFT, flat: null });
-    // Стадион, поле, корт, детская площадка и парковка — РОВНЫЕ площадки: их
-    // срезают и подсыпают, а не стелют по склону. Раньше они шли волной вслед
-    // за рельефом, и беговой овал горбился. Считаем одну отметку по медиане
-    // высот контура и кладём всё полотно на неё, а по кромке ставим подпорную
-    // стенку до земли. Кладбище и аллеи оставляем на рельефе — они и в жизни
-    // идут по склону.
-    // РОВНОЙ платформой кладём только беговой овал: он реально срезан в
-    // горизонт, и по рельефу горбился. Поле, корты, детские площадки и
-    // парковки оставляем на земле — выровненные, они задирались над склоном
-    // и вырастала подпорная стенка там, где её нет.
-    // Парковка, беговой овал и площадка АЗС — РОВНЫЕ: их срезают и подсыпают.
-    // Поле и корты оставляем на рельефе: выровненные, они задирались над
-    // склоном стеной там, где её нет.
-    const LEVELED = a.k === 'track' || a.k === 'fuel' || a.k === 'parking';
+    const s = a.__s || null;
+    const cls = s ? s.as : (a.k === 'pitch' ? 'multi' : a.k);
+    const kind = KIND[cls] ?? KIND.plain;
+    const surf = s && s.surface ? (SURF[s.surface] || 0) : (cls === 'track' && a.id && a.id.includes(':ring') ? 8 : 0);
+    const col = (surf && cls !== 'tennis' && cls !== 'basketball' && BY_SURF[surf]) || BASE[cls] || BASE.plain;
+    const layer = LAYER[a.k === 'pitch' || a.k === 'football' ? 'sport' : a.k] ?? 3;
+    const LIFT = LIFT0 + layer * 0.035;
+    a.__lift = LIFT;
+    liftOf.set(a, LIFT);
     // На дороге площадке делать нечего — кроме кладбища, где растр покрытия
-    // и так пуст, и аллей, которые сами по себе тропинки.
-    // Под дорогой лежащие площадки не режем — их и не видно под ней.
-    const skipOnRoad = a.k !== 'cemetery' && (LAYER[a.k] ?? 1) >= 0;
+    // и так пуст. Под дорогой лежащие площадки (парковки) не режем — их и не
+    // видно под ней.
+    const skipOnRoad = a.k !== 'cemetery' && layer >= 0;
+    // АЗС по-прежнему ровная: навес и колонки стоят на одной отметке.
     let flatY = null;
-    if (LEVELED) {
+    if (a.k === 'fuel') {
       const hs = [];
       for (let i = 0; i < n; i++) hs.push(H(a.poly[i * 2], a.poly[i * 2 + 1]));
       hs.sort((p, q) => p - q);
-      // 60-й процент, а не медиана: пад чуть выше середины, и низкая сторона
-      // получает подпорную стенку, а высокая не срезает землю у соседнего дома
-      // 40-й процент: пад держится НИЖЕ середины, и дорога, проходящая через
-      // парковку, нигде не тонет в нём.
       flatY = hs[Math.min(hs.length - 1, Math.round(hs.length * 0.4))];
-      liftOf.get(a).flat = flatY;
+      liftOf.set(a, { flat: flatY, lift: LIFT });
     }
 
     // Контур way в OSM замкнут: последняя точка совпадает с первой. Оставлять
     // её нельзя — earcut на задвоенной вершине сыпется и оставляет в полотне
-    // рваные дыры, сквозь которые светит трава (143 площадки из 146).
+    // рваные дыры.
     const pts = [];
     let last = n;
     if (Math.abs(a.poly[0] - a.poly[(n - 1) * 2]) < 1e-6 &&
         Math.abs(a.poly[1] - a.poly[(n - 1) * 2 + 1]) < 1e-6) last = n - 1;
     for (let i = 0; i < last; i++) {
       const x = a.poly[i * 2], z = a.poly[i * 2 + 1];
-      // и подряд идущие совпадающие точки тоже выбрасываем
       if (pts.length && Math.abs(pts[pts.length - 1].x - x) < 1e-6
                      && Math.abs(pts[pts.length - 1].y - z) < 1e-6) continue;
       pts.push(new THREE.Vector2(x, z));
     }
     if (pts.length < 3) continue;
-    // Внутренний контур: у бегового овала середина — это футбольное поле, а не
-    // тартан. Без дыры красное покрытие заливало весь стадион.
+    // Внутренний контур беговой дорожки: середина — поле, а не тартан. Если
+    // в OSM его нет, его отводит tools/build-sport.mjs.
+    const holeSrc = a.hole || (s && s.hole) || null;
     const holes = [];
-    if (a.hole && a.hole.length >= 6) {
+    if (holeSrc && holeSrc.length >= 6) {
       const hp = [];
-      const hn = a.hole.length / 2;
+      const hn = holeSrc.length / 2;
       let hlast = hn;
-      if (Math.abs(a.hole[0] - a.hole[(hn - 1) * 2]) < 1e-6 &&
-          Math.abs(a.hole[1] - a.hole[(hn - 1) * 2 + 1]) < 1e-6) hlast = hn - 1;
+      if (Math.abs(holeSrc[0] - holeSrc[(hn - 1) * 2]) < 1e-6 &&
+          Math.abs(holeSrc[1] - holeSrc[(hn - 1) * 2 + 1]) < 1e-6) hlast = hn - 1;
       for (let i = 0; i < hlast; i++) {
-        const x = a.hole[i * 2], z = a.hole[i * 2 + 1];
+        const x = holeSrc[i * 2], z = holeSrc[i * 2 + 1];
         if (hp.length && Math.abs(hp[hp.length - 1].x - x) < 1e-6
                       && Math.abs(hp[hp.length - 1].y - z) < 1e-6) continue;
         hp.push(new THREE.Vector2(x, z));
       }
       if (hp.length >= 3) holes.push(hp);
     }
+    // Сегменты внутри овала у торцов поля на настоящих стадионах — тот же
+    // тартан (сектора для прыжков), а не трава: тогда середину не вырезаем,
+    // поле просто ложится сверху слоем выше.
+    const fillHole = !!(s && s.holeFill);
     let tri;
-    try { tri = THREE.ShapeUtils.triangulateShape(pts, holes); } catch { tri = []; }
+    try { tri = THREE.ShapeUtils.triangulateShape(pts, fillHole ? [] : holes); } catch { tri = []; }
     if (!tri.length) continue;
-    // с дырой индексы идут по объединённому списку вершин
-    const all = holes.length ? pts.concat(...holes) : pts;
+    const all = holes.length && !fillHole ? pts.concat(...holes) : pts;
 
-    // Для кольца (беговой овал) поперечную координату считаем как расстояние
-    // до ВНУТРЕННЕГО контура: тогда линии дорожек идут вдоль овала, а не
-    // прямыми полосами поперёк него.
+    // Для кольца поперечную координату считаем как расстояние до ВНУТРЕННЕЙ
+    // кромки: линии дорожек идут вдоль овала. Внутри кромки — со знаком минус:
+    // там дорожек нет.
+    const holeFlat = holes.map(hp => hp.flatMap(p => [p.x, p.y]));
     const ringDist = holes.length ? (x, z) => {
       let best = Infinity;
       for (const hp of holes) {
@@ -3968,39 +4049,51 @@ export function* buildAreas(world, terrain) {
           if (d < best) best = d;
         }
       }
+      for (const hf of holeFlat) if (pointInPoly(x, z, hf)) return -best;
       return best;
     } : null;
+    // у прямой дорожки без середины линии идут вдоль длинной стороны
+    const straightLane = cls === 'track' && !ringDist;
 
     const push = (x, z) => {
       const dx = x - ox, dz = z - oz;
+      const lu = dx * ux + dz * uz, lv = -dx * uz + dz * ux;
       P.push(x, (flatY !== null ? flatY : H(x, z)) + LIFT, z);
       C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-      U.push(dx * ux + dz * uz, ringDist ? ringDist(x, z) : -dx * uz + dz * ux, W, L);
-      K.push(kind);
+      if (ringDist) U.push(lu, ringDist(x, z), W, L);
+      else if (straightLane) U.push(W >= L ? lu : lv, W >= L ? lv : lu, Math.max(W, L), Math.min(W, L));
+      else U.push(lu, lv, W, L);
+      K.push(kind); S.push(surf);
       return base++;
     };
-    // дробим треугольник, пока сторона длиннее 5 м: иначе на склоне полотно
-    // висит над землёй серединой
-    // Адаптивное дробление: мельчим ТОЛЬКО там, где треугольник пересекает
-    // кромку дороги. Дробить всё подряд до полутора метров — это 2.6 млн
-    // вершин вместо 63 тысяч и мёртвый кадр; дробить крупно — рваный зигзаг
-    // по краю парковки. Считаем семь проб: все на асфальте — кусок выбросить,
-    // ни одной — рисовать как есть, вперемешку — разрезать и спросить снова.
+    // Дробим треугольник, пока он не ляжет на рельеф: сетка земли — 9 м
+    // клетками, и крупный треугольник на склоне провисал бы над травой или
+    // уходил под неё. На ровной (срезанной под поле) земле дробить незачем —
+    // проверяем, лежат ли середины сторон и центр на плоскости углов.
+    // Возле дороги мельчим, пока не отделим асфальт: семь проб, все на
+    // асфальте — кусок выбросить, ни одной — рисовать как есть.
     const probes = (A, B, Cc) => [A, B, Cc,
       [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2],
       [(B[0] + Cc[0]) / 2, (B[1] + Cc[1]) / 2],
       [(Cc[0] + A[0]) / 2, (Cc[1] + A[1]) / 2],
       [(A[0] + B[0] + Cc[0]) / 3, (A[1] + B[1] + Cc[1]) / 3]];
-
-    // Дробление идёт СВОИМ стеком, а не рекурсией. Глубина 8 — это до
-    // шестидесяти тысяч треугольников на одну площадку, и большая парковка
-    // отнимала 120 мс в ОДНОМ шаге генератора, мимо всякого бюджета кадра:
-    // из рекурсии управление не вернёшь. Со стеком возвращаем каждую тысячу.
+    const bent = (A, B, Cc, tol) => {
+      if (flatY !== null) return false;
+      const ha = H(A[0], A[1]), hb = H(B[0], B[1]), hc = H(Cc[0], Cc[1]);
+      const chk = (x, z, h) => Math.abs(H(x, z) - h);
+      const dev = Math.max(
+        chk((A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (ha + hb) / 2),
+        chk((B[0] + Cc[0]) / 2, (B[1] + Cc[1]) / 2, (hb + hc) / 2),
+        chk((Cc[0] + A[0]) / 2, (Cc[1] + A[1]) / 2, (hc + ha) / 2),
+        chk((A[0] + B[0] + Cc[0]) / 3, (A[1] + B[1] + Cc[1]) / 3, (ha + hb + hc) / 3));
+      return dev > tol;
+    };
+    // Дробление идёт СВОИМ стеком, а не рекурсией: из рекурсии управление
+    // менеджеру не вернёшь.
     const d2 = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
     const stack = [];
     for (const f of tri) {
       const A = [all[f[0]].x, all[f[0]].y], B = [all[f[1]].x, all[f[1]].y], Cc = [all[f[2]].x, all[f[2]].y];
-      // обход к нормали вверх
       const cross = (B[0] - A[0]) * (Cc[1] - A[1]) - (B[1] - A[1]) * (Cc[0] - A[0]);
       stack.push(cross > 0 ? [A, Cc, B, 0] : [A, B, Cc, 0]);
     }
@@ -4008,13 +4101,20 @@ export function* buildAreas(world, terrain) {
     while (stack.length) {
       const [A, B, Cc, depth] = stack.pop();
       const maxE = Math.max(d2(A, B), d2(B, Cc), d2(Cc, A));
+      // Дом на площадке — ошибка наложения контуров OSM (угол дома на
+      // футбольном поле, разметка уходит под стену): такие куски выбрасываем
+      // так же, как куски на проезжей части.
       let hit = 0;
       if (skipOnRoad) {
-        for (const q of probes(A, B, Cc)) if (onAsphalt(q[0], q[1])) hit++;
-        if (hit === 7) continue;                     // целиком на дороге
+        for (const q of probes(A, B, Cc)) if (onAsphalt(q[0], q[1]) || BLD.find(q[0], q[1])) hit++;
+        if (hit === 7) continue;                     // целиком на дороге или в доме
       }
-      // рельеф: на неровной земле дробим до пяти метров, ровную площадку — нет
-      const needTerrain = flatY === null && maxE > 5;
+      // крупный треугольник может накрыть узел сетки целиком — ему допуск строже
+      // Парковке допуск шире: она лежит ПОД дорогами и машинами, а вершин у
+      // неё больше, чем у всех полей квартала вместе взятых.
+      const loose = a.k === 'parking';
+      const needTerrain = flatY === null && maxE > (loose ? 4 : 2.5) &&
+        bent(A, B, Cc, maxE > 9.5 ? (loose ? 0.03 : 0.005) : (loose ? 0.07 : 0.03));
       const needEdge = hit > 0 && maxE > 1.2;        // кромка дороги рядом
       if (depth < 8 && (needTerrain || needEdge)) {
         const mAB = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
@@ -4029,32 +4129,75 @@ export function* buildAreas(world, terrain) {
       I.push(i0, i1, i2);
       if ((++made & 511) === 511) yield;
     }
-    // Кромка ЛЮБОЙ площадки: полотно лежит на 30–38 см выше земли, и без юбки
-    // с уровня глаз это парящая плита, под краем видно траву. Раньше юбка
-    // строилась только у выровненных — то есть почти нигде.
-    {
-      const top = (flatY !== null ? flatY : null);
+
+    // Бордюр по кромке площадки: полотно лежит на 13–38 см выше земли, и
+    // без бортика с уровня глаз под краем видно траву. Раньше стенка
+    // строилась с обеими сторонами на ОДНИХ вершинах — нормали гасили друг
+    // друга, и она выходила чёрной («глухая чёрная стенка» у поля). Теперь у
+    // каждой стороны свои вершины. Парковке, АЗС, кладбищу и аллее бортик не
+    // нужен: они лежат почти вровень с землёй.
+    if (a.k !== 'parking' && a.k !== 'fuel' && a.k !== 'cemetery' && a.k !== 'market') {
       const WALL = [0.616, 0.604, 0.573];
-      const rim = [pts, ...holes];
-      for (const ring of rim) {
+      const rings = [pts, ...(fillHole ? [] : holes)];
+      // обход контура: знак площади в осях (x, z); у дыры — наоборот
+      const outward = ring => {
+        let A2 = 0;
+        for (let i = 0; i < ring.length; i++) { const p = ring[i], q = ring[(i + 1) % ring.length]; A2 += p.x * q.y - q.x * p.y; }
+        return (A2 > 0) === (ring === pts);
+      };
+      for (const ring of rings) {
         for (let i = 0; i < ring.length; i++) {
           const A = ring[i], B = ring[(i + 1) % ring.length];
-          const gA = H(A.x, A.y), gB = H(B.x, B.y);
-          const tA = (top !== null ? top : gA + LIFT), tB = (top !== null ? top : gB + LIFT);
-          const yA = Math.min(gA, tA) - 0.22, yB = Math.min(gB, tB) - 0.22;
-          const q0 = P.length / 3;
-          for (const [vx, vz, vy] of [[A.x, A.y, tA], [B.x, B.y, tB], [B.x, B.y, yB], [A.x, A.y, yA]]) {
-            P.push(vx, vy, vz);
-            C.push(enc(WALL[0]), enc(WALL[1]), enc(WALL[2]));
-            U.push(0, 0, 1, 1);
-            K.push(5);
-            base++;
+          const L2 = Math.hypot(B.x - A.x, B.y - A.y);
+          // длинную сторону режем, чтобы бортик шёл по рельефу
+          const k = Math.max(1, Math.ceil(L2 / 9));
+          for (let s2 = 0; s2 < k; s2++) {
+            const ax = A.x + (B.x - A.x) * s2 / k, az = A.y + (B.y - A.y) * s2 / k;
+            const bx = A.x + (B.x - A.x) * (s2 + 1) / k, bz = A.y + (B.y - A.y) * (s2 + 1) / k;
+            if (skipOnRoad && (onAsphalt((ax + bx) / 2, (az + bz) / 2) || BLD.find((ax + bx) / 2, (az + bz) / 2))) continue;
+            const gA = H(ax, az), gB = H(bx, bz);
+            const tA = gA + LIFT, tB = gB + LIFT;
+            const q0 = base;
+            for (const [vx, vz, vy] of [[ax, az, tA], [bx, bz, tB], [bx, bz, gB - 0.15], [ax, az, gA - 0.15]]) {
+              P.push(vx, vy, vz);
+              C.push(enc(WALL[0]), enc(WALL[1]), enc(WALL[2]));
+              U.push(0, 0, 1, 1);
+              K.push(KIND.plain); S.push(0);
+              base++;
+            }
+            // лицом наружу: у внешнего контура — от площадки, у внутреннего
+            // (кромка беговой дорожки) — к полю
+            if (outward(ring)) I.push(q0, q0 + 1, q0 + 2, q0, q0 + 2, q0 + 3);
+            else I.push(q0, q0 + 2, q0 + 1, q0, q0 + 3, q0 + 2);
           }
-          // наружу — обе стороны, чтобы стенка была видна с любой
-          I.push(q0, q0 + 1, q0 + 2, q0, q0 + 2, q0 + 3);
-          I.push(q0, q0 + 2, q0 + 1, q0, q0 + 3, q0 + 2);
         }
       }
+    }
+
+    // Парковка: места и их разметка
+    if (a.k === 'parking') {
+      const st = planParking(a, { segs, buildings: BLD, trees: treeXZ, blockers });
+      a.__stalls = st;
+      stalls += st.length;
+      const seen = new Set();
+      const key = (x, z) => Math.round(x * 3) + ',' + Math.round(z * 3);
+      const lift = LIFT + 0.02;
+      let run = null;
+      for (const m of st) {
+        const q = m.q;
+        // боковые штрихи общие у соседних мест — не дублируем
+        for (const [p0, p1] of [[q[0], q[3]], [q[1], q[2]]]) {
+          const k = key((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          paint(p0[0], p0[1], p1[0], p1[1], 0.14, lift);
+        }
+        // линия по торцам: у мест одного ряда — одной полосой
+        if (run && Math.hypot(run.ex - q[3][0], run.ez - q[3][1]) < 0.05) { run.ex = q[2][0]; run.ez = q[2][1]; }
+        else { if (run) paint(run.sx, run.sz, run.ex, run.ez, 0.14, lift); run = { sx: q[3][0], sz: q[3][1], ex: q[2][0], ez: q[2][1] }; }
+      }
+      if (run) paint(run.sx, run.sz, run.ex, run.ez, 0.14, lift);
+      if ((work += st.length) > 60) { work = 0; yield; }
     }
     drawn++;
   }
@@ -4066,12 +4209,12 @@ export function* buildAreas(world, terrain) {
   // повороте аллея рвётся или наезжает сама на себя.
   {
     const LIFT = LIFT0 + 7 * 0.035;
-    for (const pa of (world.places && world.places.paths) || []) {
+    for (const pa of pl.paths || []) {
       const q = pa.pts, m = q.length / 2;
       if (m < 2) continue;
       const hw = Math.max(0.9, (pa.w || 3) / 2);
       const kind = KIND.path;
-      const col = pa.s === 'ground' ? [0.412, 0.353, 0.271] : COL.path;
+      const col = pa.s === 'ground' ? [0.412, 0.353, 0.271] : BASE.path;
       let prev = null, along = 0;
       if ((work += m) > 400) { work = 0; yield; }
       for (let i = 0; i < m; i++) {
@@ -4096,7 +4239,7 @@ export function* buildAreas(world, terrain) {
           P.push(x, H(x, z) + LIFT, z);
           C.push(enc(col[0]), enc(col[1]), enc(col[2]));
           U.push(along, sg * hw, hw * 2, 0);
-          K.push(kind);
+          K.push(kind); S.push(0);
           cur.push(base++);
         }
         if (prev) I.push(prev[0], prev[1], cur[0], prev[1], cur[1], cur[0]);
@@ -4112,21 +4255,28 @@ export function* buildAreas(world, terrain) {
   geo.setAttribute('color', new THREE.Uint8BufferAttribute(C, 3, true));
   geo.setAttribute('aArea', new THREE.Float32BufferAttribute(U, 4));
   geo.setAttribute('aAKind', new THREE.Float32BufferAttribute(K, 1));
+  geo.setAttribute('aASurf', new THREE.Float32BufferAttribute(S, 1));
   geo.setIndex(I);
   geo.computeVertexNormals();
-  // Кому ставить объекты НА площадку, а не под неё
+  // Кому ставить объекты НА площадку, а не под неё: подъём полотна над
+  // нарисованной землёй (у АЗС — над её ровной отметкой). Берём самую
+  // верхнюю площадку в точке.
   world.__areaLift = (x, z) => {
+    let best = null;
     for (const [a, v] of liftOf) {
+      const lift = typeof v === 'number' ? v : v.lift;
+      if (best !== null && lift <= best) continue;
       if (!pointInPoly(x, z, a.poly)) continue;
-      return v.flat !== null ? v.flat + v.lift - terrain.gridHeightAt(x, z) : v.lift;
+      best = typeof v === 'number' ? v : v.flat + v.lift - terrain.gridHeightAt(x, z);
     }
-    return 0;
+    return best ?? 0;
   };
 
   const mesh = new THREE.Mesh(geo, areaMaterial());
   mesh.name = 'areas';
   mesh.receiveShadow = true;
   mesh.userData.count = drawn;
+  mesh.userData.stalls = stalls;
   return mesh;
 }
 

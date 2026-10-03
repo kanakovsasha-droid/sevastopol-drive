@@ -4,6 +4,7 @@ import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildB
 import { buildStreetProps } from './props.js?v=551c1705';
 import { updateFlora, floraStats, warmFlora } from './flora.js?v=551c1705';
 import { buildYards, buildStructures } from './yards.js?v=551c1705';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js';
 import { buildFurniture } from './furniture.js?v=551c1705';
 import { buildLandmarks, setModelWarm } from './landmarks.js?v=551c1705';
 import { buildSigns } from './signs.js?v=551c1705';
@@ -147,6 +148,11 @@ async function boot() {
     await step('загружаю высоты…', 14);
     terrain = await loadTerrain(meta, V);
     lap('высоты');
+    // Поля и корты: рельеф под ними срезается до одной отметки ДО того, как
+    // по нему построится первый квадрат земли и первый профиль дороги.
+    await loadSport(V);
+    installFlats(terrain);
+    for (const id of sportSkipIds()) skipIds.add(id);
     // Для меню «куда поехать» и подписей на карте нужен ПОЛНЫЙ список — он
     // маленький (имя и точка), сами здания приезжают со своими чанками.
     landmarkDefs = far.landmarks
@@ -603,6 +609,7 @@ function* buildChunk(d, key) {
     // на это не рассчитаны и падают на первом же отсутствующем массиве.
     places: fill(d.places, ['paths', 'trees', 'features', 'fences', 'structures', 'trains']),
   };
+  w.allBuildings = d.allBuildings || w.buildings;   // парковкам и оградам: дома соседа на шве
   const furniture = fill(d.furniture, ['points', 'barriers']);
   const part = d.key || key;
   // ?prof=1 — разбивка сборки по этапам: без неё непонятно, что именно
@@ -653,12 +660,17 @@ function* buildChunk(d, key) {
   g.add(buildStructures(w, terrain));
   lap('сооружения');
   yield; pt = performance.now();
+  at('спорт');
+  g.add(buildSport(w, terrain));
+  lap('спорт');
+  yield; pt = performance.now();
   at('кладбища');
   g.add(yield* buildCemeteries(w, terrain, d));
   lap('кладбища');
   yield; pt = performance.now();
 
-  const defs = d.landmarks || [];
+  // мачты «Чайки» ставит sport.js по спутнику (data/sport-hand.json)
+  const defs = (d.landmarks || []).filter(x => !landmarkHidden(x.name));
   at('памятные');
   const lm = buildLandmarks(w, terrain, defs, roads);
   g.add(lm);
