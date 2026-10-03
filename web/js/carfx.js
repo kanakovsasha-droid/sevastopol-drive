@@ -1,4 +1,5 @@
 import { E63Sound } from './engine-audio.js?v=551c1705';
+import { RoadSurface } from './roadsurf.js?v=551c1705';
 import { TireSmoke } from './smoke.js?v=551c1705';
 
 // Всё, что машина делает «вокруг» физики: коробка и привод с клавиатуры,
@@ -36,6 +37,8 @@ export class CarFX {
     this.camera = camera;
     this.getCar = car; this.driving = driving; this.inside = inside;
     this.smoke = new TireSmoke(scene);
+    // колёса опираются на нарисованный асфальт, а не на профиль коридора
+    this.surface = new RoadSurface(scene);
     this.audio = null; this.ctx = null;
     let on = true;
     try { on = localStorage.getItem(KEY_SOUND) !== '0'; } catch { /* приватное окно */ }
@@ -92,6 +95,8 @@ export class CarFX {
     if (!car) return;
     const driving = this.driving();
     this.smoke.update(dt, driving ? car : null);
+    if (car.surface !== this.surface) car.surface = this.surface;
+    this.surface.update(dt, car.pos.x, car.pos.z);
     if (this.audio && this.ctx.state === 'running') {
       const cp = this.camera.position;
       const dist = Math.hypot(cp.x - car.pos.x, cp.y - car.pos.y, cp.z - car.pos.z);
