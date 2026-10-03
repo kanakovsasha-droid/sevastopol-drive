@@ -1,6 +1,8 @@
 import { E63Sound } from './engine-audio.js?v=89ef40d1';
 import { RoadSurface } from './roadsurf.js?v=89ef40d1';
 import { TireSmoke } from './smoke.js?v=89ef40d1';
+import { Garage } from './garage.js?v=89ef40d1';
+import { CARS } from './vehicle.js?v=89ef40d1';
 
 // Всё, что машина делает «вокруг» физики: коробка и привод с клавиатуры,
 // звук мотора и шин, дым из-под колёс.
@@ -85,10 +87,18 @@ export async function loadCarSounds(ctx, base = '../data/audio/') {
 export class CarFX {
   // opts: scene, camera, car() — текущая машина, driving() — сейчас за рулём
   // и меню закрыто, inside() — камера в салоне
-  constructor({ scene, camera, car, driving, inside }) {
+  // swapModel() — main.js грузит в сцену модель той машины, что сейчас car.model
+  constructor({ scene, camera, car, driving, inside, swapModel }) {
     CarFX.last = this;                    // для отладки из консоли и стенда
     this.camera = camera;
     this.getCar = car; this.driving = driving; this.inside = inside;
+    this.swapModel = swapModel || (() => {});
+    // гараж: какая машина была в прошлый раз — на той и стартуем
+    const first = Garage.saved();
+    if (first !== car().model) car().setModel(first);
+    this._credit();
+    this.swapModel();
+    this.garage = new Garage({ car, choose: id => this.chooseCar(id) });
     this.smoke = new TireSmoke(scene);
     // колёса опираются на нарисованный асфальт, а не на профиль коридора
     this.surface = new RoadSurface(scene);
@@ -170,6 +180,24 @@ export class CarFX {
       console.warn('пакет звука не загрузился, остаётся открытый:', e.message);
       if (this.open) this.audio.useSamples(this.open.bufs, this.open.meta);
     }
+  }
+
+  // Пересесть в другую машину: параметры физики, модель, звук своей машины,
+  // подпись автора модели.
+  chooseCar(id) {
+    const car = this.getCar();
+    if (!car.setModel(id)) return;
+    this._credit();
+    this.swapModel();
+    // звук не меняем: основа — открытый набор (с хлопками w212, если они есть),
+    // пакеты модов целиком — по J
+  }
+
+  // В подписи внизу — автор модели той машины, что сейчас в игре
+  _credit() {
+    const a = [...document.querySelectorAll('#credit a')].find(x => x.href.includes('sketchfab.com'));
+    const M = CARS[this.getCar().model];
+    if (a && M) a.outerHTML = M.credit;
   }
 
   // J — следующий звуковой пакет (если их больше одного)

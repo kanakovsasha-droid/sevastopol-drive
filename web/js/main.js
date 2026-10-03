@@ -15,7 +15,7 @@ import { buildMap, drawFull, mapUnproject } from './minimap.js?v=89ef40d1';
 import { Hud } from './hud.js?v=89ef40d1';
 import { ChunkManager } from './chunks.js?v=89ef40d1';
 import { Collider, RoadIndex } from './collision.js?v=89ef40d1';
-import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=89ef40d1';
+import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=89ef40d1';
 import { CarFX } from './carfx.js?v=89ef40d1';
 import { precompile } from './warm.js?v=89ef40d1';
 
@@ -201,16 +201,10 @@ async function boot() {
     // настоящая модель приезжает позже, коробочная стоит до неё. Меняем их,
     // только когда шейдеры модели собраны в фоне: у E63 их с десяток (лак с
     // клиркоутом, фары, текстуры), и сборка прямо в кадре — полсекунды стоп-кадра.
-    loadCarModel(undefined, renderer).then(m => {
-      cheapGlass(m);
-      trimCarShadows(m);
-      return precompile(renderer, scene, camera, m, sun).then(() => m);
-    }).then(m => { scene.remove(carMesh); carMesh = m; scene.add(m); })
-      .catch(e => console.warn('модель машины не загрузилась, остаётся коробочная:', e.message));
     car.reset(SPAWN.x, SPAWN.z, 0);
     walk.x = SPAWN.x; walk.z = SPAWN.z;
     // коробка и привод с клавиатуры, звук, дым — всё в carfx.js
-    carFx = new CarFX({ scene, camera, car: () => car,
+    carFx = new CarFX({ scene, camera, car: () => car, swapModel: swapCarModel,
       driving: () => mode === 'car' && !$('menu').classList.contains('on'), inside: () => cam.mode === 2 });
 
     chunks.onBuild = buildChunk;
@@ -922,6 +916,23 @@ async function prewarm(limit = 6000) {
 // — ещё 92 вызова отрисовки за кадр ради тени, которую целиком даёт кузов.
 // Тень оставляем колёсам и непрозрачным сеткам больше 1.2 м по диагонали
 // (панели кузова, бамперы, капот, днище) — силуэт тени тот же.
+// Модель машины в сцене — та, что выбрана в гараже (car.model). Меняем, только
+// когда шейдеры новой модели собраны в фоне: у E63 их с десяток (лак с
+// клиркоутом, фары, текстуры), и сборка прямо в кадре — полсекунды стоп-кадра.
+// Пока грузится — остаётся прежняя (на старте — коробочная).
+let carModelTicket = 0;
+function swapCarModel() {
+  const ticket = ++carModelTicket;
+  return loadCarModel(CARS[car.model]?.glb, renderer).then(m => {
+    cheapGlass(m);
+    trimCarShadows(m);
+    return precompile(renderer, scene, camera, m, sun).then(() => m);
+  }).then(m => {
+    if (ticket !== carModelTicket) return;            // пока грузилась, выбрали другую
+    scene.remove(carMesh); carMesh = m; scene.add(m);
+  }).catch(e => console.warn('модель машины не загрузилась, остаётся прежняя:', e.message));
+}
+
 function trimCarShadows(root) {
   const box = new THREE.Box3(), v = new THREE.Vector3();
   root.updateMatrixWorld(true);
