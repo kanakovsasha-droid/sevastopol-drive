@@ -324,6 +324,7 @@ const out = {
   areas: meta,
   stands: [...(hand.stands || []), ...autoStands.filter(s => !handFrom.has(s.from))],
   masts: hand.masts || [],
+  hideLandmarks: hand.hideLandmarks || [],
   skip: [...new Set([...(hand.skip || []), ...autoSkip])],
 };
 writeFileSync(DIR + 'sport.json', JSON.stringify(out));

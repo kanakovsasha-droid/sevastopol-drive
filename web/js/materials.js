@@ -304,7 +304,9 @@ export function buildingMaterial() {
           float inBay = smoothstep(0.13, 0.16, fx) * (1.0 - smoothstep(0.84, 0.87, fx));
 
           // профлист: вертикальная гофра, потёки, тёмный низ
+          // Гофра мельче пикселя рябит муаром — издали гасим её до среднего.
           float corr = abs(fract(vWall.x / 0.11) - 0.5) * 2.0;
+          corr = mix(0.5, corr, clamp(1.6 - fwidth(vWall.x / 0.11) * 2.0, 0.0, 1.0));
           c *= 0.90 + 0.15 * corr;
           c *= 0.93 + 0.11 * hash21(floor(vWall.xy * 0.4));
           c *= 1.0 - 0.16 * smoothstep(3.3, 4.4, ty);
@@ -313,6 +315,7 @@ export function buildingMaterial() {
           // ролета: горизонтальные ламели 7 см
           float shut = inBay * smoothstep(3.55, 3.48, ty) * smoothstep(1.28, 1.34, ty);
           float slat = abs(fract(vWall.y / 0.07) - 0.5) * 2.0;
+          slat = mix(0.5, slat, clamp(1.6 - fwidth(vWall.y / 0.07) * 2.0, 0.0, 1.0));
           vec3 shutC = mix(vec3(0.72, 0.72, 0.71), vec3(0.55, 0.56, 0.57), r);
           shutC *= 0.88 + 0.20 * slat;
           // открытая лавка: сумрак внутри, светлый прилавок и товар на нём
@@ -349,7 +352,10 @@ export function buildingMaterial() {
           rough = mix(0.88, 0.45, max(shut, board));
         } else if (vKind < 5.5) {
           // ---- профнастил кровли: гофра поперёк ската ----
+          // гофра крупнее пикселя — рисуем, мельче — гасим до среднего тона:
+          // иначе вся кровля рынка шла частым муаром и мерцала полосами
           float corrR = abs(fract(vWall.x / 0.26) - 0.5) * 2.0;
+          corrR = mix(0.5, corrR, clamp(1.6 - fwidth(vWall.x / 0.26) * 2.0, 0.0, 1.0));
           c *= 0.84 + 0.26 * corrR;
           c *= 0.93 + 0.12 * hash21(floor(vWall.xy * vec2(0.3, 0.8)));   // подтёки и ржавь
           c = mix(c, c * vec3(1.05, 0.94, 0.84), 0.35 * hash21(floor(vWall.xy * 0.22)));
@@ -357,6 +363,7 @@ export function buildingMaterial() {
         } else if (vKind < 6.5) {
           // ---- тент над проходом: полосы поперёк ----
           float st = step(0.5, fract(vWall.x / 0.55));
+          st = mix(0.5, st, clamp(1.6 - fwidth(vWall.x / 0.55) * 2.0, 0.0, 1.0));
           c = mix(vec3(0.94, 0.93, 0.90), c, st);
           c *= 0.93 + 0.10 * hash21(floor(vWall.xy * 3.0));
           rough = 0.80;

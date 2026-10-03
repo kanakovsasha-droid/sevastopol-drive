@@ -4,7 +4,7 @@ import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildB
 import { buildStreetProps } from './props.js?v=551c1705';
 import { updateFlora, floraStats, warmFlora } from './flora.js?v=551c1705';
 import { buildYards, buildStructures } from './yards.js?v=551c1705';
-import { loadSport, installFlats, buildSport, sportSkipIds } from './sport.js';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js';
 import { buildFurniture } from './furniture.js?v=551c1705';
 import { buildLandmarks, setModelWarm } from './landmarks.js?v=551c1705';
 import { buildSigns } from './signs.js?v=551c1705';
@@ -669,7 +669,8 @@ function* buildChunk(d, key) {
   lap('кладбища');
   yield; pt = performance.now();
 
-  const defs = d.landmarks || [];
+  // мачты «Чайки» ставит sport.js по спутнику (data/sport-hand.json)
+  const defs = (d.landmarks || []).filter(x => !landmarkHidden(x.name));
   at('памятные');
   const lm = buildLandmarks(w, terrain, defs, roads);
   g.add(lm);

@@ -245,6 +245,72 @@ function seatGeo() {
   return merge([{ geo: g, color: [1, 1, 1] }]);
 }
 
+// Решётчатая мачта (как у бывшего стадиона «Чайка»): четыре пояса с
+// раскосами, сужаются кверху, наверху рама с прожекторами, повёрнутая на
+// поле; внизу бетонный фундамент. Сурик по стали.
+function latticeMast(m, g0, out) {
+  const H = m.h || 30, wB = 3.0, wT = 1.4;
+  const yaw = Math.atan2((m.aim || [m.x + 1, m.z])[0] - m.x, (m.aim || [m.x, m.z + 1])[1] - m.z);
+  const cs = Math.cos(yaw), sn = Math.sin(yaw);
+  const W = (lx, y, lz) => [m.x + lx * cs + lz * sn, g0 + y, m.z - lx * sn + lz * cs];
+  const STEELC = [0.40, 0.31, 0.26], STEELD = [0.30, 0.25, 0.22];
+  const p = [];
+  const bar = (A, B, r, col) => {
+    const dx = B[0] - A[0], dy = B[1] - A[1], dz = B[2] - A[2];
+    const L = Math.hypot(dx, dy, dz);
+    if (L < 0.05) return;
+    const g = new THREE.BoxGeometry(r, r, L);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(dx / L, dy / L, dz / L));
+    g.applyQuaternion(q);
+    g.translate((A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2);
+    p.push({ geo: g, color: col });
+  };
+  const at = (cx, cz, y) => { const w = (wB + (wT - wB) * y / H) / 2; return W(cx * w, y, cz * w); };
+  const C4 = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+  for (const [cx, cz] of C4) bar(at(cx, cz, 0), at(cx, cz, H), 0.20, STEELC);
+  const np = Math.round(H / 2.8);
+  for (let k = 0; k < np; k++) {
+    const ya = k * H / np, yb = (k + 1) * H / np;
+    for (let e = 0; e < 4; e++) {
+      const a = C4[e], b = C4[(e + 1) % 4];
+      bar(at(a[0], a[1], yb), at(b[0], b[1], yb), 0.09, STEELD);
+      const [u, v] = k % 2 ? [a, b] : [b, a];
+      bar(at(u[0], u[1], ya), at(v[0], v[1], yb), 0.08, STEELD);
+    }
+  }
+  // фундамент
+  {
+    const g = new THREE.BoxGeometry(wB + 1.2, 1.2, wB + 1.2);
+    g.rotateY(yaw); g.translate(m.x, g0 + 0.1, m.z);
+    p.push({ geo: g, color: [0.66, 0.65, 0.62] });
+  }
+  // рама с прожекторами: 3 × 6, лицом к полю (+z рамы — на «aim»)
+  const RW = 4.6, top = H;
+  for (let r = 0; r < 3; r++) {
+    const yy = top + 0.6 + r * 1.1;
+    const beam = new THREE.BoxGeometry(RW, 0.14, 0.24);
+    beam.rotateY(yaw); const c = W(0, yy, 0.5); beam.translate(c[0], c[1], c[2]);
+    p.push({ geo: beam, color: STEELD });
+    for (let k = 0; k < 6; k++) {
+      const lx = -RW / 2 + RW * (k + 0.5) / 6;
+      const lamp = new THREE.BoxGeometry(0.62, 0.66, 0.36);
+      lamp.rotateX(-0.35); lamp.rotateY(yaw);
+      const q = W(lx, yy + 0.32, 0.75); lamp.translate(q[0], q[1], q[2]);
+      p.push({ geo: lamp, color: [0.70, 0.70, 0.67] });
+      const gl = new THREE.BoxGeometry(0.52, 0.54, 0.04);
+      gl.rotateX(-0.35); gl.rotateY(yaw);
+      const q2 = W(lx, yy + 0.37, 0.95); gl.translate(q2[0], q2[1], q2[2]);
+      p.push({ geo: gl, color: [0.92, 0.93, 0.88] });
+    }
+  }
+  for (const sx of [-1, 1]) bar(W(sx * RW / 2, top - 0.2, 0.5), W(sx * RW / 2, top + 3.4, 0.5), 0.16, STEELD);
+  out.push({ geo: merge(p), color: [1, 1, 1], keep: true });
+}
+
+// Памятные здания, которые заменены здешними (мачты «Чайки» были поставлены
+// по направлению с улицы, а не по обмеру — стояли посреди павильона).
+export const landmarkHidden = name => (SPORT.hideLandmarks || []).includes(name);
+
 // ---------------------------------------------------------------- сборка
 const SPORT_MAT = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.15 });
 
@@ -466,6 +532,7 @@ export function buildSport(world, terrain) {
   // ---- прожекторные мачты (ручные): ствол на фундаменте и рама с прожекторами
   for (const m of SPORT.masts || []) {
     if (!mine(m.x, m.z)) continue;
+    if (m.style === 'lattice') { latticeMast(m, G(m.x, m.z), parts); stats.мачт++; continue; }
     const g0 = G(m.x, m.z), H = m.h || 25;
     box(2.2, 1.0, 2.2, m.x, g0 + 0.2, m.z, CONC, parts);
     const pole = new THREE.CylinderGeometry(0.28, 0.55, H, 8);

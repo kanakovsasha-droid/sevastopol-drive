@@ -3250,6 +3250,9 @@ function garageBoxes(poly, terrain, pushV, rnd) {
 // ГЕНЕРАТОР: дома плотного квартала — до 37 мс в одном шаге. Возвращаем
 // управление менеджеру каждые несколько десятков домов.
 export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
+  // Контуры всех домов квадрата — тентам рынка: не заходить в соседа.
+  let mktGrid = null;
+  const MKT_GRID = { find: (x, z) => (mktGrid ||= new PolyGrid((world.allBuildings || world.buildings).map(b => ({ poly: b.poly })), 60)).find(x, z) };
   const chunks = new Map();
   const bucket = (x, z) => {
     const k = Math.floor(x / chunk) + ',' + Math.floor(z / chunk);
@@ -3400,8 +3403,13 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
     // Рыночный ряд: длинный сарай под двускатной ребристой кровлей, по бокам
     // тент над проходом. Вальма из общего кода тут не годится — ряд узкий
     // и длинный, у него конёк во всю длину, а не четыре ската.
-    if (market) {
-      const box = obb(poly);
+    // Рыночный ряд строим своей кровлей только у прямоугольного пятна: у
+    // Г-образного или скошенного рамка выходит далеко за стены, и кровля с
+    // тентами накрывала соседний павильон и корпус ДЮСШ «Чайка» — «павильон
+    // входит в дом». Такие ряды кроет общая юбка по контуру ниже.
+    const mbox = market ? obb(poly) : null;
+    if (mbox && area / mbox.area >= 0.9) {
+      const box = mbox;
       if (box) {
         const { ux, uz } = box;
         const toXZ = (u, v) => [u * ux - v * uz, u * uz + v * ux];
@@ -3483,6 +3491,17 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
           const cO = cW + side * 1.65;                      // вынос наружу
           const A = P(a0 + 0.4, cW), B = P(a1 - 0.4, cW);
           const C = P(a1 - 0.4, cO), D = P(a0 + 0.4, cO);
+          // тент не заводим в соседний дом или павильон: ряды стоят впритык
+          let blocked = false;
+          for (let t = 0; t <= 1.0001 && !blocked; t += 0.125) {
+            const q = P(a0 + 0.4 + (a1 - a0 - 0.8) * t, cO);
+            const q2 = P(a0 + 0.4 + (a1 - a0 - 0.8) * t, cW + side * 0.9);
+            for (const [qx, qz] of [q, q2]) {
+              const hitB = MKT_GRID.find(qx, qz);
+              if (hitB && hitB.poly !== poly) { blocked = true; break; }
+            }
+          }
+          if (blocked) continue;
           quad(A, yA, B, yA, C, yA - 0.42, D, yA - 0.42, 6, awn,
                [[a0, 0], [a1, 0], [a1, 1.7], [a0, 1.7]]);
         }
@@ -3852,7 +3871,7 @@ export function* buildAreas(world, terrain) {
   // Поле выше дорожки: внутренняя кромка дорожки в OSM и контур поля
   // расходятся на метр-другой, и тартан с белыми линиями ложился на газон.
   // Парковка и АЗС — ПОД дорогой (слой −1): улица и тротуар рисуются поверх.
-  const LAYER = { parking: -1, fuel: -1, cemetery: 0, track: 1, sport: 3, playground: 6, path: 7 };
+  const LAYER = { parking: -1, fuel: -1, market: -1, cemetery: 0, track: 1, sport: 3, playground: 6, path: 7 };
   const LIFT0 = 0.13;
   const liftOf = new Map();
   // Код вида для шейдера (areaMaterial): 0 парковка, 1 футбол, 3 дорожка,
@@ -3860,7 +3879,7 @@ export function* buildAreas(world, terrain) {
   // 10 баскетбол, 11 волейбол, 12 мини-футбол и универсальная, 13 пляжный
   // волейбол, 14 бетон (скейт-парк, шахматы), 15 краска (разметка геометрией).
   const KIND = { parking: 0, football: 1, track: 3, playground: 4, plain: 5, cemetery: 6, path: 7, fuel: 8,
-    tennis: 9, basketball: 10, volleyball: 11, multi: 12, beach: 13, skate: 14, plaza: 14, paint: 15 };
+    tennis: 9, basketball: 10, volleyball: 11, multi: 12, beach: 13, skate: 14, plaza: 14, market: 14, paint: 15 };
   // Покрытие из OSM (surface=*): 1 трава, 2 искусственный газон, 3 резина и
   // тартан, 4 асфальт, 5 грунт-корт (clay), 6 песок, 7 грунт, 8 гаревое, 9 бетон.
   const SURF = { grass: 1, artificial_turf: 2, tartan: 3, rubber: 3, acrylic: 3, asphalt: 4, concrete: 9,
@@ -3873,10 +3892,11 @@ export function* buildAreas(world, terrain) {
     football: [0.196, 0.380, 0.165], track: [0.580, 0.255, 0.196], tennis: [0.196, 0.400, 0.290],
     basketball: [0.545, 0.247, 0.188], volleyball: [0.220, 0.400, 0.310], multi: [0.180, 0.420, 0.220],
     beach: [0.760, 0.680, 0.500], skate: [0.600, 0.590, 0.560], plaza: [0.600, 0.590, 0.560],
+    market: [0.440, 0.430, 0.405],
   };
   const BY_SURF = {
     2: [0.165, 0.440, 0.205], 3: [0.560, 0.250, 0.190], 4: [0.300, 0.300, 0.310], 5: [0.690, 0.370, 0.230],
-    6: [0.760, 0.680, 0.500], 7: [0.470, 0.400, 0.300], 8: [0.420, 0.300, 0.255], 9: [0.600, 0.590, 0.560],
+    6: [0.760, 0.680, 0.500], 7: [0.470, 0.400, 0.300], 8: [0.480, 0.300, 0.235],   // гарь: красно-бурая крошка 9: [0.600, 0.590, 0.560],
   };
   const P = [], C = [], U = [], K = [], S = [], I = [];
   let base = 0, drawn = 0, work = 0, stalls = 0;
@@ -3884,6 +3904,10 @@ export function* buildAreas(world, terrain) {
   // Что рисовать: дубли выброшены, овал старого стадиона разложен на кольцо
   // и поле. Тот же список берут машины (yards) и снаряжение (sport).
   const list = resolveAreas(world.areas);
+  // Рынок (зона из data/zones.json) стоит не на буром грунте, а на бетоне и
+  // асфальте между рядами — как на спутнике. Ряды встают поверх.
+  for (const z of world.zones || [])
+    if (z.kind === 'market' && z.poly && z.poly.length >= 6) list.push({ id: 'zone:' + z.name, k: 'market', poly: z.poly });
   world.__areasDraw = list;
   // Дома квадрата ДО дедупликации: дом на шве принадлежит соседу, а парковку
   // и ограду всё равно надо проверять по нему.
@@ -3898,7 +3922,7 @@ export function* buildAreas(world, terrain) {
   const segs = roadSegIndex(allRoads, pl.paths);
   const treeXZ = [];
   for (const t of pl.trees || []) treeXZ.push(t.x, t.z);
-  const blockers = list.filter(a => a.k !== 'parking' && a.k !== 'fuel' && a.k !== 'cemetery').map(a => a.poly);
+  const blockers = list.filter(a => a.k !== 'parking' && a.k !== 'fuel' && a.k !== 'cemetery' && a.k !== 'market').map(a => a.poly);
   // Деревьям, кустам и изгородям на асфальте парковки и на поле не место:
   // посадки сыплются по зелени OSM и вдоль улиц и знать не знают о площадках.
   {
@@ -4112,7 +4136,7 @@ export function* buildAreas(world, terrain) {
     // друга, и она выходила чёрной («глухая чёрная стенка» у поля). Теперь у
     // каждой стороны свои вершины. Парковке, АЗС, кладбищу и аллее бортик не
     // нужен: они лежат почти вровень с землёй.
-    if (a.k !== 'parking' && a.k !== 'fuel' && a.k !== 'cemetery') {
+    if (a.k !== 'parking' && a.k !== 'fuel' && a.k !== 'cemetery' && a.k !== 'market') {
       const WALL = [0.616, 0.604, 0.573];
       const rings = [pts, ...(fillHole ? [] : holes)];
       // обход контура: знак площади в осях (x, z); у дыры — наоборот
