@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=5e13f386';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=5e13f386';
-import { buildCoverage } from './coverage.js?v=5e13f386';
-import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=5e13f386';
-import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=5e13f386';
+import { SEA_FLOOR } from './terrain.js?v=551c1705';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=551c1705';
+import { buildCoverage } from './coverage.js?v=551c1705';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=551c1705';
+import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=551c1705';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
