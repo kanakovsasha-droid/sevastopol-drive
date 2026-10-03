@@ -82,6 +82,23 @@ function popBuffer(ctx, big) {
   return buf;
 }
 
+// Выпрямить петлю с плавно растущим тоном: частота в записи идёт линейно от
+// f0 до f1, читаем источник со скоростью fm / f(t) — на выходе частота fm
+// постоянна (fm — средняя, длина почти не меняется).
+function flatten(ctx, buf, f0, f1) {
+  if (!f0 || !f1 || Math.abs(f1 - f0) < 0.5) return buf;
+  const a = buf.getChannelData(0), n = a.length, fm = (f0 + f1) / 2;
+  const out = [];
+  for (let t = 0; t < n - 1;) {
+    const i = Math.floor(t), u = t - i;
+    out.push(a[i] * (1 - u) + a[i + 1] * u);
+    t += fm / (f0 + (f1 - f0) * t / n);
+  }
+  const b = ctx.createBuffer(1, out.length, buf.sampleRate);
+  b.getChannelData(0).set(out);
+  return b;
+}
+
 // Петля без шва: хвост записи наложен на её начало с равномощным переходом.
 // Петли модов обрезаны как попало — на стыке скачок до 0.35 полной шкалы.
 function seamless(ctx, buf, xf) {
@@ -217,26 +234,37 @@ export class E63Sound {
     this.smp = { loops, lp, bus, squeal, pops: pick('pop_'), bangs: pick('bang_'), mix: 0, t0 };
   }
 
-  // Звуковой пакет из мода (только локальная игра, см. carfx.js): схема GTA —
-  // длинная петля мотора под нагрузкой, петля сброса, холостые, сброс оборотов
-  // с треском и «бонус» с выстрелами. Одна-две петли с подстройкой высоты по
-  // оборотам и переход газ ↔ сброс — как в GTA. bufs: { idle, load, off,
-  // decel, bonus? }, base — обороты, на которых записана каждая петля.
-  useModPack(bufs, base, name = '') {
+  // Звуковой пакет из мода (только локальная игра, см. carfx.js) — ровно как
+  // играет GTA/MTA, без самодеятельности:
+  //   • ОДНА петля мотора (банк B, sound_001), высота строго от оборотов:
+  //     playbackRate = rpm / rpmRef. Никаких переходов между петлями по
+  //     оборотам — именно они звучали как переключения, которых не было;
+  //   • петля выхлопа (банк A, sound_002) поверх, громкость — от газа;
+  //   • сброс газа — та же пара петель тише и под фильтром НЧ, плюс треск
+  //     и хлопки из их записей (sound_003 и «бонус»);
+  //   • переключение — только по событию коробки (shiftCount из физики).
+  // В записи петли мотора обороты плавно растут (частота вспышек 46→57 Гц у
+  // w213): прокрученная по кругу, она на стыке «роняла» тон на 20% каждые
+  // 3.6 с — тоже как переключение. Поэтому при загрузке петля выпрямляется:
+  // читаем её с переменной скоростью, чтобы частота стала постоянной.
+  // bufs: { load, exhaust, decel, bonus? }; ref: { load: [f0, f1, rpm], exhaust: rpm }.
+  useModPack(bufs, ref, name = '') {
     const ctx = this.ctx, t0 = ctx.currentTime;
     this._dropSamples(t0);
     const g = (v = 0) => { const n = ctx.createGain(); n.gain.value = v; return n; };
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 9000; lp.Q.value = 0.6;
-    const shelf = ctx.createBiquadFilter(); shelf.type = 'lowshelf'; shelf.frequency.value = 200; shelf.gain.value = 9;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 9000; lp.Q.value = 0.5;
+    const shelf = ctx.createBiquadFilter(); shelf.type = 'lowshelf'; shelf.frequency.value = 180; shelf.gain.value = 6;
     const bus = g(0);
     lp.connect(shelf).connect(bus).connect(this.master);
-    const loop = role => {
-      const src = ctx.createBufferSource(); src.buffer = seamless(ctx, bufs[role], 0.08); src.loop = true;
+    const loop = (buf, rpm, role) => {
+      const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
       const gg = g(0); src.connect(gg).connect(lp);
-      src.start(t0, Math.random() * src.buffer.duration);
-      return { role, rpm: base[role], src, g: gg };
+      src.start(t0, Math.random() * buf.duration);
+      return { role, rpm, src, g: gg };
     };
-    const loops = ['idle', 'load', 'off'].filter(r => bufs[r]).map(loop);
+    const [f0, f1, rpmRef] = ref.load;
+    const loops = [loop(seamless(ctx, flatten(ctx, bufs.load, f0, f1), 0.08), rpmRef, 'load')];
+    if (bufs.exhaust) loops.push(loop(seamless(ctx, bufs.exhaust, 0.05), ref.exhaust, 'exhaust'));
     let squeal = null;                                    // визг шин — запись из открытого набора
     if (bufs.squeal) {
       const src = ctx.createBufferSource(); src.buffer = bufs.squeal; src.loop = true;
@@ -308,11 +336,14 @@ export class E63Sound {
     // тембр: под газом и на оборотах — ярче
     P(this.engLP.frequency, 240 + rpm * 0.22 + load * (900 + rpm * 0.35), cut ? 0.006 : 0.03);
     // переключение: провал на разрыв тяги, потом подхват с «киком»
+    // Переключение — ТОЛЬКО по событию коробки и коротко: провал на разрыв
+    // тяги (70 мс) и под газом — один щелчок выхлопа при подхвате.
     if (shifting) {
       st.shift = s.shiftCount || 0;
-      if (thr > 0.5) {
-        st.dipUntil = t + 0.11;
-        this._pop(false, t + 0.1, 0.5 * thr, 0.9);
+      if (thr > 0.3) {
+        st.dipUntil = t + 0.07;
+        this._pop(false, t + 0.06, 0.4 * thr, 0.9);
+        this.log && this.log.push([t, 'переключение']);
       }
     }
     const dip = t < (st.dipUntil || 0) ? 0.35 : 1;
@@ -328,22 +359,19 @@ export class E63Sound {
     if (S) P(this.sub.frequency, rpm / 30, 0.012);
     P(this.subGain.gain, S ? (0.08 + 0.22 * load) * (0.6 + 0.4 * r) * S.mix * (S.kind === 'mod' ? 1.5 : 1) + (0.10 + 0.25 * load) * (1 - r * 0.6) * syn
       : (0.10 + 0.25 * load) * (1 - r * 0.6), 0.04);
+    if (S && S.kind === 'mod') P(this.subGain.gain, 0, 0.05);
     P(this.intakeBP.frequency, 500 + rpm * 0.35, 0.05);
     P(this.intakeGain.gain, (0.012 + 0.07 * load * r) * syn, 0.04);
     if (S && S.kind === 'mod') {
-      // холостые — внизу; выше — петля под нагрузкой и петля сброса,
-      // равномощный переход по газу; высота — обороты / обороты записи
-      const idleW = Math.min(1, Math.max(0, (1650 - rpm) / 550));
-      const th = Math.min(1, load * 1.15) * Math.PI / 2;
-      const w = { idle: idleW, load: (1 - idleW) * Math.sin(th), off: (1 - idleW) * Math.cos(th) * 0.9 };
+      // высота — строго от оборотов, без переходов между петлями
       for (const lp of S.loops) {
-        P(lp.g.gain, w[lp.role] || 0, 0.035);
-        P(lp.src.playbackRate, Math.min(2.6, Math.max(0.4, rpm / lp.rpm)), 0.012);
+        P(lp.src.playbackRate, rpm / lp.rpm, 0.012);
+        P(lp.g.gain, lp.role === 'load' ? 1 : 0.25 + 0.75 * load, 0.03);
       }
-      // записи мода громкие (−4 дБ RMS) — без запаса они клиппуют на выходе
-      const vol = 0.62 * (0.55 + 0.3 * r) * (0.6 + 0.4 * load) * (cut ? 0.35 : 1) * dip * S.mix;
-      P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.03);
-      P(S.lp.frequency, 1600 + 9000 * Math.max(load, r * 0.4), 0.04);
+      // газ — открыто и громко, сброс — тише и под фильтром НЧ
+      const vol = 0.38 * (0.65 + 0.35 * load) * (cut ? 0.35 : 1) * dip * S.mix;
+      P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.04);
+      P(S.lp.frequency, load > 0.15 ? 9000 : 700 + 1200 * load / 0.15, 0.05);
     } else if (S) {
       // две ближайшие по оборотам петли, равномощный переход по логарифму
       // оборотов; высота — отношение оборотов к оборотам записи
@@ -383,6 +411,7 @@ export class E63Sound {
     if (st.armed && thr < 0.15) {
       st.armed = false;
       if (rpm > 3000) {
+        this.log && this.log.push([t, 'сброс: хлопки']);
         st.popUntil = t + 0.5 + rpm / 7000 * 1.1;
         st.nextPop = t + 0.04;
         this._pop(true, t + 0.03, 0.85, 0.95 + Math.random() * 0.1);

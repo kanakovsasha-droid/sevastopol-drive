@@ -22,12 +22,18 @@ const KEY_SOUND = 'sev.sound';
 // папка в .gitignore, на сайт не попадает. Ищем её только на локальном
 // сервере и тихо: читаем листинг каталога data/ (python http.server его
 // отдаёт), а не стучимся в файлы — так на сайте и без папки нет ни одного 404.
-// Схема GTA: банк A — холостые (sound_002), банк B — петля под нагрузкой
-// (001), петля сброса (002), сброс оборотов с треском (003); Bonus — выстрелы.
-// Обороты, на которых записаны петли, — по частоте вспышек (4 на оборот).
+// Схема GTA: банк B sound_001 — петля мотора, банк A sound_002 — петля
+// выхлопа, банк B sound_003 — сброс оборотов с треском, Bonus — выстрелы.
+// Обороты записи — по спектру (автокорреляция, окна 0.2 с): в петле мотора
+// периодичность плавно растёт 46→57 Гц у w213 и 39→53 Гц у w212, сильнейшая
+// гармоника — третья (150–180 Гц), это частота вспышек V8 (4 на оборот):
+// петля записана около 2300 (w213) и 2100 (w212) об/мин. Петля выхлопа
+// повторяется на 39 Гц — её опорные обороты подобраны так, чтобы тон шёл
+// вместе с мотором. На холостых (900) петля играет на 0.39 своей высоты —
+// вспышки около 60 Гц, тот самый басовый «бубнёж».
 const MOD_CARS = {
-  w213: { a: 'Bank_096', b: 'Bank_097', base: { idle: 1125, load: 2400, off: 2550 } },
-  w212: { a: 'Bank_094', b: 'Bank_095', base: { idle: 1000, load: 1900, off: 2100 } },
+  w213: { a: 'Bank_096', b: 'Bank_097', ref: { load: [46, 57, 2300], exhaust: 1740 } },
+  w212: { a: 'Bank_094', b: 'Bank_095', ref: { load: [41, 53, 2100], exhaust: 1590 } },
 };
 const MOD_VARIANTS = ['tuning', 'stock', 'gta'];
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|.*\.localhost|.*\.test)$/.test(location.hostname);
@@ -56,12 +62,12 @@ export async function findModPacks(base = '../data/') {
 export async function loadModPack(ctx, id, base = '../data/') {
   const [car, v] = id.split('-');
   const M = MOD_CARS[car], dir = `${base}audio-local/${car}/${v.toUpperCase()}/`;
-  const files = { idle: `${M.a}/sound_002.wav`, load: `${M.b}/sound_001.wav`, off: `${M.b}/sound_002.wav`, decel: `${M.b}/sound_003.wav` };
+  const files = { load: `${M.b}/sound_001.wav`, exhaust: `${M.a}/sound_002.wav`, decel: `${M.b}/sound_003.wav` };
   if ((await listing(dir)).includes('Bonus/')) files.bonus = `Bonus/${M.a}/sound_001.wav`;
   const bufs = {};
   await Promise.all(Object.entries(files).map(([k, f]) => fetch(dir + f).then(r => r.arrayBuffer())
     .then(ab => ctx.decodeAudioData(ab)).then(b => { bufs[k] = b; })));
-  return { bufs, base: M.base };
+  return { bufs, base: M.ref };
 }
 
 // Записи мотора, хлопков и шин: data/audio/sounds.json перечисляет файлы.
