@@ -144,16 +144,22 @@ export class CarFX {
     this.packs = ['open'];
     try { this.packs = [...await findModPacks(), 'open']; } catch { /* нет — значит нет */ }
     const want = new URLSearchParams(location.search).get('snd');
+    // По умолчанию — открытый набор (основа звука и на сайте), а хлопки на
+    // сбросе — из w212-tuning, если он лежит локально. Ключ хранилища новый:
+    // прежний выбор (пакет мода целиком) больше не навязываем.
     let saved = null;
-    try { saved = localStorage.getItem('sev.snd'); } catch { /* нет хранилища */ }
-    const pick = [want, saved, this.packs[0]].find(p => p && this.packs.includes(p)) || 'open';
+    try { saved = localStorage.getItem('sev.snd2'); } catch { /* нет хранилища */ }
+    if (this.packs.includes('w212-tuning')) {
+      try { this.audio.usePops((await loadModPack(ctx, 'w212-tuning')).bufs); } catch { /* без них — открытые хлопки */ }
+    }
+    const pick = [want, saved, 'open'].find(p => p && this.packs.includes(p)) || 'open';
     await this.usePack(pick);
   }
 
   async usePack(id) {
     if (!this.audio) return;
     this.pack = id;
-    try { localStorage.setItem('sev.snd', id); } catch { /* нет хранилища */ }
+    try { localStorage.setItem('sev.snd2', id); } catch { /* нет хранилища */ }
     if (id === 'open') { if (this.open) this.audio.useSamples(this.open.bufs, this.open.meta); return; }
     try {
       const m = await loadModPack(this.ctx, id);
