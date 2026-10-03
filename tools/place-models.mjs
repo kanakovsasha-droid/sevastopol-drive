@@ -51,6 +51,12 @@ for (const n of names) {
     if (f === home) c.j.landmarks.push({ ...def, id: 'lm_' + n });
     if (c.j.landmarks.length !== before || f === home) c.dirty = true;
   }
+  // контуры, которые модель замещает, — пометить во всех квадратах, где лежит копия
+  const ids = new Set(P.skip);
+  for (const f of chunkFiles) {
+    const c = chunk(f);
+    for (const bb of c.j.buildings || []) if (ids.has(bb.id) && !bb.hide) { bb.hide = 1; c.dirty = true; }
+  }
   console.log(`${n}: чанк ${home}, заменено: ${old.map(o => `${o.name} [${o.style}]`).join('; ') || '—'}`);
 }
 writeFileSync('data/landmarks.json', JSON.stringify(L, null, 2) + '\n');

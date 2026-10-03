@@ -632,6 +632,10 @@ function* buildChunk(d, key) {
   // Список ведём по id: соседний чанк, где тот же дом лежит копией, обязан
   // его пропустить — иначе сквозь Панораму торчат обычные этажи.
   const skip = new Set(lm.userData.skip);
+  // Дом, замещённый моделью, помечен прямо в данных (hide) во ВСЕХ квадратах,
+  // где лежит его копия: соседний квадрат может собраться раньше хозяина
+  // модели и тогда не узнал бы о пропуске — коробка осталась бы вокруг модели.
+  w.buildings.forEach((b, i) => { if (b.hide) skip.add(i); });
   w.buildings.forEach((b, i) => { if (b.id && skipIds.has(b.id)) skip.add(i); });
   for (const i of skip) { const b = w.buildings[i]; if (b && b.id) skipIds.add(b.id); }
   at('дома');
