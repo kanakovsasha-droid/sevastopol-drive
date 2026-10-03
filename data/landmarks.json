@@ -187,23 +187,6 @@
     "note": "Круг вписан МНК в 15-угольник контура way 167790144: центр (−163.3, 2346.2), радиус 20.1 м. Заданный центр (−169, 2347) — центроид ВСЕГО полигона со входным выступом, по нему цилиндр вставал со сдвигом на запад."
   },
   {
-    "name": "Графская пристань",
-    "style": "colonnade",
-    "x": 80,
-    "z": -47,
-    "columns": 6,
-    "wall": [
-      81.3,
-      -37.6,
-      84,
-      -55.6
-    ],
-    "stairs": true,
-    "sign": "1846",
-    "source": "OSM: relation 6814012 (building=yes) + relation 6814013 (tourism=attraction, name=Графская пристань) + relation 2225566 (highway=pedestrian area) — геометрия снята живым запросом к overpass-api.de (out geom) и пересчитана в местные метры проекцией из tools/config.mjs; сверена со спутником ESRI через tools/sat.html (cx=95 cz=-45 z=19). Архитектура: ru.wikipedia.org/wiki/Графская_пристань (сдвоенная колоннада дорического ордера, пропилеи, инкерманский камень, четыре пологих марша, львы Фердинандо Пелличио, статуи в пилонах); jalita.com/guidebook/sevastopol/graf_landing_stage.shtml (высота 6,5 м,",
-    "checked": "2026-08-30"
-  },
-  {
     "name": "Центральная городская библиотека имени Л. Н. Толстого",
     "style": "colonnade",
     "x": -17,
@@ -429,6 +412,20 @@
       "w91446750"
     ],
     "source": "модель models/kostel_klimenta/build.py; что видно на фото и что сделано наугад — models/kostel_klimenta/NOTES.md",
+    "checked": "2026-10-03"
+  },
+  {
+    "name": "Графская пристань",
+    "style": "model",
+    "x": 80.3,
+    "z": -47.6,
+    "file": "grafskaya.glb",
+    "ox": 82.65,
+    "oz": -46.6,
+    "skip": [
+      "r6814012:0"
+    ],
+    "source": "модель models/grafskaya/build.py; что видно на фото и что сделано наугад — models/grafskaya/NOTES.md",
     "checked": "2026-10-03"
   }
 ]
