@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PolyGrid } from './worldgen.js?v=4fd612b8';
+import { surfaceTop } from './surface.js?v=4fd612b8';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
@@ -353,7 +354,8 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   const group = new THREE.Group();
   group.name = 'furniture';
   const rand = rng(31337);
-  const H = (x, z) => terrain.driveHeightAt(x, z);
+  // ставим на видимую поверхность: асфальт, плитку или землю (surface.js)
+  const H = (x, z) => surfaceTop(terrain, roadIndex, x, z);
   const stats = {};
 
   const byKind = {};

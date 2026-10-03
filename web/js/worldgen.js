@@ -274,7 +274,7 @@ function* removeBuildingsGen(heights, nx, x0, z0, dx, dz, buildings) {
 // Готовый профиль кладём в кэш по id дороги — второй сосед берёт тот же самый.
 
 const STEP = 4;                 // шаг ресемплинга осевой, м
-const PROFILES = new Map();     // id дороги → профиль ДО сведения узлов
+const PROFILES = globalThis.__PROF = new Map();
 
 // Профиль одной улицы: равномерный ресемплинг + сглаживание с возвратом к земле.
 // full — все отсчёты попали в загруженные ДЕТАЛЬНЫЕ высоты. Пока это не так,
@@ -648,13 +648,29 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
   }
   const EA = Int32Array.from(ea), EB = Int32Array.from(eb), EN = EA.length;
   const LIM = res * 0.185;
+  // Двигаем пару НЕ поровну, а по весу: ячейка плато улицы (вес 1) почти
+  // не уступает, уступает откос (вес у кромки к нулю). Поровну откос
+  // соседней улицы, идущей по склону выше, за шестьдесят проходов втягивал
+  // плато вверх: Стрелецкий спуск поднимался на два метра над своим
+  // профилем и вставал поперёк с перекосом в 23%.
+  // Плато (вес 1) двигаем только навстречу другому плато — это перекрёсток,
+  // там улицы и правда сводятся. Против откоса плато не уступает вовсе: если
+  // откоса не хватает, чтобы уложиться в уклон, между улицами остаётся
+  // крутой склон (подпорная стенка), а не выпученная улица. Генерала Крейзера
+  // в 30 м выше Стрелецкого спуска поднимала его плато на 2.4 метра.
+  const give = new Float32Array(EN);
+  for (let e = 0; e < EN; e++) {
+    const fa = wgt[EA[e]] >= 0.999 ? 0 : 1.0 - wgt[EA[e]] + 0.05;
+    const fb = wgt[EB[e]] >= 0.999 ? 0 : 1.0 - wgt[EB[e]] + 0.05;
+    give[e] = fa + fb > 0 ? fa / (fa + fb) : 0.5;
+  }
   for (let pass = 0; pass < 60; pass++) {
     let fixed = 0;
     for (let e = 0; e < EN; e++) {
       const a = EA[e], b2 = EB[e];
       const d = tgt[a] - tgt[b2];
-      if (d > LIM) { const ex = (d - LIM) * 0.5; tgt[a] -= ex; tgt[b2] += ex; fixed++; }
-      else if (d < -LIM) { const ex = (-d - LIM) * 0.5; tgt[a] += ex; tgt[b2] -= ex; fixed++; }
+      if (d > LIM) { const ex = d - LIM; tgt[a] -= ex * give[e]; tgt[b2] += ex * (1 - give[e]); fixed++; }
+      else if (d < -LIM) { const ex = -d - LIM; tgt[a] += ex * give[e]; tgt[b2] -= ex * (1 - give[e]); fixed++; }
     }
     if (!fixed) break;
     if ((pass & 1) === 1) yield;
@@ -2000,6 +2016,42 @@ export function* buildRoads(world, terrain, chunk = 500) {
   // нахлёста, но точность двоичного поиска ниже 8 см опускать нельзя, иначе
   // вместо шва получится волосяная щель.
   const LANE_EPS = 0.15;
+  // Концы проезжих улиц по узлам: кто ещё сходится в этой точке.
+  const endKey = (x, z) => Math.round(x * 2) * 200003 + Math.round(z * 2);
+  const ends = new Map();
+  for (const r of ALL) {
+    if (r.c > 3 || r.pts.length < 4 || r.br || r.tn) continue;
+    const p = r.pts, n = p.length / 2;
+    for (const e of [0, n - 1]) {
+      const k = endKey(p[e * 2], p[e * 2 + 1]);
+      let a = ends.get(k); if (!a) ends.set(k, a = []);
+      a.push({ r, e });
+    }
+  }
+  // Продолжение: в узле ровно одна другая проезжая улица той же ширины,
+  // и идёт она почти по прямой (поворот меньше 35°). Возвращает нормаль
+  // соседа в этом узле, развёрнутую по ходу нашей улицы, или null.
+  const contOf = (r, end) => {
+    const p = r.pts, n = p.length / 2, e = end ? n - 1 : 0;
+    const a = ends.get(endKey(p[e * 2], p[e * 2 + 1]));
+    if (!a || a.length !== 2) return null;
+    const o = a[0].r === r ? a[1] : a[0];
+    if (o.r === r || Math.abs(o.r.w - r.w) > 0.6) return null;
+    // своё направление «в узел» и соседское «из узла»
+    const i1 = end ? e - 1 : 1;
+    let dx = end ? p[e * 2] - p[i1 * 2] : p[0] - p[2], dz = end ? p[e * 2 + 1] - p[i1 * 2 + 1] : p[1] - p[3];
+    const q = o.r.pts, m = q.length / 2;
+    let ox = o.e === 0 ? q[2] - q[0] : q[(m - 2) * 2] - q[(m - 1) * 2];
+    let oz = o.e === 0 ? q[3] - q[1] : q[(m - 2) * 2 + 1] - q[(m - 1) * 2 + 1];
+    const l1 = Math.hypot(dx, dz), l2 = Math.hypot(ox, oz);
+    if (l1 < 0.1 || l2 < 0.1) return null;
+    dx /= l1; dz /= l1; ox /= l2; oz /= l2;
+    if (dx * ox + dz * oz < 0.82) return null;           // круче 35°
+    // Нормаль митры у нас — (−dz, dx) по ходу точек. У начала улицы «в узел»
+    // смотрит против хода, поэтому соседское направление тоже разворачиваем.
+    const sx = end ? ox : -ox, sz = end ? oz : -oz;
+    return { nx: -sz, nz: sx };
+  };
   const lanes = [];        // индекс в массиве = приоритет, меньше — главнее
   yield;
   const laneOf = new Map();
@@ -2011,10 +2063,29 @@ export function* buildRoads(world, terrain, chunk = 500) {
                     && (covered.get(o.i) ?? 0) <= 0.75)
        .sort((a, b2) => b2.r.w - a.r.w || a.i - b2.i)) {
     const hw = o.r.w / 2;
-    const ext = densify(extendEnds(o.r.pts, Math.min(hw, 5)));
+    // ПРОДОЛЖЕНИЕ УЛИЦЫ. Вытяжка концов на полширины закрывает щель на
+    // перекрёстке, но там, где улица просто продолжается другим куском OSM
+    // (сменилось покрытие, полосность, имя), она клала асфальт на пять метров
+    // поверх брусчатки соседа с косым торцом — «кривой переход» на Шмидта
+    // (−479, 1772). На таком стыке концы не вытягиваем, а режем оба куска
+    // по общей биссектрисе: шов прямой, без щели и без нахлёста.
+    const cA = contOf(o.r, 0), cB = contOf(o.r, 1);
+    const e0 = extendEnds(o.r.pts, Math.min(hw, 5));
+    if (cA) { e0[0] = o.r.pts[0]; e0[1] = o.r.pts[1]; }
+    if (cB) { const k = o.r.pts.length; e0[k - 2] = o.r.pts[k - 2]; e0[k - 1] = o.r.pts[k - 1]; }
+    const ext = densify(e0);
     // Митры считаем здесь и переиспользуем при отрисовке: сосед должен мерить
     // по ТОМУ ЖЕ полотну, которое потом ляжет на землю.
-    const lane = { hw, ext, mt: miters(ext), rank: lanes.length };
+    const mt0 = miters(ext);
+    for (const [c, vi] of [[cA, 0], [cB, mt0.n - 1]]) {
+      if (!c) continue;
+      // нормаль конца — средняя своей и соседской, длина — по углу между ними
+      let nx = mt0.NX[vi] + c.nx, nz = mt0.NZ[vi] + c.nz;
+      const l = Math.hypot(nx, nz);
+      if (l < 1e-3) continue;
+      mt0.NX[vi] = nx / l; mt0.NZ[vi] = nz / l; mt0.S[vi] = Math.min(1.6, 2 / l);
+    }
+    const lane = { hw, ext, mt: mt0, rank: lanes.length, cA: !!cA, cB: !!cB };
     laneOf.set(o.i, lane);
     lanes.push(lane);
   }
@@ -2070,9 +2141,11 @@ export function* buildRoads(world, terrain, chunk = 500) {
       // а между ними у полосы прямая кромка — и если в пролёт вдаётся угол
       // чужого полотна, вершины его обходят, а кромка режет насквозь. Запас в
       // полуширину вокруг узлов эти углы и закрывает.
+      // На стыке-продолжении кругляша нет: там шов прямой по биссектрисе, и
+      // круг выгрызал бы из соседа полукруглую выемку до земли.
       const w2 = w0 * w0;
-      if ((x - p[s * 2]) ** 2 + (z - p[s * 2 + 1]) ** 2 < w2) return true;
-      if ((x - p[s * 2 + 2]) ** 2 + (z - p[s * 2 + 3]) ** 2 < w2) return true;
+      if (!(s === 0 && L.cA) && (x - p[s * 2]) ** 2 + (z - p[s * 2 + 1]) ** 2 < w2) return true;
+      if (!(s + 2 === p.length / 2 && L.cB) && (x - p[s * 2 + 2]) ** 2 + (z - p[s * 2 + 3]) ** 2 < w2) return true;
     }
     return false;
   };
@@ -2321,7 +2394,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
     // Мост: палуба сооружения (structures) стоит на ~17 см над осью — на
     // сантиметр выше полотна, и с высоты асфальт тонул в ней рваными
     // светлыми пятнами. Кладём полотно моста на 12 см выше.
-    const lift = r.c === 4 ? ROAD_Y - 0.05 : ROAD_Y + r.w * 0.0016 + (r.br ? 0.12 : 0);
+    const lift = r.c === 4 ? ROAD_Y - 0.025 : ROAD_Y + r.w * 0.0016 + (r.br ? 0.12 : 0);
     const mtR = lane ? lane.mt : miters(ext);
     // Проезжей части режем полуширину по вершинам; пешеходной дорожке — нет,
     // она в приоритетах не участвует и уступает целыми пролётами.
@@ -2401,6 +2474,22 @@ export function* buildRoads(world, terrain, chunk = 500) {
                 || (FLD && FLD.at(qx, qz) < -0.4)) { hit = true; break; }
           }
           if (hit) break;
+        }
+        // ДУБЛЬ ТРОТУАРА. В OSM тротуар часто нарисован отдельной линией в паре
+        // метров от проезжей части. Наш тротуар идёт от бордюра сам, и такая
+        // дорожка ложилась рядом с ним второй лентой: узкой полосой у одного
+        // конца и широкой у другого — «кривой переход» брусчатки на Шмидта у
+        // костёла. Пролёт, идущий вдоль кромки и в пределах её тротуара с
+        // запасом в свою ширину, не рисуем — его место занимает тротуар.
+        if (!hit && FLD) {
+          const mx = (ext[i * 2] + ext[i * 2 + 2]) / 2, mz = (ext[i * 2 + 1] + ext[i * 2 + 3]) / 2;
+          const f = FLD.at(mx, mz);
+          if (f < SIDEWALK + hq + 1.2 && walkRoad(FLD.own(mx, mz))) {
+            const gx = FLD.at(mx + 0.5, mz) - FLD.at(mx - 0.5, mz), gz = FLD.at(mx, mz + 0.5) - FLD.at(mx, mz - 0.5);
+            const dx = ext[i * 2 + 2] - ext[i * 2], dz = ext[i * 2 + 3] - ext[i * 2 + 1];
+            const gl = Math.hypot(gx, gz), dl = Math.hypot(dx, dz);
+            if (gl > 0.3 && dl > 0.1 && Math.abs(gx * dx + gz * dz) / (gl * dl) < 0.45) hit = true;
+          }
         }
         keep4[i] = hit ? 0 : 1;
       }
@@ -2830,7 +2919,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
 
   // Порядок высот (между соседними слоями не меньше 2 см):
   //   газон островка   ROAD_Y − 0.09           (0.050)
-  //   пешеходная дорожка ROAD_Y − 0.05         (0.090) — под асфальтом
+  //   пешеходная дорожка ROAD_Y − 0.025        (0.115) — над парковкой (0.095), под асфальтом
   //   подложки асфальта ROAD_Y − 0.015         (0.125) — узел, фартук, дыры
   //   полотно улицы    ROAD_Y + ширина*0.0016  (0.146 .. 0.162)
   //   зебра, стоп-линия ROAD_Y + 0.055         (0.195)
