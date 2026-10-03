@@ -1,19 +1,19 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=6ce88c24';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=6ce88c24';
-import { buildStreetProps } from './props.js?v=6ce88c24';
-import { buildYards, buildStructures } from './yards.js?v=6ce88c24';
-import { buildFurniture } from './furniture.js?v=6ce88c24';
-import { buildLandmarks, setModelWarm } from './landmarks.js?v=6ce88c24';
-import { buildSigns } from './signs.js?v=6ce88c24';
-import { buildCemeteries } from './cemetery.js?v=6ce88c24';
-import { audit } from './audit.js?v=6ce88c24';
-import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=6ce88c24';
-import { ChunkManager } from './chunks.js?v=6ce88c24';
-import { Collider, RoadIndex } from './collision.js?v=6ce88c24';
-import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=6ce88c24';
-import { CarFX } from './carfx.js?v=6ce88c24';
-import { precompile } from './warm.js?v=6ce88c24';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=a0238627';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=a0238627';
+import { buildStreetProps } from './props.js?v=a0238627';
+import { buildYards, buildStructures } from './yards.js?v=a0238627';
+import { buildFurniture } from './furniture.js?v=a0238627';
+import { buildLandmarks, setModelWarm } from './landmarks.js?v=a0238627';
+import { buildSigns } from './signs.js?v=a0238627';
+import { buildCemeteries } from './cemetery.js?v=a0238627';
+import { audit } from './audit.js?v=a0238627';
+import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=a0238627';
+import { ChunkManager } from './chunks.js?v=a0238627';
+import { Collider, RoadIndex } from './collision.js?v=a0238627';
+import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=a0238627';
+import { CarFX } from './carfx.js?v=a0238627';
+import { precompile } from './warm.js?v=a0238627';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -74,7 +74,7 @@ const FOG = HORIZON.clone().lerp(HAZE, 0.45);
 
 let renderer, scene, camera, sun, sky;
 let water = null;
-let terrain, far = null, landmarkDefs = [], collider, roads, carMesh, car, carFx;
+let terrain, far = null, landmarkDefs = [], terraces = [], collider, roads, carMesh, car, carFx;
 let cityMap = null, miniCtx = null, mapCtx = null, mapOpen = false, miniOn = true;
 let mapZoom = 1;                               // 1 — весь мир, больше — вокруг игрока
 // --- потоковая загрузка --------------------------------------------------
@@ -149,6 +149,9 @@ async function boot() {
     // маленький (имя и точка), сами здания приезжают со своими чанками.
     landmarkDefs = far.landmarks
       || await fetch(`../data/landmarks.json${V ? '?v=' + V : ''}`).then(r => r.json()).catch(() => []);
+    // Террасы скверов и площадей (tools/build-terraces.mjs): 75 КБ, нужны
+    // земле с первого квадрата. Нет файла — земля просто без террас.
+    terraces = await fetch(`../data/terraces.json${V ? '?v=' + V : ''}`).then(r => r.json()).then(d => d.items).catch(() => []);
 
     await step('строю рельеф…', 26);
     initScene();
@@ -349,7 +352,8 @@ class TerrainTiles {
       key: pick.key, ms: 0, cell: { i: pick.i, j: pick.j },
       gen: buildTerrainTile(terrain, farIndex, {
         cx: pick.i, cz: pick.j, key: pick.key, size: S, pad: GROUND_PAD,
-        sea: terrain.sea,
+        sea: terrain.sea, models: landmarkDefs,     // дома-модели: площадка на отметке модели
+        terraces,                                   // скверы и площади на склонах — ровные
       }),
     };
     this._step(t0, budget);
