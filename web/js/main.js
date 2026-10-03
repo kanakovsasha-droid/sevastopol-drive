@@ -72,7 +72,7 @@ const FOG = HORIZON.clone().lerp(HAZE, 0.45);
 
 let renderer, scene, camera, sun, sky;
 let water = null;
-let terrain, far = null, landmarkDefs = [], collider, roads, carMesh, car;
+let terrain, far = null, landmarkDefs = [], terraces = [], collider, roads, carMesh, car;
 let cityMap = null, miniCtx = null, mapCtx = null, mapOpen = false, miniOn = true;
 let mapZoom = 1;                               // 1 — весь мир, больше — вокруг игрока
 // --- потоковая загрузка --------------------------------------------------
@@ -147,6 +147,9 @@ async function boot() {
     // маленький (имя и точка), сами здания приезжают со своими чанками.
     landmarkDefs = far.landmarks
       || await fetch(`../data/landmarks.json${V ? '?v=' + V : ''}`).then(r => r.json()).catch(() => []);
+    // Террасы скверов и площадей (tools/build-terraces.mjs): 75 КБ, нужны
+    // земле с первого квадрата. Нет файла — земля просто без террас.
+    terraces = await fetch(`../data/terraces.json${V ? '?v=' + V : ''}`).then(r => r.json()).then(d => d.items).catch(() => []);
 
     await step('строю рельеф…', 26);
     initScene();
@@ -331,7 +334,8 @@ class TerrainTiles {
       key: pick.key, ms: 0, cell: { i: pick.i, j: pick.j },
       gen: buildTerrainTile(terrain, farIndex, {
         cx: pick.i, cz: pick.j, key: pick.key, size: S, pad: GROUND_PAD,
-        sea: terrain.sea,
+        sea: terrain.sea, models: landmarkDefs,     // дома-модели: площадка на отметке модели
+        terraces,                                   // скверы и площади на склонах — ровные
       }),
     };
     this._step(t0, budget);
