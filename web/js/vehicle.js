@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=a0238627';
-import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=a0238627';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=c4c71307';
+import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=c4c71307';
 
 // Физика машины. Третий заход.
 //

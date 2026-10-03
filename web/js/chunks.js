@@ -334,9 +334,6 @@ export class ChunkManager {
     // и из out.buildings уходит, а проверять по нему всё равно надо.
     // Это только ссылка на уже разобранный массив — памяти не стоит.
     out.allBuildings = data.buildings || [];
-    // То же с зеленью: деревья квадрат сажает сам и только в своих границах,
-    // а парк на шве достаётся одному из двух соседей.
-    out.allGreen = data.green || [];
     for (const f of FIELDS) if (data[f]) out[f] = take(data[f], f, null);
     // Кромке проезжей части (бордюр, тротуар, островки) нужна ВСЯ сеть улиц
     // квадрата, а не только те, что достались этой сборке: улица, построенная
@@ -344,9 +341,14 @@ export class ChunkManager {
     // массив улиц — так он доезжает до сборщика дорог без правок в main.js.
     // Заодно сообщаем сам квадрат: кромка — принадлежность места, а не улицы,
     // и каждый чанк рисует её строго в своих границах.
-    if (out.roads) {
+    {
       const S = this.chunk;
-      out.roads.ctx = { all: data.roads, x0: data.cx * S, z0: data.cz * S,
+      if (!out.roads) out.roads = [];
+      // зелень и обмеренные деревья — туда же: посадки тоже кладёт каждый
+      // квадрат в своих границах (props.js)
+      out.roads.ctx = { all: data.roads || [], crossings: data.crossings || [],
+                        green: data.green || [], trees: (data.places && data.places.trees) || [],
+                        x0: data.cx * S, z0: data.cz * S,
                         x1: (data.cx + 1) * S, z1: (data.cz + 1) * S };
     }
     for (const [f, subs] of Object.entries(SUBFIELDS)) {
@@ -438,6 +440,9 @@ export class ChunkManager {
       this.owner.set(id, host);          // теперь объект держит хозяин
       this.contains.get(host)?.push(id);
     }
+    // Полотно улиц и зебры каждый квадрат рисует сам, в своих границах, —
+    // пересобирать их у сироты не нужно. Метка говорит об этом сборщику дорог.
+    (data.roads ||= []).ctx = { orphan: true };
     this.orphans.push({ data, host });
   }
 

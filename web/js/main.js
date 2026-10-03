@@ -1,20 +1,21 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=a0238627';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=a0238627';
-import { buildStreetProps } from './props.js?v=a0238627';
-import { updateFlora, floraStats, warmFlora } from './flora.js?v=a0238627';
-import { buildYards, buildStructures } from './yards.js?v=a0238627';
-import { buildFurniture } from './furniture.js?v=a0238627';
-import { buildLandmarks, setModelWarm } from './landmarks.js?v=a0238627';
-import { buildSigns } from './signs.js?v=a0238627';
-import { buildCemeteries } from './cemetery.js?v=a0238627';
-import { audit } from './audit.js?v=a0238627';
-import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=a0238627';
-import { ChunkManager } from './chunks.js?v=a0238627';
-import { Collider, RoadIndex } from './collision.js?v=a0238627';
-import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=a0238627';
-import { CarFX } from './carfx.js?v=a0238627';
-import { precompile } from './warm.js?v=a0238627';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=c4c71307';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=c4c71307';
+import { buildStreetProps } from './props.js?v=c4c71307';
+import { updateFlora, floraStats, warmFlora } from './flora.js?v=c4c71307';
+import { buildYards, buildStructures } from './yards.js?v=c4c71307';
+import { buildFurniture } from './furniture.js?v=c4c71307';
+import { buildLandmarks, setModelWarm } from './landmarks.js?v=c4c71307';
+import { buildSigns } from './signs.js?v=c4c71307';
+import { buildCemeteries } from './cemetery.js?v=c4c71307';
+import { audit } from './audit.js?v=c4c71307';
+import { buildMap, drawFull, mapUnproject } from './minimap.js?v=c4c71307';
+import { Hud } from './hud.js?v=c4c71307';
+import { ChunkManager } from './chunks.js?v=c4c71307';
+import { Collider, RoadIndex } from './collision.js?v=c4c71307';
+import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=c4c71307';
+import { CarFX } from './carfx.js?v=c4c71307';
+import { precompile } from './warm.js?v=c4c71307';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -76,7 +77,7 @@ const FOG = HORIZON.clone().lerp(HAZE, 0.45);
 let renderer, scene, camera, sun, sky;
 let water = null;
 let terrain, far = null, landmarkDefs = [], terraces = [], collider, roads, carMesh, car, carFx;
-let cityMap = null, miniCtx = null, mapCtx = null, mapOpen = false, miniOn = true;
+let cityMap = null, mapCtx = null, mapOpen = false, miniOn = true, hud = null;
 let mapZoom = 1;                               // 1 — весь мир, больше — вокруг игрока
 // --- потоковая загрузка --------------------------------------------------
 let chunks = null;                             // ChunkManager
@@ -184,7 +185,6 @@ async function boot() {
     await step('черчу карту города…', 60);
     cityMap = buildMap(far, terrain);
     lap('карта');
-    miniCtx = $('mini').getContext('2d');
     mapCtx = $('mapcv').getContext('2d');
 
     car = new Car(terrain, collider);
@@ -231,6 +231,8 @@ async function boot() {
     el.id = 'chunkstat';
     $('stat').appendChild(document.createElement('br'));
     $('stat').appendChild(el);
+    // прибор, миникарта, место, подсказки — hud.js
+    hud = new Hud({ map: cityMap, roads, car: () => car, view: hudView });
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam, get mode() { return mode; } };
@@ -678,7 +680,7 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
 
   at('деревья');
-  const props = buildStreetProps(w, terrain, roads, d.allBuildings, d.allGreen);
+  const props = buildStreetProps(w, terrain, roads, d.allBuildings);
   g.add(props);
   for (const [k, v] of Object.entries(props.userData.counts || {})) counts[k] = (counts[k] || 0) + v;
   lap('деревья');
@@ -1129,11 +1131,7 @@ function bindInput() {
     if (k === 'KeyI') {
       invertY = !invertY;
       try { localStorage.setItem('sev.invertY', invertY ? '1' : '0'); } catch { /* приватный режим */ }
-      $('mode').textContent = invertY ? 'Мышь: инверсия' : 'Мышь: обычная';
-      clearTimeout(window.__invT);
-      window.__invT = setTimeout(() => {
-        $('mode').textContent = mode === 'fly' ? 'Полёт' : mode === 'walk' ? 'Пешком' : 'За рулём';
-      }, 1400);
+      hud?.toast(invertY ? 'Мышь: инверсия' : 'Мышь: обычная');
     }
     if (k === 'KeyC') { cam.mode = (cam.mode + 1) % CAM_MODES.length; }
     if (k === 'KeyM') { const m = $('menu'); m.classList.toggle('on'); if (m.classList.contains('on')) document.exitPointerLock?.(); }
@@ -1452,7 +1450,7 @@ function updateCamera(dt) {
 }
 
 // ------------------------------------------------------------------ HUD
-let fpsAcc = 0, fpsN = 0, hudT = 0, lastStreet = null;
+let fpsAcc = 0, fpsN = 0, hudT = 0;
 // Регулятор разрешения: держим кадр около 60. Считаем по среднему за секунду,
 // чтобы одиночная просадка на загрузке чанка не дёргала картинку.
 //
@@ -1492,31 +1490,38 @@ function tunePixelRatio(dt) {
   }
 }
 
+// Кем сейчас играем — для hud.js. Курс в полёте — курс КАМЕРЫ: раньше
+// миникарта в полёте вертелась по пешеходу, который остался внизу.
+const hudV = { mode: 'car', x: 0, z: 0, yaw: 0, alt: 0 };
+function hudView() {
+  hudV.mode = mode;
+  if (mode === 'car') { hudV.x = car.pos.x; hudV.z = car.pos.z; hudV.yaw = car.yaw; hudV.alt = 0; }
+  else if (mode === 'fly') {
+    hudV.x = fly.x; hudV.z = fly.z; hudV.yaw = fly.yaw;
+    hudV.alt = fly.y - terrain.gridHeightAt(fly.x, fly.z);
+  } else { hudV.x = walk.x; hudV.z = walk.z; hudV.yaw = walk.yaw; hudV.alt = 0; }
+  return hudV;
+}
+
 function updateHUD(dt) {
   tunePixelRatio(dt);
   fpsAcc += dt; fpsN++;
+  // прибор и карта — каждый кадр: плавная стрелка и поворот карты; что
+  // перерисовать, hud решает сам
+  hud?.update(dt);
   hudT += dt;
   if (hudT < 0.12) return;
   hudT = 0;
 
+  const near = Math.hypot(walk.x - car.pos.x, walk.z - car.pos.z) < 4.5;
+  $('prompt').classList.toggle('on', mode === 'walk' && near);
+  if (mapOpen) drawMap();
+
+  // тех.данные — только когда открыты (клавиша «`»)
+  if (!hud?.debug) { fpsAcc = 0; fpsN = 0; return; }
   const px = mode === 'car' ? car.pos.x : mode === 'fly' ? fly.x : walk.x;
   const pz = mode === 'car' ? car.pos.z : mode === 'fly' ? fly.z : walk.z;
-
-  const hit = roads.nearest(px, pz, mode === 'car' ? 22 : mode === 'fly' ? 40 : 14);
-  const name = hit?.road?.n || null;
-  if (name !== lastStreet) {
-    lastStreet = name;
-    const el = $('street');
-    el.textContent = name || 'без названия';
-    el.classList.toggle('none', !name);
-  }
-
-  const kmh = mode === 'car' ? car.kmh : 0;
-  const el = $('kmh');
-  el.textContent = Math.abs(Math.round(kmh));
-  el.classList.toggle('rev', kmh < -0.5);
-  $('gaugefill').style.width = clamp(Math.abs(kmh) / 215 * 100, 0, 100) + '%';
-
+  $('mode').textContent = mode === 'fly' ? 'Полёт' : mode === 'walk' ? 'Пешком' : `За рулём · ${car.gearLabel}`;
   $('fps').textContent = Math.round(fpsN / fpsAcc) + ' fps';
   fpsAcc = 0; fpsN = 0;
   $('coord').textContent = `${px > 0 ? '+' : ''}${px.toFixed(0)}, ${pz > 0 ? '+' : ''}${pz.toFixed(0)} м`;
@@ -1526,9 +1531,6 @@ function updateHUD(dt) {
     ? fly.y.toFixed(0) + ' м высота'
     : terrain.gridHeightAt(px, pz).toFixed(0) + ' м над морем';
 
-  const near = Math.hypot(walk.x - car.pos.x, walk.z - car.pos.z) < 4.5;
-  $('prompt').classList.toggle('on', mode === 'walk' && near);
-
   const cs = $('chunkstat');
   if (cs) {
     const mb = performance.memory ? ` · ${(performance.memory.usedJSHeapSize / 1048576).toFixed(0)} МБ` : '';
@@ -1536,12 +1538,6 @@ function updateHUD(dt) {
       + ` · земля ${ground.mesh.size}${ground.pending ? ' (+' + ground.pending + ')' : ''}`
       + ` · ${(renderer.info.render.triangles / 1000).toFixed(0)}k тр${mb}`;
   }
-
-  if (miniOn && miniCtx && cityMap) {
-    const yaw = mode === 'car' ? car.yaw : walk.yaw;
-    drawMini(miniCtx, cityMap, px, pz, yaw, 200, 320);
-  }
-  if (mapOpen) drawMap();
 }
 
 // ------------------------------------------------------------------ цикл

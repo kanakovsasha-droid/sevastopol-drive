@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=a0238627';
-import { plantFlora, crownRadius, ST } from './flora.js?v=a0238627';
+import { PolyGrid } from './worldgen.js?v=c4c71307';
+import { plantFlora, crownRadius, ST } from './flora.js?v=c4c71307';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,
@@ -260,10 +260,13 @@ function wallField(items) {
   };
 }
 
-export function buildStreetProps(world, terrain, roadIndex, allBuildings = null, allGreen = null) {
+export function buildStreetProps(world, terrain, roadIndex, allBuildings = null) {
   const group = new THREE.Group();
   group.name = 'props';
-  // Тот же самый растр, что у дорог и аудита — им пользуется уличная мебель.
+  // «На асфальте ли точка» — по той же кромке, по которой асфальт рисуется
+  // (buildRoads подменяет растр покрытия полем кромки, +0.3 м на бордюр). Это
+  // источник истины; мои расстояния до осевых (clearance) — запас сверху: от
+  // кромки до ствола, до дорожки, до путей. Ими же пользуется мебель.
   const COV = world.__coverage;
   const onRoad = (x, z) => COV.onRoad(x, z);
   group.userData.onRoad = onRoad;
@@ -383,7 +386,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
             const e = edge(x, z);
             // ствол — не ближе метра к любой проезжей части (в том числе к
             // поперечной на перекрёстке), не на дорожке и не на путях
-            if (e[0] < 1.0 || e[1] < 0.4 || e[2] < 1.2) { rejected++; continue; }
+            if (e[0] < 1.0 || e[1] < 0.4 || e[2] < 1.2 || onRoad(x, z)) { rejected++; continue; }
             // жребий — от места, а не от порядка обхода
             const lot = hash2(x * 2.9 + 11, z * 2.9 - 5);
             if (lot < 0.70) {
@@ -396,7 +399,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
                 : pickStreet(set, seed, x, z);
               // уличные стволы в Севастополе белят почти поголовно
               pushTree(sp, x, h + walkTop - 0.10, z, true, hash2(x * 7, z * 7) < 0.9 ? 1 : 0);
-            } else if (lot < 0.80 && e[0] > 1.4 && e[1] > 0.9) {
+            } else if (lot < 0.80 && e[0] > 1.4 && e[1] > 0.9 && !onRoad(x + 0.8, z) && !onRoad(x - 0.8, z) && !onRoad(x, z + 0.8) && !onRoad(x, z - 0.8)) {
               // там, где дерева не вышло, остаётся приствольный газон с кустом:
               // ряд перестаёт быть пунктиром из одинаковых промежутков
               const h = H(x, z);
@@ -406,7 +409,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
           // фонарь
           if (Math.abs(d % stepL - (side > 0 ? stepL * 0.26 : stepL * 0.74)) < 0.5) {
             const x = cx + nx * side * offL, z = cz + nz * side * offL;
-            if (inSq(x, z) && free(x, z) && edge(x, z)[0] > 0.3)
+            if (inSq(x, z) && free(x, z) && edge(x, z)[0] > 0.3 && !onRoad(x, z))
               lampBins[lk].push(x, H(x, z) + walkTop, z, 1, 1, Math.atan2(-nx * side, -nz * side), 0, 0);
           }
         }
@@ -431,14 +434,14 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
     'клён': 'platan', 'липа': 'platan', 'дуб': 'platan', 'ясень': 'platan',
   };
   let measured = 0, onAsphalt = 0;
-  const mtrees = ((world.places && world.places.trees) || []).filter(t => inSq(t.x, t.z));
+  const mtrees = (ctx.trees || (world.places && world.places.trees) || []).filter(t => inSq(t.x, t.z));
   for (const t of mtrees) {
     // Обмер снят по спутнику, а полотно у меня своей ширины: часть посадок
     // попадает на асфальт. Такие не сажаем — дерево посреди дороги хуже,
     // чем отсутствующее дерево. На дорожке (крона над аллеей снята центром
     // на её оси) — тоже.
     const e = edge(t.x, t.z);
-    if (e[0] < 0.6 || e[1] < -0.2 || e[2] < 1.0 || noPlant(t.x, t.z) || buildings.find(t.x, t.z)) { onAsphalt++; continue; }
+    if (e[0] < 0.6 || e[1] < -0.2 || e[2] < 1.0 || onRoad(t.x, t.z) || noPlant(t.x, t.z) || buildings.find(t.x, t.z)) { onAsphalt++; continue; }
     const key = (t.sp || '').toLowerCase();
     const sp = SPEC_MAP[key] || (key.includes('кипар') ? 'cypress' : key.includes('сосн') ? 'pine' : 'platan');
     // размер берём ИЗ ОБМЕРА, а не из хеша: у бульвара кроны до 9 м
@@ -465,7 +468,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
   const hedges = [];
   let bushes = 0;
   // деревья в парках и на склонах — там, где OSM отметил зелень
-  for (const g of (allGreen && allGreen.length ? allGreen : world.green)) {
+  for (const g of (ctx.green || world.green)) {
     const dens = { wood: 105, park: 130, scrub: 260, grass: 620 }[g.kind];
     const q = g.poly;
     let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity, a = 0;
@@ -524,7 +527,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
             if (!ok) break;
             const px = ax + ux * tt + hx * 0.9, pz = az + uz * tt + hz * 0.9;
             e = edge(px, pz);
-            if (e[0] < 0.7 || e[1] < 0.45 || e[2] < 1.5 || wall(px, pz, 0.6) < 0.6) ok = false;
+            if (e[0] < 0.7 || e[1] < 0.45 || e[2] < 1.5 || wall(px, pz, 0.6) < 0.6 || onRoad(px, pz)) ok = false;
           }
           if (!ok) { flush(); continue; }
           const ya = H(ax + ux * ta + hx * 0.9, az + uz * ta + hz * 0.9), yb = H(ax + ux * tb + hx * 0.9, az + uz * tb + hz * 0.9);
@@ -560,7 +563,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
         const z = (gj + hash2(gj * 2.17, gi * 3.9)) * cell;
         if (!inSq(x, z) || hasMeasured(x, z) || H(x, z) < 1.4 || !pointIn(q, x, z)) continue;
         const e = edge(x, z);
-        if (e[0] < 2.5 || e[1] < 0.8 || e[2] < 2.5 || !free(x, z)) continue;
+        if (e[0] < 2.5 || e[1] < 0.8 || e[2] < 2.5 || onRoad(x, z) || !free(x, z)) continue;
         // В роще деревья одной породы стоят куртинами, а не вперемешку: породу
         // задаёт крупная ячейка 90 м, внутри неё лес однородный.
         const cellSeed = hash2(Math.floor(x / 90) * 90, Math.floor(z / 90) * 90);
@@ -579,7 +582,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null,
         const z = (gj + hash2(gj * 6.3 + 1, gi * 2.3)) * bcell;
         if (!inSq(x, z) || hasMeasured(x, z) || H(x, z) < 1.4 || !pointIn(q, x, z)) continue;
         const e = edge(x, z);
-        if (e[0] < 1.8 || e[1] < 0.9 || e[2] < 2.0 || !free(x, z)) continue;
+        if (e[0] < 1.8 || e[1] < 0.9 || e[2] < 2.0 || onRoad(x, z) || !free(x, z)) continue;
         const kind = g.kind === 'park' || g.kind === 'grass' ? bushKind(x, z, H(x, z), g.kind === 'park') : 'shrub';
         pushBush(kind, x, H(x, z) - 0.1, z);
       }
