@@ -332,7 +332,8 @@ export class ChunkManager {
     // и каждый чанк рисует её строго в своих границах.
     if (out.roads) {
       const S = this.chunk;
-      out.roads.ctx = { all: data.roads, x0: data.cx * S, z0: data.cz * S,
+      out.roads.ctx = { all: data.roads, crossings: data.crossings || [],
+                        x0: data.cx * S, z0: data.cz * S,
                         x1: (data.cx + 1) * S, z1: (data.cz + 1) * S };
     }
     for (const [f, subs] of Object.entries(SUBFIELDS)) {
@@ -424,6 +425,9 @@ export class ChunkManager {
       this.owner.set(id, host);          // теперь объект держит хозяин
       this.contains.get(host)?.push(id);
     }
+    // Полотно улиц и зебры каждый квадрат рисует сам, в своих границах, —
+    // пересобирать их у сироты не нужно. Метка говорит об этом сборщику дорог.
+    if (data.roads) data.roads.ctx = { orphan: true };
     this.orphans.push({ data, host });
   }
 

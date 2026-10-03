@@ -126,7 +126,9 @@ export function* roadFieldGen(all, bx0, bz0, bx1, bz1, keep = null) {
 // нормаль (−dz, dx) смотрит НАРУЖУ, от проезжей части. Тогда соседние отрезки
 // стыкуются конец в начало, а знак площади замкнутой цепочки сразу говорит,
 // что внутри неё — квартал или сама дорога.
-export function traceContours(fld, bx0, bz0, bx1, bz1, iso) {
+// Генератор: квадрат 1024×1024 — миллион клеток, целиком это ~30 мс в
+// одном кадре. Отдаём управление каждые 128 строк.
+export function* traceContours(fld, bx0, bz0, bx1, bz1, iso) {
   const { F, W, ox, oz } = fld;
   const i0 = Math.max(0, Math.floor(bx0) - ox), i1 = Math.min(W - 1, Math.ceil(bx1) - ox);
   const j0 = Math.max(0, Math.floor(bz0) - oz), j1 = Math.min(fld.H - 1, Math.ceil(bz1) - oz);
@@ -146,6 +148,7 @@ export function traceContours(fld, bx0, bz0, bx1, bz1, iso) {
     X0.push(ox + ax); Z0.push(oz + az); X1.push(ox + bx); Z1.push(oz + bz);
   };
   for (let j = j0; j < j1; j++) {
+    if ((j & 127) === 127) yield;
     for (let i = i0; i < i1; i++) {
       const c = j * W + i;
       const v0 = F[c], v1 = F[c + 1], v2 = F[c + W + 1], v3 = F[c + W];
