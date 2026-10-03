@@ -6,6 +6,7 @@ import { buildYards, buildStructures } from './yards.js?v=6ce88c24';
 import { buildFurniture } from './furniture.js?v=6ce88c24';
 import { buildLandmarks } from './landmarks.js?v=6ce88c24';
 import { buildSigns } from './signs.js?v=6ce88c24';
+import { buildCemeteries } from './cemetery.js?v=6ce88c24';
 import { audit } from './audit.js?v=6ce88c24';
 import { buildMap, drawMini, drawFull, mapUnproject } from './minimap.js?v=6ce88c24';
 import { ChunkManager } from './chunks.js?v=6ce88c24';
@@ -620,6 +621,10 @@ function* buildChunk(d, key) {
   at('сооружения');
   g.add(buildStructures(w, terrain));
   lap('сооружения');
+  yield; pt = performance.now();
+  at('кладбища');
+  g.add(yield* buildCemeteries(w, terrain, d));
+  lap('кладбища');
   yield; pt = performance.now();
 
   const defs = d.landmarks || [];
