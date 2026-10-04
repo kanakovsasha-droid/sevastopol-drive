@@ -16,6 +16,10 @@ const files = readdirSync(JS_DIR).filter(f => f.endsWith('.js'));
 const strip = s => s.replace(/(\.js|\.json)\?v=[0-9a-f]{8}/g, '$1');
 const h = createHash('sha1');
 for (const f of files.sort()) h.update(strip(readFileSync(join(JS_DIR, f), 'utf8')));
+// Звуки грузятся по адресу с той же меткой сборки: без них в хеше правка
+// одной петли выходила с прежней меткой, и браузер играл старый файл из кеша.
+for (const f of (() => { try { return readdirSync(join(ROOT, 'data', 'audio')).sort(); } catch { return []; } })())
+  h.update(readFileSync(join(ROOT, 'data', 'audio', f)));
 for (const d of ['world.json', 'landmarks.json', 'furniture.json', 'terrain.json', 'terrain.bin']) {
   try { h.update(String(statSync(join(ROOT, 'data', d)).size)); } catch {}
 }
