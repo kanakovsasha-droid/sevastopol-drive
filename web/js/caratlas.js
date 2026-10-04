@@ -73,6 +73,27 @@ function buildArray(images) {
   return tex;
 }
 
+// Сводка картинки по копии 32×32: разброс (однотонная ли), средний цвет
+// (линейный, для цвета вершин) и отпечаток (одинаковые ли).
+let probeCv = null;
+function probe(img) {
+  probeCv ||= Object.assign(document.createElement('canvas'), { width: 32, height: 32 });
+  const g = probeCv.getContext('2d', { willReadFrequently: true });
+  g.clearRect(0, 0, 32, 32);
+  g.drawImage(img, 0, 0, 32, 32);
+  const d = g.getImageData(0, 0, 32, 32).data;
+  const s = [0, 0, 0], s2 = [0, 0, 0];
+  let h = 2166136261;
+  for (let i = 0; i < d.length; i += 4) {
+    for (let k = 0; k < 3; k++) { s[k] += d[i + k]; s2[k] += d[i + k] * d[i + k]; }
+    h = Math.imul(h ^ (d[i] >> 2) ^ ((d[i + 1] >> 2) << 6) ^ ((d[i + 2] >> 2) << 12), 16777619);
+  }
+  const n = d.length / 4, mean = s.map(v => v / n);
+  const sd = Math.max(...s2.map((v, k) => Math.sqrt(Math.max(0, v / n - mean[k] ** 2))));
+  const tint = new THREE.Color().setRGB(mean[0] / 255, mean[1] / 255, mean[2] / 255, THREE.SRGBColorSpace);
+  return { sd, tint, key: `${img.width}x${img.height}:${h >>> 0}` };
+}
+
 function atlasMaterial(arr, env, envI, side) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, envMap: env || null, envMapIntensity: envI, side });
   mat.name = 'car-atlas';
@@ -116,10 +137,18 @@ export function atlasCarModel(root) {
     if (!byParent.has(k)) byParent.set(k, []);
     byParent.get(k).push(o);
   });
-  const imgIdx = new Map(), images = [];
+  // картинка → слой. Однотонная (у E63 таких ~20: чёрная, тёмно-серая
+  // заливка) слоя не получает — её цвет уходит в цвет вершин; одинаковые
+  // картинки (у автора по копии на материал) делят один слой. Как в
+  // carbatch.js, по уменьшенной копии 32×32.
+  const imgIdx = new Map(), images = [], byKey = new Map();
   for (const list of byParent.values()) for (const o of list) {
     const img = o.material.map?.image;
-    if (img && !imgIdx.has(img)) { imgIdx.set(img, images.length); images.push(img); }
+    if (!img || imgIdx.has(img)) continue;
+    const p = probe(img);
+    if (p.sd <= 1.5) { imgIdx.set(img, { L: -1, tint: p.tint }); continue; }
+    if (!byKey.has(p.key)) { byKey.set(p.key, images.length); images.push(img); }
+    imgIdx.set(img, { L: byKey.get(p.key), tint: null });
   }
   if (!byParent.size) return { before, after: before };
   const arr = buildArray(images);
@@ -141,9 +170,11 @@ export function atlasCarModel(root) {
       const n = src.attributes.position.count;
       g.setAttribute('uv', src.attributes.uv ? src.attributes.uv.clone() : new THREE.Float32BufferAttribute(new Float32Array(n * 2), 2));
       const col = new Float32Array(n * 3), lay = new Float32Array(n), rm = new Float32Array(n * 2);
-      const L = m.map?.image && imgIdx.has(m.map.image) ? imgIdx.get(m.map.image) : -1;
+      const im = m.map?.image && imgIdx.get(m.map.image), L = im ? im.L : -1;
+      const c = m.color.clone();
+      if (im?.tint) c.multiply(im.tint);
       for (let i = 0; i < n; i++) {
-        col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b;
+        col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
         lay[i] = L; rm[i * 2] = m.roughness; rm[i * 2 + 1] = m.metalness;
       }
       g.setAttribute('color', new THREE.BufferAttribute(col, 3));
