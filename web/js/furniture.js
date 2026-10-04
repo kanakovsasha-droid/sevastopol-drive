@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=0b5515d2';
-import { surfaceTop } from './surface.js?v=0b5515d2';
-import { buildTrafficLights } from './trafficlights.js?v=0b5515d2';
+import { PolyGrid } from './worldgen.js?v=14dfd539';
+import { surfaceTop } from './surface.js?v=14dfd539';
+import { buildTrafficLights } from './trafficlights.js?v=14dfd539';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.

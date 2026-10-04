@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from '../lib/BufferGeometryUtils.js?v=0b5515d2';
+import { mergeGeometries } from '../lib/BufferGeometryUtils.js?v=14dfd539';
 
 // Склейка модели машины по материалам — меньше вызовов отрисовки.
 //
