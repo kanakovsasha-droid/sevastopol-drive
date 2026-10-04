@@ -29,7 +29,6 @@ export const SOURCES = {
   71739: { file: '71/71739_995351-hq.mp3', author: 'audible-edge', title: 'Chrysler LHS tire squeal 04 (04-25-2009).wav', license: 'CC0 1.0' },
   205504: { file: '205/205504_1970026-hq.mp3', author: 'VacekH', title: 'mustang 1.wav', license: 'CC0 1.0' },
   205511: { file: '205/205511_1970026-hq.mp3', author: 'VacekH', title: 'mustang 9.wav', license: 'CC0 1.0' },
-  205503: { file: '205/205503_1970026-hq.mp3', author: 'VacekH', title: 'mustang 10.wav', license: 'CC0 1.0' },
   455925: { file: '455/455925_8138660-hq.mp3', author: 'noiseloop', title: 'Starting of Ford V8 5 Liter engine', license: 'CC BY 3.0' },
 };
 
@@ -53,22 +52,23 @@ const V8 = [
   ['v8_idle', 205504, 6.2, 12.6, [104, 120], 2, 100],
 ];
 
-// Пул для гранулярного звука хода (engine-audio.js): мотор играет не петлёй,
-// а зёрнами по ~0.1 с из случайных мест этих кусков. Любая петля, даже
+// Пул для звука хода (engine-audio.js, grain-worklet.js): мотор играет не
+// петлёй, а кусками 0.18–0.32 с из случайных мест пула. Любая петля, даже
 // выпрямленная и выровненная, на высоких оборотах повторяется раз в 2–3 с, и
 // любая её особенность звучит как событие — владелец слышал «кучу передач»
-// на 7-й. У зёрен из случайных мест повторов нет. Куски — все ровные участки
-// езды из записей VacekH (найдены по треку оборотов: без рывков, наклон
-// меньше 6%/с); каждый выпрямлен к одной высоте (вспышки 200 Гц = 3000 об/мин)
-// и выровнен по громкости в трёх полосах к среднему по пулу — зёрна разных
-// кусков не отличаются ни тоном, ни тембром.
+// на 7-й. У кусков из случайных мест повторов нет.
+// В пуле — ровный ход 205511 (26.6–32.2 с): ровно тот кусок, из которого была
+// петля прежнего звука, понравившегося владельцу («басовый, подходил ешке»).
+// Пробовали добавить другие ровные участки езды (205511 13.6–22, 205503
+// 12.1–18.7 и 21.6–24.4) — даже выровненные по спектру, они давали мотору
+// лишнюю середину; держим один. Кусок выпрямлен к 3000 об/мин и выровнен по
+// громкости в трёх полосах; код ниже умеет и несколько кусков — каждый тогда
+// перекрашивается по спектру под образец POOL_REF.
 // [источник, начало, конец, полоса старта трека, Гц]
 const POOL_F = 200;
+const POOL_REF = [205511, 26.6];                      // образец тембра — см. ниже
 const POOL = [
-  [205511, 13.6, 22.0, [150, 175]],
-  [205511, 24.4, 32.2, [160, 180]],
-  [205503, 12.1, 18.7, [143, 162]],
-  [205503, 21.6, 24.4, [170, 185]],
+  [205511, 26.6, 32.2, [176, 190]],
 ];
 const LOOPS = [
   ['tyre_squeal', 71739, 5.0, 6.6],
@@ -268,6 +268,38 @@ function cyclePhases(y, F, ref) {
   }
   return { tau: out, ref: R };
 }
+// ---- выравнивание тембра кусков пула под образец (БПФ, перекрытие 75%)
+function fft(re, im, inv = false) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) { let b = n >> 1; for (; j & b; b >>= 1) j ^= b; j ^= b; if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+  for (let l = 2; l <= n; l <<= 1) { const a = (inv ? 2 : -2) * Math.PI / l; for (let i = 0; i < n; i += l) for (let k = 0; k < l / 2; k++) {
+    const c = Math.cos(a * k), sn = Math.sin(a * k), xr = re[i + k + l / 2] * c - im[i + k + l / 2] * sn, xi = re[i + k + l / 2] * sn + im[i + k + l / 2] * c;
+    re[i + k + l / 2] = re[i + k] - xr; im[i + k + l / 2] = im[i + k] - xi; re[i + k] += xr; im[i + k] += xi; } }
+  if (inv) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+}
+const EQN = 4096;
+// средний спектр мощности, сглаженный на треть октавы
+function ltas(y) {
+  const N = EQN, acc = new Float64Array(N / 2); let fr = 0;
+  for (let s0 = 0; s0 + N <= y.length; s0 += N / 2) { const re = new Float64Array(N), im = new Float64Array(N);
+    for (let i = 0; i < N; i++) re[i] = y[s0 + i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / N)); fft(re, im);
+    for (let i = 0; i < N / 2; i++) acc[i] += re[i] * re[i] + im[i] * im[i]; fr++; }
+  const sm = new Float64Array(N / 2), df = SR / N;
+  for (let i = 1; i < N / 2; i++) { const f = i * df, lo = Math.max(1, Math.floor(f / 1.122 / df)), hi = Math.min(N / 2 - 1, Math.ceil(f * 1.122 / df)); let e = 0; for (let j = lo; j <= hi; j++) e += acc[j]; sm[i] = e / (hi - lo + 1) / fr; }
+  sm[0] = sm[1]; return sm;
+}
+// перекрасить y так, чтобы его средний спектр стал как у target (±10 дБ)
+function matchSpectrum(y, target) {
+  const N = EQN, H = N / 4, cur = ltas(y), G = new Float64Array(N / 2);
+  for (let i = 0; i < N / 2; i++) G[i] = Math.min(3.16, Math.max(0.316, Math.sqrt(target[i] / (cur[i] + 1e-20))));
+  const out = new Float32Array(y.length), pad = new Float32Array(y.length + 2 * N); pad.set(y, N);
+  const o2 = new Float32Array(pad.length);
+  for (let s0 = 0; s0 + N <= pad.length; s0 += H) { const re = new Float64Array(N), im = new Float64Array(N);
+    for (let i = 0; i < N; i++) re[i] = pad[s0 + i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / N)); fft(re, im);
+    for (let i = 0; i < N / 2; i++) { re[i] *= G[i]; im[i] *= G[i]; if (i) { re[N - i] *= G[i]; im[N - i] *= G[i]; } } re[N / 2] *= G[N / 2 - 1];
+    fft(re, im, true); for (let i = 0; i < N; i++) o2[s0 + i] += re[i] / 2; }    // сумма окон Ханна при 75% = 2
+  out.set(o2.subarray(N, N + y.length)); return out;
+}
 const bandsOf = y => { const low = biquad(y, 'lp', 250), rest = biquad(y, 'hp', 250); return [low, biquad(rest, 'lp', 700), biquad(rest, 'hp', 700)].map(b => Float32Array.from(b)); };
 {
   const segs = [];
@@ -280,12 +312,22 @@ const bandsOf = y => { const low = biquad(y, 'lp', 250), rest = biquad(y, 'hp', 
   }
   // общий тембр: каждая полоса каждого куска — к средней по пулу
   const target = [0, 1, 2].map(j => segs.reduce((s, q) => s + rms(q.bands[j]), 0) / segs.length);
+  // и спектр каждого куска — как у ровного хода 205511 (24–32 с): из него
+  // была петля прежнего звука, который нравился владельцу («басовый, как у
+  // ешки»); остальные куски езды сами по себе звучат выше и плотнее в
+  // середине, и без этого мотор «уходил в V12»
+  const refSeg = segs.find(q => q.id === POOL_REF[0] && q.a === POOL_REF[1]);
   const trim = Math.round(SR * 0.08), gap = Math.round(SR * 0.05);
   const total = segs.reduce((s, q) => s + q.n - 2 * trim + gap, 0), pool = new Float32Array(total);
   let at = 0, ref = null; const meta = { rpm: POOL_F * 15, F: POOL_F, P: 8 / POOL_F, block: 0.25, segs: [] };
   for (const q of segs) {
     const y = new Float32Array(q.n - 2 * trim);
     q.bands.forEach((bb, j) => { const k = target[j] / rms(bb); for (let i = 0; i < y.length; i++) y[i] += bb[i + trim] * k; });
+    q.y = y;
+  }
+  const refL = ltas(refSeg.y);
+  for (const q of segs) {
+    let y = q === refSeg ? q.y : matchSpectrum(q.y, refL);
     const ph = cyclePhases(y, POOL_F, ref); ref = ref || ph.ref;
     pool.set(y, at);
     meta.segs.push({ s: +(at / SR).toFixed(4), e: +((at + y.length) / SR).toFixed(4), tau: ph.tau });

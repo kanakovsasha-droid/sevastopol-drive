@@ -129,9 +129,10 @@ function seamless(ctx, buf, xf) {
   return out;
 }
 
-// ---- гранулярный голос мотора. Основной путь — AudioWorklet
-// (grain-worklet.js, там же подробно); этот класс — запасной, для браузеров
-// без worklet: те же зёрна, но расставленные из главного потока.
+// ---- голос мотора без повторов. Основной путь — AudioWorklet
+// (grain-worklet.js, там же подробно: куски случайной длины с коротким
+// переходом); этот класс — запасной, для браузеров без worklet: мелкие зёрна,
+// расставленные из главного потока.
 // Петля, даже ровная, на высоких оборотах
 // повторяется раз в 2–3 с, и любая её особенность слышна как событие —
 // «переключение», которого нет. Здесь звук собирается из зёрен ~0.1 с (окно
@@ -197,11 +198,11 @@ export async function loadGrainWorklet(ctx) {
   await ctx.audioWorklet.addModule(new URL('./grain-worklet.js' + (v ? '?v=' + v : ''), import.meta.url));
   grainReady.add(ctx);
 }
-function grainVoice(ctx, buf, pool, dur, hop) {
+function grainVoice(ctx, buf, pool, o) {
   if (grainReady.has(ctx)) {
     const node = new AudioWorkletNode(ctx, 'grain-voice', {
       numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
-      processorOptions: { data: buf.getChannelData(0).slice(), sampleRate: buf.sampleRate, pool, dur, hop },
+      processorOptions: { data: buf.getChannelData(0).slice(), sampleRate: buf.sampleRate, pool, lenMin: o.lenMin, lenMax: o.lenMax, fade: o.fade },
     });
     const rate = node.parameters.get('rate'), on = node.parameters.get('on');
     return {
@@ -210,7 +211,7 @@ function grainVoice(ctx, buf, pool, dur, hop) {
       stop() { on.setValueAtTime(0, ctx.currentTime); setTimeout(() => node.disconnect(), 400); },
     };
   }
-  return new GrainStream(ctx, buf, pool, dur, hop);
+  return new GrainStream(ctx, buf, pool, o.dur, o.hop);
 }
 
 export class E63Sound {
@@ -326,24 +327,24 @@ export class E63Sound {
     const fireCut = flt('peaking', 60, 5, 0), fireCut2 = flt('peaking', 120, 7, 0), fireCut3 = flt('peaking', 180, 8, 0);
     const bus = g(0);
     lp.connect(lp2).connect(fireCut).connect(fireCut2).connect(fireCut3).connect(shelf).connect(bus).connect(this.master);
-    // Два гранулярных потока: холостые (зёрна из записи холостых) и ход
-    // (зёрна из пула ровной езды). «Под газом» — не отдельная запись, а тот
-    // же поток через перегруз и полку на верха, параллельно чистому.
+    // Два потока без повторов: холостые (куски записи холостых) и ход (куски
+    // пула ровной езды). «Под газом» — не отдельная запись, а тот же поток
+    // через перегруз и полку на низ, параллельно чистому.
     const shaper = ctx.createWaveShaper(); shaper.curve = this._curve(2.6); shaper.oversample = '2x';
     const pools = meta.pools || {};
-    // Перекрытие 75%: и сумма окон Ханна (когда соседние зёрна совпадают по
-    // фазе), и сумма их квадратов (когда не совпадают) тогда постоянны — у
-    // громкости нет «дрожи» с частотой зёрен. При 50% она была: огибающая
-    // повторялась через каждые 60 мс, и автокорреляция ловила её на кратных
-    // лагах.
-    const loops = [['v8_idle', 'v8_idle', 0.24, 0.06], ['v8_drive', 'v8_pool', 0.12, 0.03]]
-      .filter(([, b]) => bufs[b] && pools[b]).map(([name, b, dur, hop]) => {
-        const gg = g(0), st = grainVoice(ctx, bufs[b], pools[b], dur, hop);
+    // Куски случайной длины с коротким переходом (grain-worklet.js): 80%
+    // времени звучит ровно одна запись — тембр и «бубнёж» V8 как у неё.
+    // dur/hop — для запасного пути без worklet (мелкие зёрна).
+    const loops = [['v8_idle', 'v8_idle', { lenMin: 0.3, lenMax: 0.5, fade: 0.08, dur: 0.24, hop: 0.06 }],
+      ['v8_drive', 'v8_pool', { lenMin: 0.18, lenMax: 0.32, fade: 0.05, dur: 0.12, hop: 0.03 }]]
+      .filter(([, b]) => bufs[b] && pools[b]).map(([name, b, o]) => {
+        const gg = g(0), st = grainVoice(ctx, bufs[b], pools[b], o);
         st.out.connect(gg).connect(lp);
         const L = { name, rpm: pools[b].rpm, g: gg, stream: st };
         if (name === 'v8_drive') {
-          const pre = g(0.9), bright = flt('highshelf', 1100, 0.7, 5), dg = g(0);
-          st.out.connect(pre).connect(shaper).connect(bright).connect(dg).connect(lp);
+          // под газом — рык снизу: перегруз и полка на низ, верха не трогаем
+          const pre = g(0.9), body = flt('lowshelf', 110, 0.7, 3), dg = g(0);
+          st.out.connect(pre).connect(shaper).connect(body).connect(dg).connect(lp);
           L.drive = dg;
         }
         return L;
