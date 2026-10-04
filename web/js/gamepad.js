@@ -89,6 +89,7 @@ export class Gamepad {
       layout: s.layout || 'auto',            // auto | ps | xbox — подписи кнопок
       dead: s.dead ?? 0.12,                  // мёртвая зона стиков
       steerCurve: s.steerCurve ?? 1.6,       // >1 — точнее в центре, резче у края
+      pedalCurve: s.pedalCurve ?? 1.5,       // то же для курков: лёгкий нажим — немного газа
       lookSens: s.lookSens ?? 1.0,
       invertY: !!s.invertY,
       rumble: s.rumble ?? true,
@@ -158,7 +159,14 @@ export class Gamepad {
     const b = neg ? { a: b0.a, s: -b0.s } : b0;
     if (b.b != null) {
       const x = gp.buttons[b.b];
-      return x ? (typeof x === 'object' ? Math.max(x.value, x.pressed ? 1 : 0) : x) : 0;
+      if (!x) return 0;
+      if (typeof x !== 'object') return x;
+      // Курки аналоговые: value — степень нажатия. pressed у них включается
+      // уже от лёгкого касания, поэтому брать его нельзя — было «чуть тронул,
+      // и полный газ». pressed — только для цифровых кнопок (value 0 или 1)
+      // и для курков, которые степень не отдают вовсе.
+      if (x.value > 0) return x.value;
+      return x.pressed ? 1 : 0;
     }
     const v = (gp.axes[b.a] || 0) * b.s;
     // у части клонов курки — оси от −1 (отпущен) до 1 (выжат)
@@ -318,11 +326,12 @@ export class Gamepad {
   // Машина: газ и тормоз по нажиму курков, руль со сглаженной кривой.
   car() {
     if (!this.pad || !this.enabled) return null;
-    const gas = this.val('gas'), brake = this.val('brake');
+    const pc = this.cfg.pedalCurve;
+    const gas = Math.pow(this.val('gas'), pc), brake = Math.pow(this.val('brake'), pc);
     let st = this.axis('steerR', 'steerL');            // +1 — влево, как A на клавиатуре
     st = Math.sign(st) * Math.pow(Math.abs(st), this.cfg.steerCurve);
     if (!this.active && gas < 0.05 && brake < 0.05 && Math.abs(st) < 0.02) return null;
-    return { throttle: gas - brake, steer: st, gas: gas > 0.5, brake: brake > 0.5, pedals: gas > 0.05 || brake > 0.05 };
+    return { throttle: gas - brake, steer: st, gas: gas > 0.5, brake: brake > 0.5, pedals: gas > 0.01 || brake > 0.01 };
   }
   // Обзор: «пиксели мыши» за кадр — main.js крутит камеру тем же кодом,
   // что и от мыши. ~600 px/с на полном отклонении.

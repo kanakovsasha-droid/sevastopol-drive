@@ -201,6 +201,7 @@ export class Settings {
       ${opt('layout', [['auto', 'По паду'], ['ps', 'PlayStation ✕○□△'], ['xbox', 'Xbox ABXY']])}
       <h3>Геймпад</h3>
       <label><span>Мёртвая зона стиков</span><input type="range" min="0.02" max="0.35" step="0.01" data-k="dead" value="${c.dead}"></label>
+      <label><span>Газ и тормоз: точность при лёгком нажиме</span><input type="range" min="1" max="3" step="0.1" data-k="pedalCurve" value="${c.pedalCurve}"></label>
       <label><span>Руль: точность в центре</span><input type="range" min="1" max="2.6" step="0.1" data-k="steerCurve" value="${c.steerCurve}"></label>
       <label><span>Чувствительность обзора</span><input type="range" min="0.3" max="2.5" step="0.1" data-k="lookSens" value="${c.lookSens}"></label>
       <label><span>Инверсия обзора по вертикали</span><input type="checkbox" data-k="invertY" ${c.invertY ? 'checked' : ''}></label>
