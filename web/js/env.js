@@ -225,7 +225,7 @@ export function skyMaterial() {
 // ---------------------------------------------------------------- управление
 const C_SUN_DAY = new THREE.Color(0xffeccd), C_SUN_GOLD = new THREE.Color(0xffb26a), C_SUN_LOW = new THREE.Color(0xff6a35);
 const C_MOON = new THREE.Color(0x8fa8de);
-const C_HEMI_DAY = new THREE.Color(0x8fb9e6), C_HEMI_DUSK = new THREE.Color(0x6a6f9e), C_HEMI_NIGHT = new THREE.Color(0x2c3a66);
+const C_HEMI_DAY = new THREE.Color(0x8fb9e6), C_HEMI_DUSK = new THREE.Color(0x8a90b4), C_HEMI_NIGHT = new THREE.Color(0x3a4c80);
 const C_GND_DAY = new THREE.Color(0x6d6450), C_GND_NIGHT = new THREE.Color(0x15140f);
 const C_GLOW = new THREE.Color(0xff5a1e);
 const tmp = new THREE.Color(), tmp2 = new THREE.Color();
@@ -270,7 +270,8 @@ export class Environment {
   _emit() { for (const f of this.listeners) f(this); }
 
   get doy() { const s = SEASONS[this.cfg.season]; return s.doy ?? dayOfYear(); }
-  setHour(h) { this.cfg.hour = ((h % 24) + 24) % 24; this.cfg.real = false; this.save(); this._emit(); }
+  // quiet — не перерисовывать настройки (ползунок тянут прямо сейчас)
+  setHour(h, quiet = false) { this.cfg.hour = ((h % 24) + 24) % 24; this.cfg.real = false; this.save(); if (!quiet) this._emit(); }
   addHours(dh) { this.setHour(this.cfg.hour + dh); }
   setWeather(k) { if (WEATHER[k]) { this.cfg.weather = k; this.save(); this._emit(); } }
   setSeason(k) { if (SEASONS[k]) { this.cfg.season = k; this._season(); this.save(); this._emit(); } }
@@ -347,7 +348,7 @@ export class Environment {
     }
 
     // ---- свет. Ночью направленный свет — луна: тени остаются, синие.
-    const sunI = 3.15 * smooth(-1.5, 14, e) * (0.25 + 0.75 * smooth(0, 10, e) + 0) * w.sun;
+    const sunI = 3.15 * smooth(-1.5, 12, e) * w.sun;
     const moonI = 0.34 * smooth(-4, -10, e) * (1 - w.grey * 0.8);
     const useMoon = e < -4;
     this.light.copy(useMoon ? this.moon : this.dir);
@@ -366,7 +367,7 @@ export class Environment {
     if (e > 0) h.color.copy(C_HEMI_DUSK).lerp(C_HEMI_DAY, smooth(0, 20, e));
     else h.color.copy(C_HEMI_NIGHT).lerp(C_HEMI_DUSK, smooth(-10, 0, e));
     h.groundColor.copy(C_GND_NIGHT).lerp(C_GND_DAY, smooth(-8, 15, e));
-    h.intensity = (0.16 + 0.69 * smooth(-10, 18, e)) * w.sky;
+    h.intensity = (0.26 + 0.34 * smooth(-8, 0, e) + 0.25 * smooth(0, 16, e)) * w.sky;
     if (w.grey > 0.01) h.color.lerp(tmp.set(0.72, 0.75, 0.80), w.grey * day * 0.7);
 
     // ---- туман: то, во что упирается взгляд у горизонта
@@ -381,5 +382,32 @@ export class Environment {
     // ---- ночь для окон и фонарей: зажигаются в сумерках постепенно
     this.night = smooth(4, -7, e) * (0.75 + 0.25 * (1 - w.sun)) + w.grey * 0.12 * smooth(30, 5, e);
     ENV.uNight.value = clamp(this.night, 0, 1);
+    // сколько дневного света: отражения на кузове и прочее, что светит небом
+    this.day = smooth(-6, 12, e) * (0.4 + 0.6 * w.sun);
   }
+}
+
+// ---------------------------------------------------------------- фонари
+// Стекло плафонов уже есть в моделях фонарей (props.js, street.js), отдельно
+// расставлять светильники не нужно: ночью материал сам зажигает те вершины,
+// чей цвет — цвет этого стекла. srgb — цвет стекла, как он задан в модели.
+const s2l = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+export function lampGlow(mat, srgb, key, glow = [1.0, 0.80, 0.52], power = 3.2) {
+  const lin = srgb.map(s2l).map(v => Math.round(v * 255) / 255);
+  const prev = mat.onBeforeCompile;
+  mat.customProgramCacheKey = () => key;
+  mat.onBeforeCompile = (sh, r) => {
+    prev?.call(mat, sh, r);
+    sh.uniforms.uNight = ENV.uNight;
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uNight;')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        #if defined( USE_COLOR ) || defined( USE_COLOR_ALPHA )
+        {
+          vec3 dc = vColor.rgb - vec3(${lin.map(v => v.toFixed(4)).join(', ')});
+          if (dot(dc, dc) < 0.0006) totalEmissiveRadiance += vec3(${glow.join(', ')}) * ${power.toFixed(2)} * uNight;
+        }
+        #endif`);
+  };
+  return mat;
 }

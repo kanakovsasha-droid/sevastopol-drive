@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ENV } from './env.js';
 
 // Деревья, кусты и живые изгороди: заготовки пород, три ступени подробности
 // и общий для всех кварталов учёт того, что рисовать вблизи.
@@ -592,6 +593,10 @@ function addHedge(gb, lod) {
   return { cx: 0, cy: H / 2, cz: 0, rx: 1.02, ry: H / 2, rz: W, y0: 0, y1: H };
 }
 
+// Листопадные породы и насколько: осенью желтеют, зимой облетают. Кипарис,
+// сосна, туя, ель, олива, олеандр, самшит и изгородь — вечнозелёные.
+const DECID = { platan: 1, chestnut: 1, acacia: 1, poplar: 1, shrub: 0.7 };
+
 // Классы: у кустов и изгородей свои дальности, на дальнем плане их нет вовсе.
 export const TREES = ['platan', 'chestnut', 'acacia', 'poplar', 'pine', 'olive', 'cypress', 'thuja', 'spruce'];
 export const BUSHES = ['shrub', 'oleander', 'box'];
@@ -613,6 +618,8 @@ function proto(k) {
     const gb = new GB();
     const crown = SPECIES[k]([gb, lod]);
     out[lod] = gb.build();
+    const nv = out[lod].attributes.position.count;
+    out[lod].setAttribute('aDec', new THREE.Float32BufferAttribute(new Float32Array(nv).fill(DECID[k] || 0), 1));
     if (lod === 0) out.crown = crown;
   }
   // средний цвет листвы — тон импостора на дальнем плане
@@ -648,11 +655,11 @@ const U = {
 // канал больше 1.5 значит «побелено», сам тон берётся по модулю.
 function nearMaterial() {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true });
-  m.customProgramCacheKey = () => 'flora-near-1';
+  m.customProgramCacheKey = () => 'flora-near-2';
   m.onBeforeCompile = sh => {
-    sh.uniforms.uTime = U.uTime; sh.uniforms.uWind = U.uWind;
+    sh.uniforms.uTime = U.uTime; sh.uniforms.uWind = U.uWind; sh.uniforms.uSeason = ENV.uSeason;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uWind;\nattribute float aLeaf;\nvarying float vLeaf;\nvarying vec3 vLP;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uWind;\nattribute float aLeaf;\nattribute float aDec;\nvarying float vLeaf;\nvarying float vDec;\nvarying float vSeed;\nvarying vec3 vLP;')
       .replace('#include <color_vertex>', `
         vColor = vec4(1.0);
         vColor.rgb *= color;
@@ -667,8 +674,11 @@ function nearMaterial() {
       .replace('#include <begin_vertex>', `
         vec3 transformed = vec3(position);
         vLeaf = aLeaf;
+        vDec = aDec;
+        vSeed = 0.5;
         vLP = position;
         #ifdef USE_INSTANCING
+          vSeed = fract(sin(dot(vec2(instanceMatrix[3][0], instanceMatrix[3][2]), vec2(12.9898, 78.233))) * 43758.5453);
           vLP *= vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
           vec2 ip = vec2(instanceMatrix[3][0], instanceMatrix[3][2]);
           float ph = ip.x * 0.37 + ip.y * 0.29;
@@ -684,7 +694,10 @@ function nearMaterial() {
     // розовые соцветия.
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
+        uniform vec4 uSeason;
         varying float vLeaf;
+        varying float vDec;
+        varying float vSeed;
         varying vec3 vLP;
         float fh(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
         float fn(vec3 x) {
@@ -707,6 +720,31 @@ function nearMaterial() {
         } else {
           // кора: продольные борозды и пятна
           diffuseColor.rgb *= 0.78 + 0.34 * fn(vLP * vec3(9.0, 1.4, 9.0)) * (0.7 + 0.3 * fn(vLP * 2.2));
+        }
+        // ---- времена года (env.js)
+        if (vLeaf > 0.5) {
+          float sd = vDec * (0.85 + 0.3 * vSeed);
+          // облетело: крона редеет пятнами, к зиме остаются ветви
+          if (uSeason.y > 0.01 && fn(vLP * 1.9 + vSeed * 7.0) * 0.86 + 0.08 < uSeason.y * sd) discard;
+          float l = dot(diffuseColor.rgb, vec3(0.30, 0.55, 0.15));
+          // осень: у каждого дерева свой тон — лимонный, золотой, ржавый
+          vec3 au = mix(vec3(0.62, 0.46, 0.10), vec3(0.58, 0.24, 0.06), vSeed) * (0.55 + 2.2 * l);
+          au = mix(au, vec3(0.36, 0.20, 0.08) * (0.7 + 2.0 * l), step(0.82, vSeed) * 0.7);
+          // не всё сразу: часть кроны ещё зелёная, у каждого дерева по-своему
+          float ak = uSeason.x * vDec * (0.55 + 0.45 * vSeed) * smoothstep(0.15, 0.6, fn(vLP * 0.9 + vSeed * 3.0) + uSeason.x * 0.45);
+          diffuseColor.rgb = mix(diffuseColor.rgb, au, clamp(ak, 0.0, 1.0));
+          // весна: молодая светлая листва и белые соцветия на каштанах и акациях
+          if (uSeason.w > 0.01 && vDec > 0.9) {
+            diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.05, 1.22, 0.78), uSeason.w);
+            vec3 bp = vLP * 3.8, bc = floor(bp);
+            if (fh(bc + 4.4) > 1.0 - 0.38 * uSeason.w && length(fract(bp) - 0.5) < 0.22) diffuseColor.rgb = vec3(0.93, 0.92, 0.86);
+          }
+          // снег на верхушках крон и хвое
+          if (uSeason.z > 0.01) {
+            float up = dot(normalize(vNormal), normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
+            float sn = uSeason.z * smoothstep(0.35, 0.8, up) * step(0.35, fn(vLP * 4.0));
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.94), sn * (1.0 - 0.6 * vDec * uSeason.y));
+          }
         }`)
       // Листва на просвет. По одному ламберту теневая сторона кроны — чёрная
       // дыра (зелень тёмная, небо даёт мало), а против солнца живая крона
@@ -728,11 +766,18 @@ function nearMaterial() {
 // стоит подробная модель.
 function farMaterial() {
   const m = new THREE.MeshLambertMaterial({ vertexColors: false });
-  m.customProgramCacheKey = () => 'flora-far-1';
+  m.customProgramCacheKey = () => 'flora-far-2';
   m.onBeforeCompile = sh => {
-    sh.uniforms.uLodC = U.uLodC; sh.uniforms.uLodR = U.uLodR;
+    sh.uniforms.uLodC = U.uLodC; sh.uniforms.uLodR = U.uLodR; sh.uniforms.uSeason = ENV.uSeason;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uLodC;\nuniform float uLodR;\nvarying vec3 vImp;')
+      .replace('#include <common>', '#include <common>\nuniform vec3 uLodC;\nuniform float uLodR;\nvarying vec3 vImp;\nvarying float vDec;')
+      // листопадность едет в красном канале цвета экземпляра: +4 — листопадное
+      .replace('#include <color_vertex>', `#include <color_vertex>
+        vDec = 0.0;
+        #ifdef USE_INSTANCING_COLOR
+          vDec = step(3.5, instanceColor.r);
+          vColor.r = instanceColor.r - vDec * 4.0;
+        #endif`)
       .replace('#include <project_vertex>', `
         vec4 cW = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
         float rx = length(instanceMatrix[0].xyz), ry = length(instanceMatrix[1].xyz);
@@ -745,7 +790,7 @@ function farMaterial() {
         gl_Position = projectionMatrix * mvPosition;
         vImp = vec3(position.xy, fract(sin(dot(cW.xz, vec2(12.9898, 78.233))) * 43758.5453));`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vImp;')
+      .replace('#include <common>', '#include <common>\nuniform vec4 uSeason;\nvarying vec3 vImp;\nvarying float vDec;')
       .replace('#include <color_fragment>', `
         #include <color_fragment>
         float r2 = dot(vImp.xy, vImp.xy);
@@ -753,7 +798,15 @@ function farMaterial() {
         float edge = 0.84 + 0.09 * sin(an * 5.0 + vImp.z * 6.28) + 0.06 * sin(an * 9.0 + vImp.z * 17.0);
         if (r2 > edge * edge) discard;
         float sp = fract(sin(dot(floor(vImp.xy * 5.0 + vImp.z * 9.0), vec2(127.1, 311.7))) * 43758.5453);
-        diffuseColor.rgb *= (0.62 + 0.38 * (vImp.y * 0.5 + 0.5)) * (0.9 + 0.2 * sp);`)
+        diffuseColor.rgb *= (0.62 + 0.38 * (vImp.y * 0.5 + 0.5)) * (0.9 + 0.2 * sp);
+        if (vDec > 0.5) {
+          // зимой дальняя крона — редкая серо-бурая сетка ветвей
+          if (sp < uSeason.y * 0.8) discard;
+          float l = dot(diffuseColor.rgb, vec3(0.30, 0.55, 0.15));
+          vec3 au = mix(vec3(0.62, 0.46, 0.10), vec3(0.58, 0.24, 0.06), vImp.z) * (0.55 + 2.2 * l);
+          diffuseColor.rgb = mix(diffuseColor.rgb, au, uSeason.x * (0.35 + 0.45 * sp));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.30, 0.26, 0.22) * (0.8 + 0.4 * sp), uSeason.y * 0.85);
+        }`)
       .replace('#include <normal_fragment_begin>', `
         float faceDirection = 1.0;
         vec3 normal = normalize(vec3(vImp.x, vImp.y * 0.85 + 0.2, sqrt(max(0.08, 1.0 - r2))));
@@ -870,7 +923,7 @@ export function plantFlora(parent, sets) {
       fm.instanceMatrix.array.set(s.CM, j * 16);
       for (let i = 0; i < s.n; i++, j++) {
         const g = s.C[i * 3 + 1] > 1.5 ? s.C[i * 3 + 1] - 2 : s.C[i * 3 + 1];
-        FC[j * 3] = fc[0] * s.C[i * 3]; FC[j * 3 + 1] = fc[1] * g; FC[j * 3 + 2] = fc[2] * s.C[i * 3 + 2];
+        FC[j * 3] = fc[0] * s.C[i * 3] + (DECID[k] ? 4 : 0); FC[j * 3 + 1] = fc[1] * g; FC[j * 3 + 2] = fc[2] * s.C[i * 3 + 2];
       }
     }
     fm.instanceColor = new THREE.InstancedBufferAttribute(FC, 3);

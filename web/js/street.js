@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { lampGlow } from './env.js';
 import { plantFlora, ST } from './flora.js?v=e5a5d2b1';
 import { roadMaterial } from './materials.js?v=e5a5d2b1';
 
@@ -342,7 +343,8 @@ export function buildStreet(world, terrain, onRoad, buildings) {
   const sideSign = side => side === 'W' ? 1 : -1;
 
   const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), SC = new THREE.Vector3(1, 1, 1), UP = new THREE.Vector3(0, 1, 0);
-  const MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.12 });
+  // ночью стекло фонарей светится (env.js)
+  const MAT = lampGlow(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.12 }), LAMPGLASS, 'street-lamp');
   const inst = (name, geo, list, mat = MAT, shadow = true) => {
     if (!list.length) return null;
     const m = new THREE.InstancedMesh(geo, mat, list.length);

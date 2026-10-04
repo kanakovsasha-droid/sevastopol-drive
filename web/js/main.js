@@ -19,6 +19,9 @@ import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.
 import { CarFX } from './carfx.js?v=e5a5d2b1';
 import { precompile } from './warm.js?v=e5a5d2b1';
 import { Gamepad } from './gamepad.js';
+import { Environment } from './env.js';
+import { CarLights } from './carlights.js';
+import { Settings } from './settings.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -77,7 +80,7 @@ const HAZE    = new THREE.Color(0xd3d3c8);
 // иначе даль выбеливается в молоко и город пропадает целиком.
 const FOG = HORIZON.clone().lerp(HAZE, 0.45);
 
-let renderer, scene, camera, sun, sky;
+let renderer, scene, camera, sun, sky, hemi, env, carLights;
 let water = null;
 let terrain, far = null, landmarkDefs = [], terraces = [], collider, roads, carMesh, car, carFx;
 let cityMap = null, mapCtx = null, mapOpen = false, miniOn = true, hud = null;
@@ -237,6 +240,8 @@ async function boot() {
     $('stat').appendChild(el);
     // прибор, миникарта, место, подсказки — hud.js
     hud = new Hud({ map: cityMap, roads, car: () => car, view: hudView });
+    // время, погода, сезон и управление — клавиша T (settings.js)
+    new Settings({ env, pad, toast: t => hud.toast(t) });
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam, get mode() { return mode; } };
@@ -267,6 +272,7 @@ async function boot() {
     window.G.flora = floraStats;
     window.G.loopProf = loopProf;
     window.G.pad = pad;
+    window.G.env = env;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
     console.log(`до старта ${window.G.boot} мс, чанков в манифесте ${chunks.cells.size}`);
@@ -1108,7 +1114,8 @@ function initScene() {
   // Было 1.05 ровной заливкой: она перебивала солнце, и разница между
   // освещённой и теневой стеной почти пропадала — отсюда пластик. 0.85 хватает,
   // чтобы тени не были чёрными дырами, но солнце снова главнее неба.
-  scene.add(new THREE.HemisphereLight(0x8fb9e6, 0x6d6450, 0.85));
+  hemi = new THREE.HemisphereLight(0x8fb9e6, 0x6d6450, 0.85);
+  scene.add(hemi);
 
   // Солнце тёплое, но не оранжевое: юг, вторая половина дня, воздух чистый.
   sun = new THREE.DirectionalLight(0xffeccd, 3.15);
@@ -1128,6 +1135,12 @@ function initScene() {
   sun.shadow.bias = -0.00012;   // ≈ 9 см при диапазоне 740 м
   sun.shadow.normalBias = 0.22; // около полутора текселей — снимает акне на склонах
   scene.add(sun, sun.target);
+  // Время суток, погода и сезон (env.js): двигает солнце, красит небо,
+  // свет и туман. Купол неба получает свой материал — с облаками и звёздами.
+  env = new Environment({ scene, sun, hemi, sky, renderer });
+  // фары: прожектор в сцене с самого начала, иначе его появление ночью
+  // пересобрало бы шейдеры всего города
+  carLights = new CarLights(scene);
 
   water = buildWater();
   scene.add(water);
@@ -1682,14 +1695,14 @@ function loop(now) {
   lt('высоты');
   // кузов по крену и клевку, колёса — ход подвески, руль и прокрутка
   placeCarMesh(carMesh, car);
+  carLights.update(dt, carMesh, car, env.night, env.day);
   carFx.update(dt);
 
   // тень едет за игроком, иначе карты теней не хватит на 5 км
   const t = mode === 'car' ? car.pos
     : mode === 'fly' ? new THREE.Vector3(fly.x, terrain.gridHeightAt(fly.x, fly.z), fly.z)
     : new THREE.Vector3(walk.x, terrain.gridHeightAt(walk.x, walk.z), walk.z);
-  sun.target.position.copy(t);
-  sun.position.copy(t).addScaledVector(SUN, 420);
+  env.update(dt, t);
   sky.position.copy(camera.position);
 
   const lk = !$('menu').classList.contains('on') && !document.querySelector('#settings.on') && pad?.look(dt);

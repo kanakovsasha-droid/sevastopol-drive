@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { lampGlow } from './env.js';
 import { PolyGrid } from './worldgen.js?v=e5a5d2b1';
 import { plantFlora, crownRadius, ST } from './flora.js?v=e5a5d2b1';
 import { streetOwnsRoad } from './street.js?v=e5a5d2b1';
@@ -606,7 +607,8 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null)
   const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(),
         sv = new THREE.Vector3(), pv = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   // Материал один на все фонари: у него общая программа шейдера.
-  const MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+  // ночью стекло плафонов светится (env.js)
+  const MAT = lampGlow(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true }), GLASS, 'props-lamp');
   // Один InstancedMesh на весь город никогда не отсекается по пирамиде видимости.
   // Раскладываем по квадратам 400 м — рисуется только то, что рядом; редкое
   // режем крупнее, чтобы не плодить вызовы отрисовки на трёх фонарях.

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ENV } from './env.js';
 
 // Всё рисуется процедурно прямо в шейдере, без единой картинки.
 // Причина простая: координаты в атрибутах — метры, поэтому окно всегда 1.4 м,
@@ -30,21 +31,53 @@ float band(float x, float c, float hw){
 }
 `;
 
+// Время суток и сезон (env.js): uNight — свет в окнах, uSeason — осенняя
+// и зимняя трава, снег на газонах и кровлях. procEmit — своё свечение
+// материала, прибавляется к излучению после <emissivemap_fragment>.
+const SEASON = `
+uniform float uNight;
+uniform vec4 uSeason;     // x — осень, y — облетело/пожухло, z — снег, w — весна
+// насколько цвет — зелень: газон, трава, кустарник в цвете земли
+float greenness(vec3 c){ return clamp((c.g - max(c.r, c.b) * 0.94) * 7.0, 0.0, 1.0); }
+vec3 seasonGreen(vec3 c, float k, float n){
+  float l = dot(c, vec3(0.30, 0.55, 0.15));
+  vec3 straw = vec3(1.22, 1.00, 0.55) * l;        // осенью трава желтеет и выгорает
+  vec3 dull  = vec3(0.98, 0.93, 0.74) * l;        // зимой — пожухлая, бурая
+  c = mix(c, mix(c, straw, 0.45 + 0.35 * n), uSeason.x * k);
+  c = mix(c, dull, uSeason.y * k * 0.55);
+  c = mix(c, c * vec3(0.94, 1.14, 0.82), uSeason.w * k);   // весной — сочная, молодая
+  return c;
+}
+// снег лежит только на том, что смотрит вверх, и пятнами — он тонкий
+// (макрос, а не функция: vNormal объявляется ниже <common>, куда это вставлено)
+float snowAmt(float up, float n){
+  return uSeason.z * smoothstep(0.55, 0.85, up) * smoothstep(0.62, 0.32, n - uSeason.z * 0.35);
+}
+#ifndef FLAT_SHADED
+  #define snowCover(n) snowAmt(dot(normalize(vNormal), normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz)), n)
+#else
+  #define snowCover(n) snowAmt(1.0, n)
+#endif
+`;
+
 // Цвет правим в <color_fragment>, а шероховатость — только после
 // <roughnessmap_fragment>: раньше roughnessFactor ещё не объявлен.
 // Значение проносим через переменную, объявленную вне блока.
-function inject(mat, key, { vertHead, vertBody, fragHead, fragBody }) {
+function inject(mat, key, { vertHead, vertBody, fragHead, fragBody, season = '' }) {
   // Three кеширует программы по свойствам материала, а onBeforeCompile в ключ НЕ входит.
   // Без своего ключа дороги и дома молча получают программу рельефа — и все вставки пропадают.
   mat.customProgramCacheKey = () => key;
   mat.onBeforeCompile = shader => {
+    shader.uniforms.uNight = ENV.uNight;
+    shader.uniforms.uSeason = ENV.uSeason;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\n' + vertHead)
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + vertBody);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + HASH + NOISE + fragHead)
-      .replace('#include <color_fragment>', '#include <color_fragment>\nfloat procRough = 0.9;\n' + fragBody)
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = procRough;');
+      .replace('#include <common>', '#include <common>\n' + HASH + NOISE + SEASON + fragHead)
+      .replace('#include <color_fragment>', '#include <color_fragment>\nfloat procRough = 0.9;\nvec3 procEmit = vec3(0.0);\n' + fragBody + season)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = procRough;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += procEmit;');
   };
   return mat;
 }
@@ -276,6 +309,18 @@ export function buildingMaterial() {
 
           c = mix(c, mix(glass, revC, revMask), win);
           rough = mix(0.86, mix(0.12, 0.90, revMask), win);
+
+          // Ночью окна загораются: чем темнее, тем больше. Свет комнат тёплый,
+          // изредка холодный (телевизор, люминесцентная лампа); витрины первого
+          // этажа горят почти все. Свет гаснет к краю рамы и под занавеской.
+          if (uNight > 0.01) {
+            float lit = step(hash21(vec2(bi * 1.31 + 7.0, fi * 2.17) + seed * 0.71), uNight * 0.58);
+            vec3 lc = mix(vec3(1.0, 0.70, 0.36), vec3(0.72, 0.84, 1.0), step(0.86, fract(r * 13.7)));
+            lc *= 0.75 + 0.5 * fract(r * 31.3);
+            float shop = ground * (1.0 - door) * step(0.35, r);
+            float glow = max(lit * (0.75 + 0.45 * fy), shop * 1.5) * uNight;
+            procEmit = lc * glow * win * (1.0 - revMask) * (1.0 - 0.55 * mullion);
+          }
         } else if (vKind < 1.5) {
           // ---- черепица: ряды по мировым координатам ----
           float row = fract(vWall.y * 3.2);
@@ -558,6 +603,12 @@ export function buildingMaterial() {
         diffuseColor.rgb = c;
         procRough = rough;
       }`,
+    // снег на кровлях: черепица, плоские крыши, профнастил
+    season: `
+      if (uSeason.z > 0.01 && (abs(vKind - 1.0) < 0.5 || abs(vKind - 3.0) < 0.5 || abs(vKind - 5.0) < 0.5)) {
+        float n = fbm(vWall.xy * 0.18);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.88, 0.90, 0.94), snowCover(n) * 0.9);
+      }`,
   });
 }
 
@@ -800,6 +851,15 @@ export function terrainMaterial() {
 
         diffuseColor.rgb = c;
         procRough = mix(0.97, 0.90, urban);
+      }`,
+    // осенью и зимой трава желтеет и жухнет, снег — на природной земле
+    season: `
+      {
+        float n = fbm(vXZ * 0.07);
+        float k = greenness(diffuseColor.rgb) * (1.0 - vTer.x * 0.4);
+        diffuseColor.rgb = seasonGreen(diffuseColor.rgb, max(k, (1.0 - vTer.x) * 0.6), n);
+        float sn = snowCover(n + fbm(vXZ * 0.9) * 0.25) * (1.0 - vTer.x * 0.7) * (1.0 - vTer.y * 0.6);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.93), sn);
       }`,
   });
 }
@@ -1074,6 +1134,14 @@ export function areaMaterial() {
         }
         diffuseColor.rgb = c;
         procRough = rough;
+      }`,
+    // газон: осенью желтеет, зимой жухнет и местами под снегом; разметка — нет
+    season: `
+      if (vAK > 0.5) {
+        float n = fbm(vec2(vArea.x, vArea.y) * 0.12);
+        float k = greenness(diffuseColor.rgb);
+        diffuseColor.rgb = seasonGreen(diffuseColor.rgb, k, n);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.93), snowCover(n) * k);
       }`,
   });
 }
