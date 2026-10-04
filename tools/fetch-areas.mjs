@@ -23,6 +23,9 @@ const ENDPOINTS = [
 ];
 const HEADERS = { 'User-Agent': 'sevastopol-game/0.1 (personal hobby project)', Accept: 'application/json', 'Accept-Language': 'en' };
 const R1 = v => Math.round(v * 10) / 10;
+// виды топлива АЗС из тегов fuel:*=yes (для стелы, web/js/fuel.js)
+const FUEL_TAGS = ['octane_92', 'octane_95', 'octane_98', 'octane_100', 'diesel', 'lpg', 'cng'];
+const fuelKinds = t => FUEL_TAGS.filter(k => t['fuel:' + k] === 'yes');
 for (const ep of ENDPOINTS) {
   process.stdout.write(ep + ' ... ');
   try {
@@ -39,7 +42,7 @@ for (const ep of ENDPOINTS) {
     for (const e of j.elements) {
       if (e.type === 'node' && e.tags?.amenity === 'fuel') {
         const p = project(e.lat, e.lon);
-        out.fuel.push({ x: R1(p.x), z: R1(p.z), n: e.tags['name:ru'] || e.tags.name || e.tags.brand || null });
+        out.fuel.push({ x: R1(p.x), z: R1(p.z), n: e.tags['name:ru'] || e.tags.name || e.tags.brand || null, brand: e.tags.brand || null, fu: fuelKinds(e.tags) });
         count.fuel = (count.fuel || 0) + 1;
       }
       if (e.type !== 'way' || !e.tags) continue;
@@ -57,7 +60,7 @@ for (const ep of ENDPOINTS) {
       if (t.amenity === 'fuel') {
         let cx = 0, cz = 0; const nn = pts.length / 2;
         for (let k = 0; k < nn; k++) { cx += pts[k * 2]; cz += pts[k * 2 + 1]; }
-        out.fuel.push({ x: R1(cx / nn), z: R1(cz / nn), poly: pts, ...(nm ? { n: nm } : {}), brand: t.brand || null });
+        out.fuel.push({ x: R1(cx / nn), z: R1(cz / nn), poly: pts, ...(nm ? { n: nm } : {}), brand: t.brand || null, fu: fuelKinds(t) });
         count.fuel = (count.fuel || 0) + 1;
       } else if (t.amenity === 'parking') {
         rec.surface = t.surface || null;

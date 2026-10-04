@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { PolyGrid } from './worldgen.js?v=6faf90df';
-import { brandOf, signOf, DEFAULT_COL, buildFuelSigns } from './fuel.js';
+import { brandOf, signOf, fuelLines, DEFAULT_COL, buildFuelSigns } from './fuel.js';
 
 // Оборудование детских площадок и машины на парковках. Места берутся из OSM
 // (data/areas.json -> world.areas): качели и горки ставим только там, где в
@@ -778,8 +778,8 @@ export function buildStructures(world, terrain) {
   // чтобы заезд был с дороги, а не в бок.
   const fuelSigns = [];                    // надписи сетей — одним атласом (fuel.js)
   for (const f of world.fuel || []) {
-    // сеть по имени из OSM: её цвета (если сверены) и подпись
-    const brand = brandOf(f.n), col = brand?.col || DEFAULT_COL, sign = signOf(f.n);
+    // сеть по имени и бренду из OSM: её цвета (если сверены) и подпись
+    const brand = brandOf(f), col = brand?.col || DEFAULT_COL, sign = signOf(f);
     // Разворот и габарит берём из КОНТУРА OSM, если он есть: раньше навес
     // ставился «в пяти метрах от точки» под углом к ближайшей улице и вставал
     // вкривь, а на склоне повисал в воздухе. Площадку АЗС теперь ровняет
@@ -884,14 +884,15 @@ export function buildStructures(world, terrain) {
     parts.push({ geo: win, color: [0.18, 0.28, 0.32] });
     // стела с ценами у дороги
     const tx = f.x - nx * 6.5 + ux * (CW / 2 + 1.5), tz = f.z - nz * 6.5 + uz * (CW / 2 + 1.5);
-    const pole = new THREE.BoxGeometry(0.45, 5.4, 0.45);
-    pole.rotateY(ang); pole.translate(tx, g0 + 2.7, tz);
+    // столб — до низа щита: толще щита и иначе проступает сквозь надписи
+    const pole = new THREE.BoxGeometry(0.45, 4.15, 0.45);
+    pole.rotateY(ang); pole.translate(tx, g0 + 2.075, tz);
     parts.push({ geo: pole, color: [0.72, 0.72, 0.70] });
     const board = new THREE.BoxGeometry(2.5, 3.0, 0.30);
     board.rotateY(ang); board.translate(tx, g0 + 5.6, tz);
     parts.push({ geo: board, color: col.board });
-    // на щите — имя сети и виды топлива (без цен: их взять неоткуда)
-    const lines = /пропан|метан|агзс|агнкс|газ/i.test(f.n || '') ? ['ПРОПАН'] : ['АИ-92', 'АИ-95', 'ДТ'];
+    // на щите — имя сети и виды топлива из OSM (без цен: их взять неоткуда)
+    const lines = fuelLines(f);
     for (const sd of [1, -1]) fuelSigns.push({
       text: sign, lines, col, w: 2.3, h: 2.8,
       x: tx + ux * sd * 0.16, y: g0 + 5.6, z: tz + uz * sd * 0.16, ang: sd > 0 ? ang : ang + Math.PI,
