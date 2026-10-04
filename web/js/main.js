@@ -32,6 +32,7 @@ import { batchCar } from './carbatch.js?v=14dfd539';
 import { loadFootprints, monumentTest } from './footprints.js?v=14dfd539';
 import { loadSquares, addFarSquares, addSquares } from './squares.js?v=14dfd539';
 import { loadSkateparks, buildSkateparks } from './skatepark.js?v=14dfd539';
+import { loadSchools, prepSchools, buildSchools } from './schools.js?v=14dfd539';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -168,6 +169,7 @@ async function boot() {
     // земле с первого квадрата. Нет файла — земля просто без террас.
     await loadSquares(V);
     await loadSkateparks(V);
+    await loadSchools(V);
     terraces = await fetch(`../data/terraces.json${V ? '?v=' + V : ''}`).then(r => r.json()).then(d => d.items).catch(() => []);
 
     await step('строю рельеф…', 26);
@@ -635,6 +637,7 @@ function* buildChunk(d, key) {
     places: fill(d.places, ['paths', 'trees', 'features', 'fences', 'structures', 'trains']),
   };
   addSquares(w);                                   // скверы без контура в OSM
+  prepSchools(w);                                  // школы: вход и табличка (schools.js)
   w.allBuildings = d.allBuildings || w.buildings;   // парковкам и оградам: дома соседа на шве
   const furniture = fill(d.furniture, ['points', 'barriers']);
   furniture.points = streetFurniture(furniture.points);   // Большая Морская ставит своё (street.js)
@@ -718,6 +721,7 @@ function* buildChunk(d, key) {
   for (const i of skip) { const b = w.buildings[i]; if (b && b.id) skipIds.add(b.id); }
   at('дома');
   g.add(yield* buildBuildings(w, terrain, 500, skip));
+  g.add(buildSchools(w, terrain, skip));           // школы: парапет и крыльцо
   lap('дома');
   yield; pt = performance.now();
 
