@@ -92,6 +92,8 @@ export class Gamepad {
     this.rumbleT = 0;
     // настройки
     const s = JSON.parse(ls.get(KEY) || '{}');
+    // старые сохранения: режим езды был на тачпаде (17), которого нет у Xbox
+    if (s.bind?.drive?.b === 17 && s.bind?.behind?.b === 11) { s.bind.drive = { b: 11 }; s.bind.behind = { b: 17 }; }
     this.cfg = {
       scheme: s.scheme || 'auto',            // auto | keyboard | gamepad
       layout: s.layout || 'auto',            // auto | ps | xbox — подписи кнопок
