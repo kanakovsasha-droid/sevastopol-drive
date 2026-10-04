@@ -281,6 +281,8 @@ function frame(poly) {
   };
 }
 
+const CAR_CELL = 256, CAR_FAR = 600;
+
 export function buildYards(world, terrain) {
   const group = new THREE.Group();
   group.name = 'yards';
@@ -363,17 +365,28 @@ export function buildYards(world, terrain) {
   place(slideGeo(), slides, 'горок');
   place(sandboxGeo(), boxes, 'песочниц');
   place(carouselGeo(), rides, 'каруселей');
-  // Машины — ОДНИМ InstancedMesh с цветом на экземпляр: восемь сеток по
+  // Машины — пачкой InstancedMesh с цветом на экземпляр: восемь сеток по
   // цвету кузова стоили восемь вызовов отрисовки (и столько же в тени) на
   // каждый квартал. Кузов в геометрии белый, цвет даёт instanceColor.
   // Машина стоит по склону: крен и тангаж — по рельефу под колёсами.
-  if (cars.length) {
-    const m = new THREE.InstancedMesh(carGeo([1, 1, 1]), mat(), cars.length);
+  // Пачка — на клетку CAR_CELL, а не на весь квадрат: одна сетка на 1024 м
+  // рисовала все машины квартала с любого расстояния — с Большой Морской
+  // 135 тысяч треугольников, большей частью машинки в полукилометре и
+  // дальше. Клетки дальше CAR_FAR от камеры гасит main.js (cullFar).
+  const cells = new Map();
+  for (const p of cars) {
+    const key = Math.floor(p.x / CAR_CELL) + ',' + Math.floor(p.z / CAR_CELL);
+    (cells.get(key) || cells.set(key, []).get(key)).push(p);
+  }
+  const geo = cars.length ? carGeo([1, 1, 1]) : null, cmat = cars.length ? mat() : null;
+  for (const list of cells.values()) {
+    const m = new THREE.InstancedMesh(geo, cmat, list.length);
     m.castShadow = true;
+    m.userData.far = CAR_FAR;
     const mx = new THREE.Matrix4(), col = new THREE.Color();
     const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), pv = new THREE.Vector3();
     const G = (x, z) => terrain.gridHeightAt(x, z);
-    cars.forEach((p, k) => {
+    list.forEach((p, k) => {
       const rx = p.fz, rz = -p.fx;                  // вправо от носа
       const hF = G(p.x + p.fx * 1.9, p.z + p.fz * 1.9), hB = G(p.x - p.fx * 1.9, p.z - p.fz * 1.9);
       const hR = G(p.x + rx * 0.85, p.z + rz * 0.85), hL = G(p.x - rx * 0.85, p.z - rz * 0.85);

@@ -945,7 +945,7 @@ const live = {};       // k → { near: {mesh, cap}, mid: {...} }
 let MAT = null, SMAT = null;
 const last = new THREE.Vector3(1e9, 1e9, 1e9);
 const fwd = new THREE.Vector3(), lastDir = new THREE.Vector3(0, -2, 0);
-const CONE_PAD = THREE.MathUtils.degToRad(25), TURN = THREE.MathUtils.degToRad(12);
+const CONE_PAD = THREE.MathUtils.degToRad(18), TURN = THREE.MathUtils.degToRad(8);
 const NEAR_ALL2 = 25 * 25;          // ближе 25 м — всё: крона над головой и сбоку
 const scratch = {};
 export const floraStats = { near: 0, mid: 0, rebuilds: 0, ms: 0 };
