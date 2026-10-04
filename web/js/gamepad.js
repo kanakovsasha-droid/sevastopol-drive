@@ -14,7 +14,7 @@
 //   ✕ / A — ручник · R1 / RB и L1 / LB — передача вверх и вниз
 //   △ / Y — выйти и сесть · ○ / B — вид камеры · □ / X — вернуть на дорогу
 //   R3 — камера за корму · L3 — автомат / ручная
-//   Options / Menu — настройки · Share / View — карта
+//   Options / Menu — пауза · Share / View — карта
 //   крестовина: ↑ — места, ↓ — гараж
 // Китайские клоны «под PlayStation» почти все отдаются браузеру как
 // стандартный пад (mapping === 'standard'). Если нет — любую кнопку и ось
@@ -45,7 +45,7 @@ export const ACTIONS = [
   { id: 'reset',   name: 'Вернуть на дорогу',   def: { b: 2 }, key: 'KeyR' },
   { id: 'behind',  name: 'Камера за корму',     def: { b: 11 }, key: 'KeyV' },
   { id: 'gearbox', name: 'Автомат / ручная',    def: { b: 10 }, key: 'KeyG' },
-  { id: 'menu',    name: 'Настройки',           def: { b: 9 }, key: 'KeyT' },
+  { id: 'menu',    name: 'Пауза',               def: { b: 9 }, key: 'Escape' },
   { id: 'map',     name: 'Карта',               def: { b: 8 }, key: 'Tab' },
   { id: 'places',  name: 'Места',               def: { b: 12 }, key: 'KeyM' },
   { id: 'garage',  name: 'Гараж',               def: { b: 13 }, key: 'KeyO' },
@@ -314,7 +314,9 @@ export class Gamepad {
   // ---- синтетические клавиши
   _key(type, code) {
     const key = code.startsWith('Key') ? code.slice(3).toLowerCase() : code === 'Space' ? ' ' : code;
-    dispatchEvent(new KeyboardEvent(type, { code, key, bubbles: true }));
+    // в body, а не в window: как у настоящей клавиатуры — тогда перехватчики
+    // (пауза) срабатывают раньше остальных
+    document.body.dispatchEvent(new KeyboardEvent(type, { code, key, bubbles: true }));
   }
   _down(code) { this.held.add(code); this._key('keydown', code); }
   _up(code) { this.held.delete(code); this._key('keyup', code); }

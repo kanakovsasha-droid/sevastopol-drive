@@ -211,7 +211,7 @@ export class Settings {
       <div class="row" style="margin-top:10px"><button data-reset="1">Вернуть раскладку по умолчанию</button></div>
       <h3>Клавиатура</h3>
       <div class="sub">WASD — ехать · Space — ручник · E — выйти · C — камера · R — на дорогу · F — полёт · Tab — карта · M — места ·
-        O — гараж · G — автомат/ручная, Shift/Q — передачи · T — настройки · [ ] — время · ? — все клавиши</div>`;
+        O — гараж · G — автомат/ручная, Shift/Q — передачи · Esc — пауза · T — настройки · [ ] — время · ? — все клавиши</div>`;
     this._padStatus();
     for (const k of ['scheme', 'layout']) s.querySelectorAll(`[data-${k}]`).forEach(b => b.addEventListener('click', () => {
       c[k] = b.dataset[k]; p.save();
@@ -238,7 +238,7 @@ export class Settings {
     row.innerHTML = [
       [b('gas') + b('brake'), 'газ / тормоз'], ['<span class="kc">стик</span>', 'руль'], [b('hand'), 'ручник'],
       [b('exit'), 'выйти'], [b('cam'), 'камера'], [b('reset'), 'на дорогу'], [b('down') + b('up'), 'передачи'],
-      [b('map'), 'карта'], [b('menu'), 'настройки'],
+      [b('map'), 'карта'], [b('menu'), 'пауза'],
     ].map(([k, t]) => `<span class="g sh">${k}${t}</span>`).join('');
   }
 }

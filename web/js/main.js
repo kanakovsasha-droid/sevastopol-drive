@@ -22,6 +22,7 @@ import { Gamepad } from './gamepad.js?v=6faf90df';
 import { Environment } from './env.js?v=6faf90df';
 import { CarLights } from './carlights.js?v=6faf90df';
 import { Settings } from './settings.js?v=6faf90df';
+import { Pause } from './pause.js';
 import { buildModelPlinths } from './plinth.js?v=6faf90df';
 
 const $ = id => document.getElementById(id);
@@ -127,6 +128,7 @@ const CAM_MODES = ['за машиной', 'ближе', 'с капота', 'св
 const keys = new Set();
 let pointerLocked = false;
 let pad = null;                                // геймпад (gamepad.js)
+let pause = null;                              // меню паузы (pause.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -242,7 +244,16 @@ async function boot() {
     // прибор, миникарта, место, подсказки — hud.js
     hud = new Hud({ map: cityMap, roads, car: () => car, view: hudView });
     // время, погода, сезон и управление — клавиша T (settings.js)
-    new Settings({ env, pad, toast: t => hud.toast(t) });
+    const settings = new Settings({ env, pad, toast: t => hud.toast(t) });
+    // Esc / Options — пауза: мир, время и звук стоят (pause.js)
+    pause = new Pause({
+      openGarage: () => carFx.garage?.open(),
+      openPlaces: () => $('menu').classList.add('on'),
+      openSettings: () => settings.open(),
+      toggleHelp: () => hud.toggleHelp(),
+      isBusy: () => mapOpen || $('menu').classList.contains('on') || settings.isOpen(),
+      audio: () => carFx,
+    });
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam, get mode() { return mode; } };
@@ -273,6 +284,7 @@ async function boot() {
     window.G.flora = floraStats;
     window.G.loopProf = loopProf;
     window.G.pad = pad;
+    window.G.pause = pause;
     window.G.env = env;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
@@ -1246,7 +1258,7 @@ function bindInput() {
   // Геймпад: кнопки он сам шлёт как клавиши, оси забирает цикл (loop).
   pad = new Gamepad({
     mode: () => mode,
-    overlay: () => document.querySelector('#settings.on') || document.querySelector('#menu.on'),
+    overlay: () => document.querySelector('#pause.on') || document.querySelector('#settings.on') || document.querySelector('#menu.on'),
     toast: t => hud?.toast(t),
   });
 }
@@ -1632,14 +1644,22 @@ let lastPruneX = Infinity, lastPruneZ = Infinity;
 // ?prof: куда ушло время последнего кадра цикла по участкам (G.loopProf)
 const loopProf = { t: 0, last: {} };
 const lt = PROF ? n => { const t = performance.now(); loopProf.last[n] = t - loopProf.t; loopProf.t = t; } : () => {};
+let waterT = 0;
 function loop(now) {
   if (PROF) loopProf.t = performance.now();
   const dt = Math.min((now - prev) / 1000, 0.1);
   prev = now;
-  const wu = water?.material?.userData?.uniforms;
-  if (wu) wu.uTime.value = now / 1000;
-
   pad?.poll(dt);
+  // пауза: ничего не движется, кадр рисуем — картинка под меню остаётся
+  if (pause?.paused) {
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+    return;
+  }
+  // время воды своё: после паузы волны идут с того места, где встали
+  waterT += dt;
+  const wu = water?.material?.userData?.uniforms;
+  if (wu) wu.uTime.value = waterT;
   if (mode === 'car') {
     const menuOpen = $('menu').classList.contains('on') || !!document.querySelector('#settings.on');
     const input = {
