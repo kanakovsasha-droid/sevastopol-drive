@@ -201,14 +201,14 @@ for (const R of routes) {
       const probe = [];
       for (let i = 0; i < sec.length; i += Math.max(1, Math.floor(sec.length / 12))) probe.push(sec[i]);
       probe.push(sec[sec.length - 1]);
-      // Земля под всем участком — до 150 с; не встала — прыгаем ещё раз.
+      // Земля под всем участком — до 300 с; не встала — прыгаем ещё раз.
       // Без этого участок мерился по наполовину собранной земле: коридора
       // нет, колесо на сырой сетке — «удары», которых в игре нет.
       let ready = false;
-      for (let i = 0; i < 750 && !ready; i++) {
+      for (let i = 0; i < 1500 && !ready; i++) {
         await idle(200);
         ready = probe.every(([x, z]) => T.surfaceAt(x, z));
-        if (i === 400 && !ready) G.jumpTo(sec[0][0], sec[0][1]);
+        if ((i === 400 || i === 900) && !ready) G.jumpTo(sec[0][0], sec[0][1]);
       }
       await idle(300);
       // осевая с шагом 0.25 м
