@@ -22,8 +22,8 @@
 //     площадке 60×60 м, ошибки консоли и сети.
 //  4. По улицам: профиль полотна вдоль осевой на 520 м (переломы уклона,
 //     ступени, «волна») — те же функции игры, что у tools/check-physics.mjs.
-//  5. Параллельно: заезд машины по трём улицам через tools/check-physics.mjs
-//     (время в воздухе, тряска, толчки, стоянка).
+//  5. После обхода: заезд машины по трём улицам через tools/check-physics.mjs
+//     (время в воздухе, тряска, толчки, стоянка) — по одному, чтобы не плавало.
 //  6. Если есть --base: попиксельная разница кадров, отчёт со сводкой
 //     «стало хуже в N местах».
 //
@@ -43,6 +43,7 @@ const PORT = arg('port', '5173');
 const QUICK = flag('quick');
 const NOPHYS = flag('no-phys');
 const HILLS = flag('hills');
+const SERIAL = flag('serial');
 const ONLY = (arg('only', '') || '').split(',').filter(Boolean);
 const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 13);
 const OUT = resolve(ROOT, arg('out', 'qa/runs/' + stamp));
@@ -91,7 +92,7 @@ const summary = {
 };
 function sh(cmd) { try { return execSync(cmd, { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return ''; } }
 
-// ---- заезды машины: отдельные процессы, параллельно с обходом
+// ---- заезды машины: отдельные процессы, по одному, после обхода
 const physJobs = NOPHYS ? [] : (QUICK ? PHYS.slice(0, 1) : PHYS);
 async function runPhysics() {
   const run = (id, name, extra, key) => new Promise(res => {
@@ -117,7 +118,6 @@ async function runPhysics() {
   for (const p of physJobs) await run(p.id, p.name, ['--skip', 'hills', '--start', p.start.join(',')]);
   if (HILLS) await run('hills', 'холмы', [], 'hills');
 }
-const physDone = physJobs.length || HILLS ? runPhysics() : Promise.resolve();
 
 // ---- браузер
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=metal', '--ignore-gpu-blocklist'] });
@@ -180,6 +180,16 @@ await page.evaluate(() => {
     return { busy: c.queue.length + c.loading.size + c.orphans.length + (c.building ? 1 : 0), ready: c.ready.size, ground: G.ground.pending,
              terrain: G.terrain.pending, tri: i.render.triangles, calls: i.render.calls, frames: window.__qaFrames, loaded: c.built.size }; };
 });
+// Высоты деталей на весь обход сразу. Дома и дороги квадрата садятся по
+// heightAt ОДИН раз при сборке; приедь детальный тайл на секунду позже — и
+// тот же дом встанет на другую высоту (находка этой проверки: кадр с одной и
+// той же сборки отличался фасадом). Заранее загруженные высоты убирают гонку.
+{
+  const xs = spots.map(s => s.x), zs = spots.map(s => s.z);
+  const box = [Math.min(...xs) - 1100, Math.min(...zs) - 1100, Math.max(...xs) + 1100, Math.max(...zs) + 1100];
+  await page.evaluate(async b => { await G.terrain.ensureRect(...b); }, box);
+  if (SERIAL) await page.evaluate(() => { G.chunks.parallel = 1; });
+}
 log(`страница поднята за ${((Date.now() - t00) / 1000).toFixed(1)} с`);
 
 // ждём, пока мир под камерой достроится
@@ -396,7 +406,9 @@ if (BASE && existsSync(join(BASE, 'summary.json'))) {
 }
 
 await browser.close();
-await physDone;
+// Заезды — после обхода, по одному: параллельно с загрузкой города по соседству
+// тряска плавала (машина въезжала в квартал, который ещё не достроен).
+if (physJobs.length || HILLS) await runPhysics();
 
 summary.meta.durationS = Math.round((Date.now() - t00) / 1000);
 summary.errors.sort((a, b) => (a.where + a.text).localeCompare(b.where + b.text));

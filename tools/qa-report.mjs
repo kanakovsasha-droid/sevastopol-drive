@@ -61,7 +61,15 @@ export const METRICS = {
     ['distM', 'проехано, м', 'neutral', { abs: 30, rel: 0 }, 0],
   ],
 };
-export const IMG_CHANGED_PCT = 0.25;     // доля изменившихся пикселей, выше которой кадр считается другим
+// Доли изменившихся пикселей (%, канал разошёлся больше чем на 16/255). Выше
+// IMG_CHANGED_PCT кадр считается другим и идёт в сводку; между IMG_MINOR_PCT и
+// ним — «мелкие отличия»: показываем, но в сводку не берём. 3% — потому что
+// сама игра на одной и той же сборке иногда по-разному собирает дом на краю
+// квадрата (порядок сборки чанков зависит от скорости загрузки): так на
+// Троллейбусном спуске меняется кровля одного дома, это ~2.5% кадра.
+const TOL0 = JSON.parse(existsSync(join(ROOT, 'qa/tolerances.json')) ? readFileSync(join(ROOT, 'qa/tolerances.json'), 'utf8') : '{}');
+export const IMG_CHANGED_PCT = TOL0['img.changedPct'] ?? 3;
+export const IMG_MINOR_PCT = TOL0['img.minorPct'] ?? 0.05;
 
 const get = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 
@@ -111,7 +119,8 @@ export function compare(cur, base) {
       if (d) img[view] = d;
     }
     const imgChanged = Object.values(img).some(d => d.pct > IMG_CHANGED_PCT);
-    const p = { img, imgChanged };
+    const imgMinor = !imgChanged && Object.values(img).some(d => d.pct > IMG_MINOR_PCT);
+    const p = { img, imgChanged, imgMinor };
     add(id, s.name, s.group, rows, p);
     if (imgChanged) places[places.length - 1].changed++;
   }
@@ -143,6 +152,7 @@ export function compare(cur, base) {
     better: places.filter(p => p.better && !p.worse).length,
     changed: places.filter(p => p.changed && !p.worse && !p.better).length,
     imgChanged: places.filter(p => p.imgChanged).length,
+    imgMinor: places.filter(p => p.imgMinor).length,
     newErrors: newErrors.length, goneErrors: goneErrors.length,
     errors: (cur.errors || []).length, baseErrors: base ? (base.errors || []).length : null,
   };
@@ -163,7 +173,7 @@ export function buildHtml({ cur, base, cmp, reportDir, curDir, baseDir }) {
        + (t.better ? ` · <b class="good">лучше в ${t.better}</b>` : '')
        + (t.imgChanged ? ` · <b class="chg">кадр изменился в ${t.imgChanged}</b>` : '')
        + (t.newErrors ? ` · <b class="bad">новых ошибок консоли: ${t.newErrors}</b>` : '')
-       + (t.goneErrors ? ` · <b class="good">исчезло ошибок: ${t.goneErrors}</b>` : ''))
+       + (t.goneErrors ? ` · <b class="good">исчезло ошибок: ${t.goneErrors}</b>` : '')) + (t.imgMinor ? ` <span class="k">· мелкие отличия кадров (меньше ${IMG_CHANGED_PCT}% пикселей): ${t.imgMinor}</span>` : '')
     : '<b>Прогон без сравнения</b>';
 
   const worsePlaces = cmp.places.filter(p => p.worse);
@@ -189,7 +199,7 @@ export function buildHtml({ cur, base, cmp, reportDir, curDir, baseDir }) {
   const spotPlace = new Map(cmp.places.filter(p => !p.id.startsWith('pf-') && !p.id.startsWith('ph-')).map(p => [p.id, p]));
   for (const [id, s] of Object.entries(cur.spots)) {
     const p = spotPlace.get(id);
-    const cls = p.worse ? 'bad' : p.imgChanged || p.changed ? 'chg' : p.better ? 'good' : 'same';
+    const cls = p.worse ? 'bad' : p.imgChanged || p.changed ? 'chg' : p.better ? 'good' : p.imgMinor ? 'minor' : 'same';
     const views = ['top', 'ground'].map(v => {
       const sv = s.views[v];
       if (!sv) return '';
@@ -199,7 +209,7 @@ export function buildHtml({ cur, base, cmp, reportDir, curDir, baseDir }) {
       let row = '';
       if (hasBase) row += cell(rel(baseDir, `img/${id}-${v}.jpg`), 'до');
       row += cell(rel(curDir, `img/${id}-${v}.jpg`), base ? 'после' : label);
-      if (sv.diff && sv.diff.pct > IMG_CHANGED_PCT) row += cell(rel(curDir, `diff/${id}-${v}.jpg`), `разница: ${sv.diff.pct.toFixed(2)}% пикселей`, ' class="df"');
+      if (sv.diff && sv.diff.pct > IMG_MINOR_PCT) row += cell(rel(curDir, `diff/${id}-${v}.jpg`), `разница: ${sv.diff.pct.toFixed(2)}% пикселей`, ' class="df"');
       else if (hasBase) row += `<figure class="nodiff"><div>без изменений${sv.diff ? ` (${sv.diff.pct.toFixed(3)}%)` : ''}</div></figure>`;
       return `<div class="vrow"><div class="vl">${label}</div>${row}</div>`;
     }).join('');
@@ -224,7 +234,7 @@ h1{font-size:22px;margin:0 0 6px}h2{font-size:17px;margin:28px 0 8px;border-bott
 table{border-collapse:collapse;width:100%;max-width:900px}td,th{padding:3px 8px;border-bottom:1px solid var(--line);text-align:left}td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 tr.bad td{color:var(--bad);font-weight:600}tr.good td{color:var(--good);font-weight:600}tr.chg td{color:var(--chg)}tr.same td,tr.none td{color:var(--mut)}
 tr.plh th{background:var(--card);padding:6px 8px}tbody.pl.bad tr.plh th{border-left:4px solid var(--bad)}tbody.pl.good tr.plh th{border-left:4px solid var(--good)}tbody.pl.chg tr.plh th{border-left:4px solid var(--chg)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:12px 0}.card.bad{border-left:5px solid var(--bad)}.card.chg{border-left:5px solid var(--chg)}.card.good{border-left:5px solid var(--good)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:12px 0}.card.bad{border-left:5px solid var(--bad)}.card.chg{border-left:5px solid var(--chg)}.card.good{border-left:5px solid var(--good)}.card.minor{border-left:5px solid var(--mut)}
 .vrow{display:flex;gap:8px;align-items:flex-start;margin:6px 0}.vl{width:70px;flex:none;color:var(--mut);font-size:12px;padding-top:4px}
 figure{margin:0;flex:1 1 0;min-width:0}figure img{width:100%;display:block;border-radius:4px;background:#000}figcaption{font-size:12px;color:var(--mut);padding-top:2px}
 figure.df img{outline:2px solid var(--bad)}figure.nodiff{display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:12px;border:1px dashed var(--line);border-radius:4px;min-height:60px}
