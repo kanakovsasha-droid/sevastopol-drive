@@ -27,7 +27,6 @@ import { DriveModes } from './drivemodes.js?v=2b23307a';
 import { buildModelPlinths } from './plinth.js?v=2b23307a';
 import { CarCam } from './carcam.js?v=2b23307a';
 import { Precip } from './precip.js?v=2b23307a';
-import { batchCar } from './carbatch.js?v=2b23307a';
 import { loadFootprints, monumentTest } from './footprints.js?v=2b23307a';
 import { loadSquares, addFarSquares, addSquares } from './squares.js?v=2b23307a';
 import { loadSkateparks, buildSkateparks } from './skatepark.js?v=2b23307a';
@@ -971,9 +970,9 @@ let carModelTicket = 0;
 function swapCarModel() {
   const ticket = ++carModelTicket;
   return loadCarModel(CARS[car.model]?.glb, renderer).then(m => {
-    // сетки с одинаковыми материалами — в одну (carbatch.js): 92 → ~35 вызовов
-    const b = batchCar(m);
-    if (b.before) console.log(`машина: сеток ${b.before} → ${b.after}, картинок-заливок ${b.flat}, повторов ${b.dedup}`);
+    // непрозрачное уже слито атласом при загрузке (caratlas.js в loadCarModel)
+    const a = m.userData.atlas;
+    if (a) console.log(`машина: сеток ${a.before} → ${a.after}, слоёв картинок ${a.layers}`);
     cheapGlass(m);
     trimCarShadows(m);
     return precompile(renderer, scene, camera, m, sun).then(() => uploadTextures(m)).then(() => m);
