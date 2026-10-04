@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=2b23307a';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=1977b5d5';
 import { batchModel } from './modelbatch.js';
 
 // Здания, которые нельзя оставлять коробкой. Массу берём из контура OSM,

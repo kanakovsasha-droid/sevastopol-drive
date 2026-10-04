@@ -1,38 +1,39 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=2b23307a';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=2b23307a';
-import { buildStreetProps } from './props.js?v=2b23307a';
-import { updateFlora, floraStats, warmFlora } from './flora.js?v=2b23307a';
-import { buildYards, buildStructures } from './yards.js?v=2b23307a';
-import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=2b23307a';
-import { buildFurniture } from './furniture.js?v=2b23307a';
-import { buildLandmarks, setModelWarm } from './landmarks.js?v=2b23307a';
-import { buildSigns } from './signs.js?v=2b23307a';
-import { loadStreet, buildStreet, streetFurniture } from './street.js?v=2b23307a';
-import { buildCemeteries } from './cemetery.js?v=2b23307a';
-import { audit } from './audit.js?v=2b23307a';
-import { buildMap, drawFull, mapUnproject } from './minimap.js?v=2b23307a';
-import { Hud } from './hud.js?v=2b23307a';
-import { ChunkManager } from './chunks.js?v=2b23307a';
-import { Collider, RoadIndex } from './collision.js?v=2b23307a';
-import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=2b23307a';
-import { CarFX } from './carfx.js?v=2b23307a';
-import { precompile } from './warm.js?v=2b23307a';
-import { Gamepad } from './gamepad.js?v=2b23307a';
-import { Environment, ENV } from './env.js?v=2b23307a';
-import { CarLights } from './carlights.js?v=2b23307a';
-import { Settings } from './settings.js?v=2b23307a';
-import { Pause } from './pause.js?v=2b23307a';
-import { DriveModes } from './drivemodes.js?v=2b23307a';
-import { buildModelPlinths } from './plinth.js?v=2b23307a';
-import { CarCam } from './carcam.js?v=2b23307a';
-import { Precip } from './precip.js?v=2b23307a';
-import { loadFootprints, monumentTest } from './footprints.js?v=2b23307a';
-import { loadSquares, addFarSquares, addSquares } from './squares.js?v=2b23307a';
-import { loadSkateparks, buildSkateparks } from './skatepark.js?v=2b23307a';
-import { padBlocker } from './pads.js?v=2b23307a';
-import { loadSchools, prepSchools, buildSchools } from './schools.js?v=2b23307a';
-import { prepFuel } from './fuel.js?v=2b23307a';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=1977b5d5';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=1977b5d5';
+import { buildStreetProps } from './props.js?v=1977b5d5';
+import { updateFlora, floraStats, warmFlora } from './flora.js?v=1977b5d5';
+import { buildYards, buildStructures } from './yards.js?v=1977b5d5';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=1977b5d5';
+import { buildFurniture } from './furniture.js?v=1977b5d5';
+import { buildLandmarks, setModelWarm } from './landmarks.js?v=1977b5d5';
+import { buildSigns } from './signs.js?v=1977b5d5';
+import { loadStreet, buildStreet, streetFurniture } from './street.js?v=1977b5d5';
+import { buildCemeteries } from './cemetery.js?v=1977b5d5';
+import { audit } from './audit.js?v=1977b5d5';
+import { buildMap, drawFull, mapUnproject } from './minimap.js?v=1977b5d5';
+import { Hud } from './hud.js?v=1977b5d5';
+import { ChunkManager } from './chunks.js?v=1977b5d5';
+import { Collider, RoadIndex } from './collision.js?v=1977b5d5';
+import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=1977b5d5';
+import { CarFX } from './carfx.js?v=1977b5d5';
+import { precompile } from './warm.js?v=1977b5d5';
+import { Gamepad } from './gamepad.js?v=1977b5d5';
+import { Environment, ENV } from './env.js?v=1977b5d5';
+import { CarLights } from './carlights.js?v=1977b5d5';
+import { Settings } from './settings.js?v=1977b5d5';
+import { Pause } from './pause.js?v=1977b5d5';
+import { DriveModes } from './drivemodes.js?v=1977b5d5';
+import { Assists } from './assists.js?v=1977b5d5';
+import { buildModelPlinths } from './plinth.js?v=1977b5d5';
+import { CarCam } from './carcam.js?v=1977b5d5';
+import { Precip } from './precip.js?v=1977b5d5';
+import { loadFootprints, monumentTest } from './footprints.js?v=1977b5d5';
+import { loadSquares, addFarSquares, addSquares } from './squares.js?v=1977b5d5';
+import { loadSkateparks, buildSkateparks } from './skatepark.js?v=1977b5d5';
+import { padBlocker } from './pads.js?v=1977b5d5';
+import { loadSchools, prepSchools, buildSchools } from './schools.js?v=1977b5d5';
+import { prepFuel } from './fuel.js?v=1977b5d5';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -126,6 +127,7 @@ let pointerLocked = false;
 let pad = null;                                // геймпад (gamepad.js)
 let pause = null;                              // меню паузы (pause.js)
 let driveModes = null;                         // Eco / Comfort / Sport / Sport+ (drivemodes.js)
+let assists = null;                            // ABS, ASR, ESP, Race Start (assists.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -263,6 +265,9 @@ async function boot() {
     });
     // режимы езды: 1–4 или Y (drivemodes.js)
     driveModes = new DriveModes({ car: () => car, audio: () => carFx, toast: t => hud.toast(t) });
+    // ABS, ASR, ESP (U, держать — OFF), Race Start; настройки — T → «Машина»
+    assists = new Assists({ car: () => car, toast: t => hud.toast(t) });
+    settings.assists = assists;
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam: carCam, get mode() { return mode; } };
@@ -1632,6 +1637,7 @@ function loop(now) {
       input.gas ||= p.gas; input.brake ||= p.brake;
     }
     driveModes?.apply();                         // после смены машины в гараже — тот же режим
+    assists?.apply();                            // режим ESP (по режиму езды) и выбор игрока — в машину
     // на снегу заметно скользко, на мокром — чуть
     car.weatherGrip = 1 - 0.5 * ENV.uWet.value.x - 0.15 * ENV.uWet.value.y;
     car.update(dt, input);

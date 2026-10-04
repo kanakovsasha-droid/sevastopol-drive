@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=2b23307a';
-import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=2b23307a';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=1977b5d5';
+import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=1977b5d5';
 import { atlasCarModel } from './caratlas.js';
 
 // Физика машины. Третий заход.
@@ -193,6 +193,24 @@ const BUMP_K = 240000;        // отбойник, Н/м
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 // Режим езды по умолчанию (= Sport в drivemodes.js): машина как до режимов.
 const DM0 = { gas: 1, rise: 1, upLo: 2600, upHi: 4100, down: 2200, shift: 1, steer: 1, esp: null, tcMin: null, tcSlip: null, short: '' };
+
+// Электронные помощники (assists.js кладёт выбор игрока в car.assist):
+// { abs, asr, esp: 'on' | 'sport' | 'off', launch }. Без car.assist (стенд) —
+// прежнее поведение по режиму езды.
+// ESP по режимам, как у AMG:
+//   on    — строго: просыпается с 3° увода, газ её почти не ослабляет, ASR
+//           держит проскальзывание у 8%;
+//   sport — Sport Handling: занос до ~13° не трогает, дальше ловит (на
+//           стенде — держит в 15–20°); ASR мягче;
+//   off   — всё выключено, остаётся только аркадная стабилизация руля (слабее).
+// cut — насколько ESP при вмешательстве срезает момент мотора, gainK —
+// множитель её тормозного момента против CAR.espGain / espMax.
+export const ESP_MODES = {
+  on:    { esp: 1.0, angle: 0.04, ramp: 0.05, yawK: 1.05, gasRelief: 0.1, cut: 0.95, gainK: 1.8, tcSlip: 0.08, tcMin: 0.12, yawDamp: 1 },
+  sport: { esp: 1.0, angle: 0.22, ramp: 0.1, yawK: 1.9, gasRelief: 0.15, cut: 0.8, gainK: 1.5, tcSlip: 0.16, tcMin: 0.5, yawDamp: 1 },
+  off:   { esp: 0, angle: 9, ramp: 1, yawK: 99, gasRelief: 1, cut: 0, gainK: 0, tcSlip: 9, tcMin: 1, yawDamp: 0.4 },
+};
+export const LAUNCH_RPM = 3300;          // Race Start: обороты, на которых мотор ждёт старта
 const wrapPi = a => { a = (a + Math.PI) % (2 * Math.PI); return a < 0 ? a + Math.PI : a - Math.PI; };
 
 // Кривая шины: линейный участок, пик в s = 1, плавный спад за ним. s — общее
@@ -431,6 +449,7 @@ export class Car {
     this._gas = 0; this._brake = 0; this._shiftT = 0; this._shiftLock = 0;
     this._acc = 0; this._flipT = 0; this._fresh = true;
     this.gear = 1; this.rpm = this.rpmSound = CAR.idle; this._rpmE = CAR.idle; this._rpmW = 0; this._dump = false; this._cutT = 0;
+    this.launch = null; this.braceHold = false;
     if (this.mode === 'R') this.mode = 'D';
     this.vLong = 0; this.vLat = 0; this.yawRate = 0;
     this.steer = 0; this.steerVis = 0; this.crash = 0; this.airborne = false;
@@ -524,6 +543,11 @@ export class Car {
     T.slip = Math.max(this.slipVel[0], this.slipVel[1], this.slipVel[2], this.slipVel[3]);
     T.onLimiter = this.limiter > 0; T.throttle = this.throttle; T.boost = this.boost;
     T.dm = this.dm?.short || ''; T.dmColor = this.dm?.color || '#fff';
+    // помощники: режим ESP, кто сейчас вмешивается, лаунч
+    const A = this.assist;
+    T.esp = A ? A.esp : null; T.absOff = !!A && !A.abs; T.asrOff = !!A && (!A.asr || A.esp === 'off');
+    T.espAct = this.espActive > 0.08 || !!this.asrActive; T.absAct = !!this.absActive;
+    T.launch = this.launch || null;
     this.crash *= Math.exp(-dt * 4);
   }
 
@@ -544,9 +568,31 @@ export class Car {
     const drive = this.mode === 'D';
     let gasT = 0, brakeT = 0, wantRev = this.gear < 0;
     const both = !!(input.gas && input.brake);
-    const burn = both && drive && speed < 4;           // стоя на заднем — сперва включится D
+    // Race Start (лаунч-контроль AMG): на месте, в D, ESP Sport или Off —
+    // тормоз в пол и газ в пол: мотор встаёт на LAUNCH_RPM, машина стоит.
+    // Отпустил тормоз — старт: маховик сбрасывается в трансмиссию, а
+    // проскальзывание ведущих держится у пика (ниже, в цикле колёс).
+    const A = this.assist, still = speed < 0.6;
+    if (A && drive && !this.manual && this.engine === 'on') {
+      const can = A.launch && A.esp !== 'on';
+      if (both && still && can) this.launch = 'armed';
+      else if (this.launch === 'armed') {
+        this.launch = input.gas && !input.brake ? 'go' : null;
+        if (this.launch === 'go') { this._launchT = 0; this._dump = true; }
+      }
+      if (this.launch === 'go') {
+        this._launchT += h;
+        if (!input.gas || this._launchT > 4 || speed > 30) this.launch = null;
+      }
+    } else this.launch = null;
+    // Тормоз держит машину: в лаунче и на полном приводе при газе с тормозом
+    // на месте (раньше 4MATIC так ползла вперёд). Момент на колёса не идёт —
+    // мотор упирается в гидротрансформатор, обороты — его «стоп».
+    const holdBoth = this.launch === 'armed' || (!!A && both && still && drive && !this.rwd);
+    this.braceHold = holdBoth;
+    const burn = both && drive && speed < 4 && !holdBoth;  // стоя на заднем — сперва включится D
     this.burnout = burn;
-    if (burn) { gasT = 1; brakeT = 1; wantRev = false; }
+    if (burn || holdBoth) { gasT = 1; brakeT = 1; wantRev = false; }
     else if (both) brakeT = 1;
     else if (!drive) {
       // P и N: газ только крутит мотор, S — тормоз
@@ -628,7 +674,7 @@ export class Car {
       // которых нет. Гидротрансформатор такие рывки и не передал бы.
       const rpmCar = Math.abs(vLong) / CAR.wheelRadius * Math.abs(ratio) * 9.5493;
       const floor = CAR.idle + (low ? gas * (CAR.stall - CAR.idle) : 0);
-      const target = Math.max(gas > 0.02 ? rpmWheels : rpmCar, floor);
+      const target = this.launch === 'armed' ? LAUNCH_RPM : Math.max(gas > 0.02 && !this.braceHold ? rpmWheels : rpmCar, floor);
       // Для звука под газом колёса берём через сглаживание 0.15 с: долгая
       // пробуксовка (бёрнаут, старт) доходит, а всплеск на кочке — нет. Сам
       // мотор (момент) идёт за колёсами как раньше — на этом держится ловля
@@ -643,7 +689,7 @@ export class Car {
       this._slipS = (this._slipS || 1) + (slipNow - (this._slipS || 1)) * Math.min(1, h / 0.8);
       const wv = clamp((Math.abs(vLong) - 12) / 6, 0, 1);
       const sndW = Math.max(rpmCar, this._rpmW) * (1 - wv) + rpmCar * this._slipS * wv;
-      sndTarget = gas > 0.02 ? Math.max(sndW, floor) : -1;
+      sndTarget = gas > 0.02 && !this.braceHold ? Math.max(sndW, floor) : -1;
       this._blipT -= h;
       if (rpm > target + 60 && this._dump) {
         // сброс маховика в трансмиссию: мотор тормозится колёсами, колёса
@@ -699,6 +745,10 @@ export class Car {
       if (gas < 0.05 && rpmWheels > 1300) engT -= (25 + rpmWheels * 0.009) * (1 - gas * 20);
     }
     if (this.inWater) engT *= 0.25;
+    // ESP при вмешательстве срезает и момент мотора (по прошлому шагу)
+    const EM = A ? ESP_MODES[A.esp] || ESP_MODES.on : null;
+    if (EM && this.espActive > 0 && engT > 0) engT *= 1 - EM.cut * this.espActive;
+    if (holdBoth) engT = 0;
     if (this.engine !== 'on') { engT = 0; this.boost = 0; }
     this.throttle = gas;
     // наддув: набирается за полсекунды, от 1800 об/мин
@@ -824,6 +874,7 @@ export class Car {
     }
 
     const om0 = [om[0], om[1], om[2], om[3]];   // снимок: обход по порядку не должен давать перекос влево-вправо
+    let asrCut = 1, absHit = false;
     for (let i = 0; i < 4; i++) {
       const fz = fzNew[i];
       this._fz[i] = fz;
@@ -834,10 +885,18 @@ export class Car {
       // противобуксовочная: душит, но не до нуля. На заднем приводе и в
       // бёрнауте её нет — это и есть просьба покрутить колёса.
       const kPrev = this._kap[i] * Math.sign(ratio);
-      const tc = !burn && (!this.rwd || CAR.tcRwd);
-      // противобуксовочная по режиму езды; на заднем приводе — как у машины
-      const tcMin = this.rwd ? CAR.tcMin : (this.dm?.tcMin ?? CAR.tcMin), tcSlip = this.rwd ? CAR.tcSlip : (this.dm?.tcSlip ?? CAR.tcSlip);
-      if (tc && kPrev > tcSlip && driveT * ratio > 0) driveT *= clamp(1 - (kPrev - tcSlip) / CAR.tcBand, tcMin, 1);
+      // ASR: при выборе игрока — по режиму ESP (в Off и выключенная —
+      // нет); без него (стенд) — по режиму езды, на заднем приводе — как у машины
+      const tc = !burn && (EM ? A.asr && A.esp !== 'off' : (!this.rwd || CAR.tcRwd));
+      const tcMin = EM ? EM.tcMin : this.rwd ? CAR.tcMin : (this.dm?.tcMin ?? CAR.tcMin);
+      const tcSlip = EM ? EM.tcSlip : this.rwd ? CAR.tcSlip : (this.dm?.tcSlip ?? CAR.tcSlip);
+      if (tc && kPrev > tcSlip && driveT * ratio > 0) {
+        const k = clamp(1 - (kPrev - tcSlip) / CAR.tcBand, tcMin, 1);
+        driveT *= k; asrCut = Math.min(asrCut, k);
+      }
+      // Race Start: первые секунды держим проскальзывание ведущих у пика
+      // тяги (~11%) — быстрее, чем буксовать или душить ASR
+      if (this.launch === 'go' && kPrev > 0.11 && driveT * ratio > 0) driveT *= clamp(1 - (kPrev - 0.11) / 0.06, 0.15, 1);
       // вязкая блокировка: колесо, убежавшее от соседа по оси, подтормаживается
       driveT += CAR.diffLock * (om0[i ^ 1] - om0[i]);
       // в бёрнауте тормоз только на передней оси (как «line lock»)
@@ -890,10 +949,12 @@ export class Car {
         this._anchor[i] = null;
         // АБС: момент не выше того, что шина способна передать, и сброс, если
         // колесо всё-таки пошло в блокировку (торможение в повороте)
-        if (brakeTq > 0 && Math.abs(vl) > 2) {
-          brakeTq = Math.min(brakeTq, CAR.wheelRadius * muX * fz * CAR.absEff);
+        // (выключена в настройках — колёса блокируются, руль не слушается)
+        if (brakeTq > 0 && Math.abs(vl) > 2 && (!A || A.abs)) {
+          const cap = CAR.wheelRadius * muX * fz * CAR.absEff;
+          if (brakeTq > cap) { brakeTq = cap; absHit = true; }
           const k = this._kap[i] * Math.sign(vl);
-          if (k < -CAR.slipPeak * 1.3) brakeTq *= clamp(1 + (k + CAR.slipPeak * 1.3) / 0.08, 0.2, 1);
+          if (k < -CAR.slipPeak * 1.3) { brakeTq *= clamp(1 + (k + CAR.slipPeak * 1.3) / 0.08, 0.2, 1); absHit = true; }
         }
         if (hand && !front) brakeTq += CAR.handbrakeTorque;
         const den = Math.max(Math.abs(vl), V_LOW);
@@ -931,6 +992,11 @@ export class Car {
     }
     this.wheelSpin += (om[0] + om[1]) / 2 * h;
     this.airborne = contacts === 0;
+    // для прибора и вибрации: вмешиваются ли ASR и ABS (с удержанием 0.15 с,
+    // иначе значок мигал бы с частотой шага физики)
+    this._asrT = asrCut < 0.95 ? 0.15 : Math.max(0, (this._asrT || 0) - h);
+    this._absT = absHit && brake > 0.3 ? 0.15 : Math.max(0, (this._absT || 0) - h);
+    this.asrActive = this._asrT > 0; this.absActive = this._absT > 0;
 
     // ---- курсовая устойчивость. Эталон — рыскание, которого просит руль при
     // нынешней скорости (с потолком по сцеплению). Крутимся быстрее и кузов уже
@@ -938,7 +1004,9 @@ export class Car {
     // вращения и немного потери хода. Ручник её отключает: он и есть просьба
     // о заносе. Под полным газом она слабее — занос газом остаётся.
     this.espActive = 0;
-    const esp = this.rwd ? CAR.espRwd : (this.dm?.esp ?? CAR.esp);
+    const esp = EM ? EM.esp : this.rwd ? CAR.espRwd : (this.dm?.esp ?? CAR.esp);
+    const eAng = EM ? EM.angle : CAR.espAngle, eRamp = EM ? EM.ramp : CAR.espAngle;
+    const eYaw = EM ? EM.yawK : 1.15, eGas = EM ? EM.gasRelief : 0.45;
     if (esp > 0 && !hand && vLong > 6 && contacts >= 3) {
       const beta = Math.abs(Math.atan2(vLat, vLong));
       const rMax = 0.95 * CAR.muLat * GRAV / vLong;
@@ -946,12 +1014,13 @@ export class Car {
       const err = w[1] - rRef;
       // два признака: кузов уже идёт боком (угол увода) или рыскание заметно
       // выше того, что шины способны удержать, — второй срабатывает раньше
-      const act = Math.max(clamp((beta - CAR.espAngle) / CAR.espAngle, 0, 1),
-                           clamp((Math.abs(w[1]) - rMax * 1.15) / (rMax * 0.5), 0, 1))
-        * esp * (1 - 0.45 * gas);
+      const act = Math.max(clamp((beta - eAng) / eRamp, 0, 1),
+                           clamp((Math.abs(w[1]) - rMax * eYaw) / (rMax * 0.5), 0, 1))
+        * esp * (1 - eGas * gas);
       // только ГАСИМ лишнее вращение; докручивать машину в поворот — не её дело
       if (act > 0 && err * w[1] > 0) {
-        const M = clamp(-CAR.espGain * err, -CAR.espMax, CAR.espMax) * act;
+        const gk = EM ? EM.gainK : 1;
+        const M = clamp(-CAR.espGain * gk * err, -CAR.espMax * gk, CAR.espMax * gk) * act;
         Tx += uX * M; Ty += uY * M; Tz += uZ * M;
         const dragF = Math.abs(M) / CAR.track;            // цена момента: тормозная сила
         Fx -= fX * dragF; Fy -= fY * dragF; Fz -= fZ * dragF;
@@ -966,6 +1035,7 @@ export class Car {
     // срывает, добирается — машина едет туда, куда смотрит руль. Зазор 8%
     // эталона — в нём не вмешиваемся. Газ (просьба о заносе) и уже идущий
     // занос (кузов боком больше 12°) её отпускают, ручник — выключает.
+    const yawDampK = EM ? EM.yawDamp : 1;
     if (CAR.yawDamp > 0 && !hand && vLong > 5 && contacts >= 3) {
       const rMax = 0.95 * CAR.muLat * GRAV / vLong;
       const rRef = clamp(vLong * Math.tan(this.steer) / (CAR.wheelbase * (1 + (vLong / 32) ** 2)), -rMax, rMax);
@@ -974,7 +1044,7 @@ export class Car {
       const beta = Math.abs(Math.atan2(vLat, vLong));
       if (Math.abs(err) > band && beta < 0.21) {
         const soft = (1 - 0.85 * gas) * clamp((vLong - 5) / 5, 0, 1) * clamp(1 - (beta - 0.12) / 0.09, 0, 1);
-        const M = -Math.sign(err) * Math.min(CAR.yawDamp * (Math.abs(err) - band), CAR.yawDampMax) * soft;
+        const M = -Math.sign(err) * Math.min(CAR.yawDamp * (Math.abs(err) - band), CAR.yawDampMax) * soft * yawDampK;
         Tx += uX * M; Ty += uY * M; Tz += uZ * M;
       }
     }
