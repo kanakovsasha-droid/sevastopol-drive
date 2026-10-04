@@ -7,6 +7,7 @@ import { buildYards, buildStructures } from './yards.js?v=6faf90df';
 import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=6faf90df';
 import { buildFurniture } from './furniture.js?v=6faf90df';
 import { buildLandmarks, setModelWarm } from './landmarks.js?v=6faf90df';
+import { padBlocker } from './pads.js';
 import { buildSigns } from './signs.js?v=6faf90df';
 import { loadStreet, buildStreet, streetFurniture } from './street.js?v=6faf90df';
 import { buildCemeteries } from './cemetery.js?v=6faf90df';
@@ -701,6 +702,9 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
 
   at('деревья');
+  // не сажать на пятна памятников — весь список: памятник соседнего квадрата
+  // у шва тоже (pads.js)
+  w.__noPlant = padBlocker(landmarkDefs, w.__noPlant);
   const props = buildStreetProps(w, terrain, roads, d.allBuildings);
   g.add(props);
   for (const [k, v] of Object.entries(props.userData.counts || {})) counts[k] = (counts[k] || 0) + v;

@@ -1011,16 +1011,39 @@ function* seaMaskGen(world, terrain, x0, z0, x1, z1, coarse, res = 8) {
   }
   yield;
 
+  // Островок — замкнутое кольцо берега в пару десятков метров — метим без
+  // каймы, одной клеткой, а скалу меньше клетки с каймой (ROCK) не метим
+  // вовсе: на сетке 8 м её всё равно не нарисовать. Кайма 3×3 раздувала
+  // скалу Памятника затопленным кораблям (кольцо 17 м) до 40 м и смыкала её
+  // с каймой набережной в 15–20 м от неё: протока не заливалась, набережная
+  // опускала её к +0.5 м, и памятник стоял на песчаном мысу. Скала у
+  // памятника — часть модели, она уходит под воду сама. Сквозь цепочку
+  // клеток, связную по диагонали, заливка по четырём сторонам не течёт —
+  // без каймы островок воду не пропустит.
+  const mark1 = (x, z) => {
+    const i = Math.round((x - x0) / res), j = Math.round((z - z0) / res);
+    if (i >= 0 && j >= 0 && i < W && j < H) wall[idx(i, j)] = 1;
+  };
+  const ISLET = 60, ROCK = res * 3;
   let segs = 0;
   for (const ln of lines) {
     const p = ln.pts;
+    let lx0 = Infinity, lz0 = Infinity, lx1 = -Infinity, lz1 = -Infinity;
+    for (let k = 0; k < p.length; k += 2) {
+      lx0 = Math.min(lx0, p[k]); lx1 = Math.max(lx1, p[k]);
+      lz0 = Math.min(lz0, p[k + 1]); lz1 = Math.max(lz1, p[k + 1]);
+    }
+    const ring = p.length >= 8 && Math.hypot(p[0] - p[p.length - 2], p[1] - p[p.length - 1]) < 0.5;
+    const size = Math.max(lx1 - lx0, lz1 - lz0);
+    if (ring && size < ROCK) continue;
+    const put = ring && size < ISLET ? mark1 : mark;
     for (let k = 0; k + 3 < p.length; k += 2) {
       const ax = p[k], az = p[k + 1], bx = p[k + 2], bz = p[k + 3];
       const L = Math.hypot(bx - ax, bz - az);
       if (L < 0.01) continue;
       segs++;
       const n = Math.max(1, Math.ceil(L / (res * 0.4)));
-      for (let t = 0; t <= n; t++) mark(ax + (bx - ax) * t / n, az + (bz - az) * t / n);
+      for (let t = 0; t <= n; t++) put(ax + (bx - ax) * t / n, az + (bz - az) * t / n);
     }
   }
   yield;
