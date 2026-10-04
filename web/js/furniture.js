@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PolyGrid } from './worldgen.js?v=b1aacc7c';
 import { surfaceTop } from './surface.js?v=b1aacc7c';
-import { buildTrafficLights } from './trafficlights.js?v=b1aacc7c';
+import { buildTrafficLights, placeTrafficLights } from './trafficlights.js?v=b1aacc7c';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
@@ -368,8 +368,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   // полширины полотна плюс бордюр, лицом к дороге. Если корпус не влезает —
   // отодвигаем дальше от бордюра, потом едем вдоль улицы и лишь в крайнем
   // случае переходим на другую обочину: остановка обязана остаться у дороги.
-  // only — только эта сторона дороги (+1 — правая по ходу звена, −1 — левая)
-  const snapToKerb = (p, fp, base, along = false, only = 0) => {
+  const snapToKerb = (p, fp, base, along = false) => {
     const hit = roadIndex.nearest(p.x, p.z, 45, DRIVE) || roadIndex.nearest(p.x, p.z, 120, DRIVE);
     if (!hit) return null;
     const road = hit.road;
@@ -379,7 +378,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
     // Порядок проб не случаен: своя обочина важнее всего — на ней автобус и
     // останавливается. Поэтому сперва вычерпываем её целиком (отступ от
     // бордюра, затем сдвиг вдоль улицы) и только потом идём на противоположную.
-    for (const s of only ? [only] : [side0, -side0])
+    for (const s of [side0, -side0])
       for (const t of ALONG) {
         // на сдвиге вдоль улицы заново садимся на ЕЁ ЖЕ осевую: на повороте
         // направление сегмента меняется, и отступ по старой нормали уводит в дом
@@ -457,23 +456,11 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   // перекрёстка — там на асфальте стоят все 14. Выносим на бордюр и
   // разворачиваем ВДОЛЬ улицы, навстречу потоку: линзами поперёк дороги,
   // как было раньше, светофор смотреть не может.
-  // Модель и цикл огней — trafficlights.js. Точка OSM стоит на осевой,
-  // светофор нужен каждому направлению: столб у бордюра с каждой стороны
-  // (на односторонней — только справа по ходу потока). Узлы одного
-  // перекрёстка в OSM часто стоят на каждом подходе — головку, у которой
-  // в 7 м уже стоит такая же, смотрящая туда же, не дублируем.
+  // Светофоры — trafficlights.js: узел OSM стоит на осевой, а стойка нужна
+  // у правого бордюра каждого подхода к перекрёстку, головкой навстречу потоку.
   {
-    const lights = [];
-    for (const p of byKind.traffic_light || []) {
-      const hit = roadIndex.nearest(p.x, p.z, 45, DRIVE);
-      const sides = hit && hit.road.ow ? [1] : [1, -1];
-      for (const sd of sides) {
-        const r = snapToKerb(p, FP.pole, 0.9, true, sd);
-        if (!r) continue;
-        if (lights.some(o => Math.hypot(o.x - r.x, o.z - r.z) < 7 && Math.cos(o.a - r.a) > 0.7)) continue;
-        lights.push(r);
-      }
-    }
+    const lights = placeTrafficLights(byKind.traffic_light, roadIndex, DRIVE,
+      (x, z, a) => clear(x, z, a, FP.pole));
     if (lights.length) group.add(buildTrafficLights(lights, H));
     stats['светофоры'] = lights.length;
   }

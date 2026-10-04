@@ -7,6 +7,7 @@ import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt } from './roadlevels
 import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=b1aacc7c';
 import { resolveAreas, sportSkipIds } from './sport.js?v=b1aacc7c';
 import { planParking, roadSegIndex } from './parking.js?v=b1aacc7c';
+import { seriesOf, seriesWall, seriesExtras } from './series.js?v=e4f92276';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -1011,16 +1012,39 @@ function* seaMaskGen(world, terrain, x0, z0, x1, z1, coarse, res = 8) {
   }
   yield;
 
+  // Островок — замкнутое кольцо берега в пару десятков метров — метим без
+  // каймы, одной клеткой, а скалу меньше клетки с каймой (ROCK) не метим
+  // вовсе: на сетке 8 м её всё равно не нарисовать. Кайма 3×3 раздувала
+  // скалу Памятника затопленным кораблям (кольцо 17 м) до 40 м и смыкала её
+  // с каймой набережной в 15–20 м от неё: протока не заливалась, набережная
+  // опускала её к +0.5 м, и памятник стоял на песчаном мысу. Скала у
+  // памятника — часть модели, она уходит под воду сама. Сквозь цепочку
+  // клеток, связную по диагонали, заливка по четырём сторонам не течёт —
+  // без каймы островок воду не пропустит.
+  const mark1 = (x, z) => {
+    const i = Math.round((x - x0) / res), j = Math.round((z - z0) / res);
+    if (i >= 0 && j >= 0 && i < W && j < H) wall[idx(i, j)] = 1;
+  };
+  const ISLET = 60, ROCK = res * 3;
   let segs = 0;
   for (const ln of lines) {
     const p = ln.pts;
+    let lx0 = Infinity, lz0 = Infinity, lx1 = -Infinity, lz1 = -Infinity;
+    for (let k = 0; k < p.length; k += 2) {
+      lx0 = Math.min(lx0, p[k]); lx1 = Math.max(lx1, p[k]);
+      lz0 = Math.min(lz0, p[k + 1]); lz1 = Math.max(lz1, p[k + 1]);
+    }
+    const ring = p.length >= 8 && Math.hypot(p[0] - p[p.length - 2], p[1] - p[p.length - 1]) < 0.5;
+    const size = Math.max(lx1 - lx0, lz1 - lz0);
+    if (ring && size < ROCK) continue;
+    const put = ring && size < ISLET ? mark1 : mark;
     for (let k = 0; k + 3 < p.length; k += 2) {
       const ax = p[k], az = p[k + 1], bx = p[k + 2], bz = p[k + 3];
       const L = Math.hypot(bx - ax, bz - az);
       if (L < 0.01) continue;
       segs++;
       const n = Math.max(1, Math.ceil(L / (res * 0.4)));
-      for (let t = 0; t <= n; t++) mark(ax + (bx - ax) * t / n, az + (bz - az) * t / n);
+      for (let t = 0; t <= n; t++) put(ax + (bx - ax) * t / n, az + (bz - az) * t / n);
     }
   }
   yield;
@@ -3711,7 +3735,10 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
       : flatRoof ? ROOFS_FLAT[(rand() * ROOFS_FLAT.length) | 0]
       : ROOFS_TILE[(rand() * ROOFS_TILE.length) | 0];
     const tint = 0.93 + rand() * 0.15;
-    const w = [Math.min(1, wall[0] * tint), Math.min(1, wall[1] * tint), Math.min(1, wall[2] * tint)];
+    // типовой дом (series.js): свой фасад, цвет и сетка пролётов на стенах
+    const ser = seriesOf(b);
+    const wc0 = ser ? ser.color : wall;
+    const w = [Math.min(1, wc0[0] * tint), Math.min(1, wc0[1] * tint), Math.min(1, wc0[2] * tint)];
     // гараж, сарай, будка — окон не рисуем
     const wallKind = market ? 4 : b.temple ? 13 : b.school ? 12
       : b.fx === 'glass' ? 10 : b.arch ? 11 : b.go ? 7
@@ -3727,17 +3754,19 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
       const l = Math.hypot(dx, dz);
       if (l < 0.15) continue;
       const nx = dz / l, nz = -dx / l;
-      const u0 = u, u1 = u + l;
+      let u0 = u, u1 = u + l, wk = wallKind;
       u = u1;
+      if (ser) ({ kind: wk, u0, u1 } = seriesWall(ser, i, ax, az, bx, bz, l));
       // Обход ПО нормали: при обратном порядке стена отсекается как задняя грань,
       // и снаружи видно нутро дома вместо ближних стен.
-      pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wallKind);
-      pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wallKind);
-      pushV(bx, yBase, bz, nx, 0, nz, w, u1, wb, Hb, wallKind);
-      pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wallKind);
-      pushV(ax, yTop, az, nx, 0, nz, w, u0, Hb, Hb, wallKind);
-      pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wallKind);
+      pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wk);
+      pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wk);
+      pushV(bx, yBase, bz, nx, 0, nz, w, u1, wb, Hb, wk);
+      pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wk);
+      pushV(ax, yTop, az, nx, 0, nz, w, u0, Hb, Hb, wk);
+      pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wk);
     }
+    if (ser) { seriesExtras(ser, yFloor, yTop, w, Hb, boxSolid); stats.series = (stats.series || 0) + 1; }
 
     // Рыночный ряд: длинный сарай под двускатной ребристой кровлей, по бокам
     // тент над проходом. Вальма из общего кода тут не годится — ряд узкий
