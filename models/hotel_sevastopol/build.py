@@ -491,9 +491,36 @@ def build_link():
 def PF(o_u, o_n, ax_u, ax_n, side_u, side_n):
     return Frame(PP(o_u, o_n), UV * ax_u + NV * ax_n, UV * side_u + NV * side_n)
 
+Z_TOP = Z_BLK + 0.6        # плоская кровля ризалита = низ аттика
+
+def roof_a(z=EAVE, rise=3.4, ov=0.5):
+    """Вальма корпуса A (как hip_roof) с вырезом в переднем скате над ризалитом."""
+    F = FA
+    a, b, c, e = -0.2 - ov, 64.7 + ov, 0.0 + ov, -17.9 - ov
+    half = (c - e) / 2
+    dm = (c + e) / 2
+    nb = c - (Z_TOP - z) * half / rise          # где скат доходит до кровли ризалита
+    R0, R1 = F.p(a + half, dm, z + rise), F.p(b - half, dm, z + rise)
+    A, B, C, D = F.p(a, c, z), F.p(b, c, z), F.p(b, e, z), F.p(a, e, z)
+    face('roof', [A, F.p(PU0, c, z), F.p(PU0, nb, Z_TOP), F.p(PU1, nb, Z_TOP), F.p(PU1, c, z),
+                  B, R1, R0], F.N() + UP)
+    face('roof', [C, D, R0, R1], -F.N() + UP)
+    face('roof', [D, A, R0], -F.U() + UP)
+    face('roof', [B, C, R1], F.U() + UP)
+    face('trim', [A, F.p(PU0, c, z), F.p(PU0, 0.0, z), F.p(PU1, 0.0, z), F.p(PU1, c, z), B, C, D], -UP)
+    beam('roof', R0 + UP * 0.05, R1 + UP * 0.05, 0.28, 0.16)
+    # объём ризалита за стеной портика до ската: стены, плоская кровля, бортик
+    box('wall', F, PU0, PU1, nb, -0.05, ZC - 1.0, Z_TOP - 0.2, bottom=False)
+    box('stone', F, PU0, PU1, nb, -0.05, Z_TOP - 0.2, Z_TOP + 0.02, bottom=False)
+    for u0, u1 in ((PU0 - 0.1, PU0 + 0.25), (PU1 - 0.25, PU1 + 0.1)):
+        box('trim', F, u0, u1, nb - 0.1, 0.0, Z_TOP - 0.2, Z_TOP + 0.15, bottom=False)
+    box('trim', F, PU0 - 0.1, PU1 + 0.1, nb - 0.1, nb + 0.25, Z_TOP - 0.2, Z_TOP + 0.15, bottom=False)
+
 def build_roofs():
-    # A: вдоль проспекта
-    hip_roof(FA, -0.2, 64.7, 0.0, -17.9, EAVE, 3.4, ov=0.5)
+    # A: вдоль проспекта. Над ризалитом портика скат вырезан: его свес (13.2 м)
+    # ниже верха стены ризалита (14.0) и протыкал её под карнизом, а аттик с
+    # буквами висел над скатом без объёма под собой.
+    roof_a()
     # B: северо-восточное крыло, конёк вдоль −n; d — по +u
     FB = PF(0, 0, 0, -1, 1, 0)
     hip_roof(FB, 9.5, 54.4, 13.2, 0.0, EAVE, 2.5, ov=0.5, hip0=False, hip1=True)
@@ -551,8 +578,9 @@ def build_sign():
             box('trim', F, u - c * w, u - a * w, -0.9, -0.7, zb + b * hh, zb + d_ * hh, bottom=False)
         u -= w + gap
     # каркас
+    # стойки стоят на кровле ризалита за аттиком, а не висят над ней
     for uu in (UC - total / 2 - 0.3, UC - total / 4, UC, UC + total / 4, UC + total / 2 + 0.3):
-        beam('metal', F.p(uu, -0.8, top), F.p(uu, -0.8, zb + hh + 0.3), 0.08)
+        beam('metal', F.p(uu, -0.8, Z_TOP), F.p(uu, -0.8, zb + hh + 0.3), 0.08)
     beam('metal', F.p(UC - total / 2 - 0.3, -0.8, zb - 0.15), F.p(UC + total / 2 + 0.3, -0.8, zb - 0.15), 0.08)
     beam('metal', F.p(UC - total / 2 - 0.3, -0.8, zb + hh + 0.3), F.p(UC + total / 2 + 0.3, -0.8, zb + hh + 0.3), 0.08)
 
