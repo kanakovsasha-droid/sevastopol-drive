@@ -1,8 +1,8 @@
-import { E63Sound, loadGrainWorklet } from './engine-audio.js?v=daf8a8c2';
-import { RoadSurface } from './roadsurf.js?v=daf8a8c2';
-import { TireSmoke } from './smoke.js?v=daf8a8c2';
-import { Garage } from './garage.js?v=daf8a8c2';
-import { CARS } from './vehicle.js?v=daf8a8c2';
+import { E63Sound, loadGrainWorklet } from './engine-audio.js?v=9418e1bb';
+import { RoadSurface } from './roadsurf.js?v=9418e1bb';
+import { TireSmoke } from './smoke.js?v=9418e1bb';
+import { Garage } from './garage.js?v=9418e1bb';
+import { CARS } from './vehicle.js?v=9418e1bb';
 
 // Всё, что машина делает «вокруг» физики: коробка и привод с клавиатуры,
 // звук мотора и шин, дым из-под колёс.

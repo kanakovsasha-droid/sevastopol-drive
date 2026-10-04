@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=e4f92276';
-import { ENV, registerLamps } from './env.js?v=e4f92276';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=9418e1bb';
+import { ENV, registerLamps } from './env.js?v=9418e1bb';
 
 // АЗС: какая это сеть, и модель сети из Blender (models/azs_<сеть>/build.py →
 // data/models/azs_<сеть>.glb) на месте заправки из OSM.
