@@ -36,6 +36,12 @@ const KEY_SOUND = 'sev.sound';
 const MOD_CARS = {
   w213: { a: 'Bank_096', b: 'Bank_097', ref: { load: [46, 57, 2300], exhaust: 1740 } },
   w212: { a: 'Bank_094', b: 'Bank_095', ref: { load: [41, 53, 2100], exhaust: 1590 } },
+  // «W212 E63 AMG Sound Mod v4 [FIX]»: петля мотора тянется 29→44 Гц, выхлоп
+  // повторяется на 39 Гц — опорные обороты пересчитаны от w212 по тем же
+  // мерам. GTA-вариант совпадает с w212 байт в байт, TUNING — новый.
+  // Выстрел лежит не в варианте, а рядом: Bonus/Bank_132/sound_038.
+  w212v4: { a: 'Bank_094', b: 'Bank_095', ref: { load: [29, 44, 1620], exhaust: 1220 },
+    bonus: '../Bonus/Bank_132/sound_038.wav' },
 };
 const MOD_VARIANTS = ['tuning', 'stock', 'gta'];
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|.*\.localhost|.*\.test)$/.test(location.hostname);
@@ -66,6 +72,7 @@ export async function loadModPack(ctx, id, base = '../data/') {
   const M = MOD_CARS[car], dir = `${base}audio-local/${car}/${v.toUpperCase()}/`;
   const files = { load: `${M.b}/sound_001.wav`, exhaust: `${M.a}/sound_002.wav`, decel: `${M.b}/sound_003.wav` };
   if ((await listing(dir)).includes('Bonus/')) files.bonus = `Bonus/${M.a}/sound_001.wav`;
+  else if (M.bonus) files.bonus = M.bonus;
   const bufs = {};
   await Promise.all(Object.entries(files).map(([k, f]) => fetch(dir + f).then(r => r.arrayBuffer())
     .then(ab => ctx.decodeAudioData(ab)).then(b => { bufs[k] = b; })));
