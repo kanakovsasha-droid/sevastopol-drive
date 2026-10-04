@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ENV } from './env.js?v=14dfd539';
 
 // Свет машины: выкл · габариты · ближний · дальний · авто (клавиша L).
 //
@@ -18,6 +19,20 @@ import * as THREE from 'three';
 // каждом пикселе города, а пятна на асфальте всё равно сливаются. Прожектор
 // стоит в сцене всегда, при выключенных фарах — с нулевой силой: добавить или
 // убрать источник света — пересборка шейдеров всего города, секундный стоп.
+//
+// Форму луча задаёт не конус, а проецируемая текстура (spot.map, «маска
+// фары»): у круглого конуса нет ни резкой верхней границы, ни распределения
+// силы света, и пятно ложится у самого бампера. В текстуре — светораспределение
+// как у настоящей фары по правилам ЕЭК: ближний обрезан горизонтальной линией
+// чуть ниже горизонта (асфальт освещён метров на 45–50) с подъёмом 15° вправо
+// — к обочине своей стороны; сила света растёт к линии отсечки, чтобы дальний
+// край дороги не тонул (освещённость земли падает как куб расстояния). Дальний
+// — узкий яркий пучок вдоль горизонта поверх ближнего, на 100–150 м. Затухание
+// физическое (1/r²). Текстура у прожектора есть всегда, меняется только какая —
+// иначе снова пересборка шейдеров.
+//
+// Мокрый асфальт: блики от фар считает шейдер дороги (materials.js) по
+// ENV.uHead* — положению фар, их силе и той же маске луча.
 //
 // Заодно приглушаем отражения на кузове: карта окружения у машины дневная,
 // и ночью лак светился бы полуденным небом.
@@ -52,6 +67,70 @@ const COLOR = {
   reverse: 0xfffaf2, reverseGlass: 0xfffaf2,
 };
 
+// ---------------------------------------------------------------- маска фары
+// Ось прожектора опущена на PITCH от горизонта машины, полуугол конуса ANGLE:
+// верх конуса — выше горизонта (дальний), по бокам на горизонте — ±45°.
+const ANGLE = 0.80, PITCH = 0.10;
+const LAMP_H = 0.5;                       // высота прожектора в кузове, м
+const ROAD_H = 0.55;                      // он же над асфальтом (кузов на 5 см выше точки дороги, замерено)
+const D = Math.PI / 180;
+const CUT = -Math.atan(ROAD_H / 46);      // отсечка ближнего: асфальт до ~46 м
+const BW = 256, BH = 1024;
+const BEAM_I = 2.4e5;                     // сила света в максимуме маски ближнего, кд                // по высоте мельче: отсечка — доли градуса
+
+// Сила света ближнего в направлении (e — угол места, a — азимут, вправо +), 0..1.
+function lowBeam(e, a) {
+  // слева (встречная полоса) отсечка ровная, справа поднимается под 15° на 1°
+  const cut = CUT + Math.min(Math.max(a, 0), 3.7 * D) * Math.tan(15 * D);
+  const edge = smoothstep(cut + 0.07 * D, cut - 0.07 * D, e);
+  // по высоте: точка дороги, куда смотрит луч, — d = h / tg(−e); силу растим
+  // к отсечке ~ d^2.2, иначе освещённость (∝ I·h/d³) у бампера в сотни раз
+  // больше, чем на 40 м
+  // ближе 3 м асфальт закрыт капотом и бампером — там луча нет, иначе под
+  // носом машины горело бы белое пятно
+  const d = e < -0.02 * D ? ROAD_H / Math.tan(-e) : 1e3;
+  const v = Math.min(1, Math.max(0.004, Math.pow(d / 46, 2.2))) * smoothstep(2.5, 7, d);
+  // по ширине: вправо шире (обочина, пешеходы), влево уже (не слепить встречных)
+  const wide = Math.exp(-((a / ((a < 0 ? 24 : 32) * D)) ** 2));
+  const hot = Math.exp(-(((a - 2 * D) / (9 * D)) ** 2));    // пятно чуть правее оси
+  // над отсечкой — слабый рассеянный свет (знаки, кроны), как у живой фары
+  return edge * v * wide * (0.55 + 0.45 * hot) + 0.006 * wide * (1 - edge);
+}
+// Дальний поверх ближнего: узкий пучок вдоль горизонта. По высоте — тот же
+// приём, что у ближнего: сила растёт с дальностью точки дороги до ~110 м,
+// иначе он выжег бы асфальт в двадцати метрах; выше горизонта гаснет за 1.5°.
+function highBeam(e, a) {
+  const d = e < -0.02 * D ? ROAD_H / Math.tan(-e) : 1e3;
+  const vert = Math.pow(Math.min(d, 110) / 110, 2.4) * smoothstep(2.5, 7, d)
+             * (e > 0 ? Math.exp(-((e / (1.5 * D)) ** 2)) : 1);
+  return 12 * vert * (Math.exp(-((a / (8 * D)) ** 2)) + 0.18 * Math.exp(-((a / (20 * D)) ** 2)));
+}
+function smoothstep(e0, e1, x) { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); }
+
+// Текстура в осях камеры прожектора (её строит SpotLightShadow): u — вправо
+// по ходу, v — вверх, перспектива с полууглом ANGLE, ось опущена на PITCH.
+function beamTexture(high) {
+  const data = new Uint16Array(BW * BH * 4), t = Math.tan(ANGLE);
+  const cp = Math.cos(PITCH), sp = Math.sin(PITCH);
+  for (let j = 0; j < BH; j++) {
+    const y = ((j + 0.5) / BH * 2 - 1) * t;
+    const vert = y * cp - sp, fwd = y * sp + cp;
+    for (let i = 0; i < BW; i++) {
+      const lat = ((i + 0.5) / BW * 2 - 1) * t;
+      const e = Math.atan2(vert, Math.hypot(fwd, lat)), a = Math.atan2(lat, fwd);
+      const I = lowBeam(e, a) + (high ? highBeam(e, a) : 0);
+      const h = THREE.DataUtils.toHalfFloat(I), k = (j * BW + i) * 4;
+      data[k] = data[k + 1] = data[k + 2] = h; data[k + 3] = 0x3c00;
+    }
+  }
+  const tex = new THREE.DataTexture(data, BW, BH, THREE.RGBAFormat, THREE.HalfFloatType);
+  tex.magFilter = tex.minFilter = THREE.LinearFilter;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 const ls = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* приватное окно */ } },
@@ -60,14 +139,22 @@ const ls = {
 export class CarLights {
   constructor(scene) {
     this.scene = scene;
-    const spot = new THREE.SpotLight(0xfff0d8, 0, 95, 0.50, 0.6, 1.1);
+    const spot = new THREE.SpotLight(0xfff0d8, 0, 120, ANGLE, 0.1, 2);
     spot.castShadow = false;
+    this.beams = [beamTexture(false), beamTexture(true)];
+    spot.map = this.beams[0];
+    spot.shadow.camera.near = 0.05;          // ближе — маска не действует, бампер вспыхнул бы
+    spot.shadow.camera.updateProjectionMatrix();
+    ENV.uHeadMap.value = spot.map;
+    ENV.uHeadMat.value = spot.shadow.matrix;  // та же матрица, что у маски прожектора
     this.target = new THREE.Object3D();
     spot.target = this.target;
     scene.add(spot, this.target);
     this.spot = spot;
     this.mode = LIGHT_MODES.includes(ls.get('sev.lights')) ? ls.get('sev.lights') : 'auto';
     this.mesh = null;
+    this._v = new THREE.Vector3();
+    this.lens = new THREE.Vector3(0.72, 0.68, 2.3);   // правая линза ближнего в кузове (уточняет _adopt)
     this.env = []; this.lamps = [];
     this.on = 0; this.high = 0; this.park = 0; this.drl = 0; this.brake = 0; this.back = 0;
   }
@@ -102,7 +189,7 @@ export class CarLights {
         box.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inv);
         const z = box.getCenter(c).z;
         if (LAMPS[m.name]) named = true;
-        found.push({ m, role: LAMPS[m.name], z });
+        found.push({ m, role: LAMPS[m.name], z, box: box.clone() });
       }
     });
     // Коробочная запасная модель (createCarMesh): у неё имён нет, фонари —
@@ -118,6 +205,10 @@ export class CarLights {
       if (!m.userData.lamp) m.userData.lamp = { col: new THREE.Color(COLOR[role]), op: m.opacity };
       this.lamps.push({ m, role });
     }
+    // где линзы ближнего — оттуда на мокром асфальте тянутся блики фар
+    const lb = new THREE.Box3();
+    for (const f of found) if (f.role === 'lens' && this.lamps.some(l => l.m === f.m)) lb.union(f.box);
+    if (!lb.isEmpty()) this.lens.set(Math.max(Math.abs(lb.min.x), Math.abs(lb.max.x)) * 0.85, (lb.min.y + lb.max.y) / 2, lb.max.z);
   }
 
   // night — 0..1 из env.js, day — сколько дневного света (для отражений),
@@ -175,14 +266,26 @@ export class CarLights {
       if (m.transparent && role !== 'headGlass') m.opacity = Math.max(L.op, Math.min(0.85, 0.3 * lv[role]));
     }
 
-    // прожектор: из-под фар вперёд и вниз на дорогу; дальний — дальше и уже
+    // прожектор: из-под фар вперёд, ось опущена на PITCH; форма — маска луча.
+    // Дальний — другая маска (ближний + пучок): у живой фары он включается
+    // сразу, плавно растёт только сила.
     mesh.updateMatrixWorld();
     const M = mesh.matrixWorld;
-    this.spot.intensity = this.on * (150 + 260 * this.high);
-    this.spot.distance = 95 + 90 * this.high;
-    this.spot.angle = 0.50 - 0.08 * this.high;
-    this.spot.position.set(0, 0.5, 2.55).applyMatrix4(M);   // перед бампером, ниже капота: иначе блик на лаке
-    this.target.position.set(0, -0.6 + 0.5 * this.high, 24 + 30 * this.high).applyMatrix4(M);
+    this.spot.map = this.beams[this.high > 0.5 ? 1 : 0];
+    this.spot.intensity = this.on * BEAM_I;
+    this.spot.distance = 120 + 140 * this.high;
+    this.spot.position.set(0, LAMP_H, 2.55).applyMatrix4(M);   // перед бампером, ниже капота: иначе блик на лаке
+    this.target.position.set(0, LAMP_H - 20 * Math.tan(PITCH), 22.55).applyMatrix4(M);
+    // для бликов на мокром асфальте: прожектор, его сила и маска, обе линзы
+    const sp = this.spot.position;
+    ENV.uHead.value.set(sp.x, sp.y, sp.z, this.spot.intensity);
+    ENV.uHeadMap.value = this.spot.map;
+    const v = this._v.copy(this.lens).applyMatrix4(M);
+    ENV.uHeadR.value.set(v.x, v.y, v.z, this.on);
+    v.set(-this.lens.x, this.lens.y, this.lens.z).applyMatrix4(M);
+    ENV.uHeadL.value.set(v.x, v.y, v.z, this.on);
+    v.set(0, 0, 1).transformDirection(M);
+    ENV.uHeadDir.value.set(v.x, v.y, v.z, 0);
     this.target.updateMatrixWorld();
   }
 }
