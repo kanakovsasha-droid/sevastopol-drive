@@ -210,10 +210,14 @@ for (let it = 0; it < 70; it++) {
   for (let i = 0; i < N; i++) { let s = GS[i] * 2, w = 2; const l = nb[i]; for (let k = 0; k < l.length; k += 2) { s += GS[l[k]]; w++; } T[i] = s / w; }
   GS.set(T);
 }
+// Потолок — 25%, а не 18%: там, где склон сам круче (2-я Линия Бомборы —
+// 27% в среднем на 148 м), предел 18% невыполним — решатель строил насыпь
+// на 7 м внизу и выемку на 4 м наверху, и всё равно оставлял 20 рёбер по
+// 19–20%. Физика машины держит подъём до 28%.
 for (const e of edges) {
   if (e[4]) continue;
   const slope = Math.abs(GS[e[0]] - GS[e[1]]) / e[2];
-  e[3] = Math.min(0.18, Math.max(e[3], slope * 1.15 + 0.01));
+  e[3] = Math.min(0.25, Math.max(e[3], slope * 1.15 + 0.01));
 }
 
 // ---------------------------------------------------------------- решатель
@@ -250,15 +254,19 @@ const bend = () => {
     Hh[b] += t * kb * mb; Hh[a] -= t / l1 * ma; Hh[d] -= t / l2 * md;
   }
 };
+// Перелом проверяется перед КАЖДЫМ проходом по уклонам, а не раз на три:
+// иначе три прохода по уклону перебивали один по перелому, и на коротких
+// рёбрах (4–5 м, Троллейбусный спуск) переломы оставались до 12%.
 const project = () => {
-  bend();
-  for (let pass = 0; pass < 3; pass++)
+  for (let pass = 0; pass < 3; pass++) {
+    bend();
     for (const [a, b, len, g, , imp] of edges) {
       const d = Hh[a] - Hh[b], lim = g * len;
       if (Math.abs(d) <= lim) continue;
       const ma = mob(a, imp), mb = mob(b, imp), ex = (Math.abs(d) - lim) * Math.sign(d) / (ma + mb);
       Hh[a] -= ex * ma; Hh[b] += ex * mb;
     }
+  }
 };
 for (let it = 0; it < 900; it++) {
   for (let i = 0; i < N; i++) {
@@ -273,7 +281,9 @@ for (let it = 0; it < 900; it++) {
   for (let i = 0; i < N; i++) Hh[i] = Hh[i] * 0.3 + T[i] * 0.7;
   if (it % 3 === 0) project();
 }
-for (let k = 0; k < 120; k++) project();
+// Доводка одними проекциями: 1200 кругов (было 120) — переломов сверх
+// предела 83 → 2, худший 9.6% → 5.1%; ~15 с вместо 4.
+for (let k = 0; k < 1200; k++) project();
 // итог: отклонение от земли и уклоны
 {
   let maxDev = 0, over = 0;
