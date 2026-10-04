@@ -5,8 +5,8 @@
 // Всё хранится в localStorage (env.js — sev.env, gamepad.js — sev.pad):
 // после перезагрузки тот же вечер, та же погода, та же раскладка.
 
-import { WEATHER, SEASONS, sunDirection } from './env.js?v=46b82387';
-import { ACTIONS } from './gamepad.js?v=46b82387';
+import { WEATHER, SEASONS, sunDirection } from './env.js?v=6faf90df';
+import { ACTIONS } from './gamepad.js?v=6faf90df';
 
 const CSS = `
 #settings{position:fixed;inset:0;z-index:22;display:none;align-items:center;justify-content:center;
