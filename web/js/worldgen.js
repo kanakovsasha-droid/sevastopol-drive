@@ -7,6 +7,7 @@ import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt } from './roadlevels
 import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=6faf90df';
 import { resolveAreas, sportSkipIds } from './sport.js?v=6faf90df';
 import { planParking, roadSegIndex } from './parking.js?v=6faf90df';
+import { seriesOf, seriesWall, seriesExtras } from './series.js';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -3711,7 +3712,10 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
       : flatRoof ? ROOFS_FLAT[(rand() * ROOFS_FLAT.length) | 0]
       : ROOFS_TILE[(rand() * ROOFS_TILE.length) | 0];
     const tint = 0.93 + rand() * 0.15;
-    const w = [Math.min(1, wall[0] * tint), Math.min(1, wall[1] * tint), Math.min(1, wall[2] * tint)];
+    // типовой дом (series.js): свой фасад, цвет и сетка пролётов на стенах
+    const ser = seriesOf(b);
+    const wc0 = ser ? ser.color : wall;
+    const w = [Math.min(1, wc0[0] * tint), Math.min(1, wc0[1] * tint), Math.min(1, wc0[2] * tint)];
     // гараж, сарай, будка — окон не рисуем
     const wallKind = market ? 4 : b.temple ? 13 : b.school ? 12
       : b.fx === 'glass' ? 10 : b.arch ? 11 : b.go ? 7
@@ -3727,17 +3731,19 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
       const l = Math.hypot(dx, dz);
       if (l < 0.15) continue;
       const nx = dz / l, nz = -dx / l;
-      const u0 = u, u1 = u + l;
+      let u0 = u, u1 = u + l, wk = wallKind;
       u = u1;
+      if (ser) ({ kind: wk, u0, u1 } = seriesWall(ser, i, ax, az, bx, bz, l));
       // Обход ПО нормали: при обратном порядке стена отсекается как задняя грань,
       // и снаружи видно нутро дома вместо ближних стен.
-      pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wallKind);
-      pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wallKind);
-      pushV(bx, yBase, bz, nx, 0, nz, w, u1, wb, Hb, wallKind);
-      pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wallKind);
-      pushV(ax, yTop, az, nx, 0, nz, w, u0, Hb, Hb, wallKind);
-      pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wallKind);
+      pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wk);
+      pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wk);
+      pushV(bx, yBase, bz, nx, 0, nz, w, u1, wb, Hb, wk);
+      pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wk);
+      pushV(ax, yTop, az, nx, 0, nz, w, u0, Hb, Hb, wk);
+      pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wk);
     }
+    if (ser) { seriesExtras(ser, yFloor, yTop, w, Hb, boxSolid); stats.series = (stats.series || 0) + 1; }
 
     // Рыночный ряд: длинный сарай под двускатной ребристой кровлей, по бокам
     // тент над проходом. Вальма из общего кода тут не годится — ряд узкий

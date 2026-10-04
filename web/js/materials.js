@@ -88,6 +88,9 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody, season = '' 
 //        4 рыночный ряд (ролеты) · 5 профнастил кровли · 6 тент · 7 фасад с парадным ордером
 //        8 ворота гаража · 9 стена гаража из блоков · 10 витраж ТЦ
 //        11 парадный ордер с арками · 12 школа · 13 храм
+//        14 хрущёвка · 15 сталинка · 16 девятиэтажка (типовые дома, series.js);
+//        у 14 и 16 дробная часть — S/16 на стене подъездов (S пролётов на
+//        секцию), 0.875 — глухой торец
 export function buildingMaterial() {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.84, metalness: 0.0 });
   return inject(mat, 'sev-building', {
@@ -117,14 +120,16 @@ export function buildingMaterial() {
         vec3 c = diffuseColor.rgb;
         float rough = 0.84;
 
-        if (vKind < 0.5 || (vKind > 6.5 && vKind < 7.5) || (vKind > 10.5 && vKind < 11.5)) {
+        if (vKind < 0.5 || (vKind > 6.5 && vKind < 7.5) || (vKind > 10.5 && vKind < 11.5)
+            || (vKind > 14.5 && vKind < 15.5)) {
           // ---- фасад ----
           // Севастопольский центр — послевоенный фонд 1950-х: 3–5 этажей,
           // высокие окна с белыми наличниками, межэтажные тяги, карниз поверху.
           // парадный ордер (kind 7): этаж 5.2 м вместо 3.3 — послевоенная
           // классика с высокими залами, иначе двухэтажный корпус режется на четыре
           float fh0 = vKind > 6.5 ? 5.20 : 3.30;
-          float forceArch = step(10.5, vKind);          // 11 — окна заведомо арочные
+          float stal = step(14.5, vKind);               // 15 — сталинка Центрального холма
+          float forceArch = step(10.5, vKind) * (1.0 - stal);   // 11 — окна заведомо арочные
           float nf = max(1.0, floor(vWall.z / fh0 + 0.35));
           float fh = vWall.z / nf;
           float fpos = vWall.y / fh;
@@ -132,7 +137,8 @@ export function buildingMaterial() {
 
           // шаг простенков свой у каждого дома, иначе весь город в одну линейку
           float seed = floor(vWall.z * 7.0);
-          float bay = 2.65 + 0.95 * hash21(vec2(seed, 3.0));
+          // у сталинки сетка ровная: 3.1 м, целое число пролётов на стену (series.js)
+          float bay = mix(2.65 + 0.95 * hash21(vec2(seed, 3.0)), 3.10, stal);
           float bpos = vWall.x / bay;
           float bi = floor(bpos), fx = fract(bpos);
           float r = hash21(vec2(bi, fi) + seed * 0.37);
@@ -148,7 +154,7 @@ export function buildingMaterial() {
           // одинаковый ритм, одинаковый низ. Стиль постоянен для здания —
           // берётся из его же высоты, поэтому не мерцает.
           float style = hash21(vec2(seed, 11.0));
-          float arch = max(forceArch, step(0.70, style));   // полуциркульные завершения окон
+          float arch = max(forceArch, step(0.70, style)) * (1.0 - stal);   // полуциркульные завершения окон
           float hasBalc = step(style, 0.38);   // балконы на верхних этажах
           // часть домов получает полуциркульные окна ТОЛЬКО на последнем этаже —
           // так верх отличается от середины, как в послевоенной застройке.
@@ -166,6 +172,7 @@ export function buildingMaterial() {
           x0 = mix(x0, 0.36, door); x1 = mix(x1, 0.64, door);
           y0 = mix(y0, 0.02, door); y1 = mix(y1, 0.70, door);
 
+          archTop *= 1.0 - stal;
           float archAmt = max(arch * upper, archTop * topFloor) * (1.0 - door);
           float ax = clamp((fx - (x0 + x1) * 0.5) / max(0.001, (x1 - x0) * 0.5), -1.0, 1.0);
           float y1e = y1 - archAmt * 0.17 * (1.0 - sqrt(max(0.0, 1.0 - ax * ax)));
@@ -248,6 +255,20 @@ export function buildingMaterial() {
             float seam = smoothstep(0.40, 0.485, max(fb.x, fb.y));
             c *= 1.0 - 0.30 * seam * rust;
             c *= 1.0 + 0.10 * rust * (hash21(floor(blk)) - 0.5);
+          }
+
+          // ---------- сталинка: лопатки и сухарики карниза ----------
+          // Послевоенный центр узнаётся по вертикалям: плоские лопатки через
+          // два пролёта от второго этажа до карниза, и по тяжёлому карнизу
+          // с поясом сухариков. Лопатка — светлая полоса 0.5 м с тенью сбоку.
+          if (stal > 0.5) {
+            float pm = (fract(bpos * 0.5 + 0.25) - 0.5) * bay * 2.0;   // метров от оси лопатки
+            float pil = lr(0.26 - abs(pm), 60.0) * upper * (1.0 - cornice);
+            float pilS = lr(0.34 - abs(pm + mix(0.26, -0.26, sunR)), 40.0) * (1.0 - pil) * upper * (1.0 - cornice);
+            c = mix(c, c * 1.07 + 0.03, pil);
+            c *= 1.0 - 0.18 * pilS;
+            float dent = step(0.5, fract(vWall.x / 0.36)) * lr(ty2 - 0.62, 30.0) * (1.0 - lr(ty2 - 0.80, 30.0));
+            c *= 1.0 - 0.30 * dent;
           }
 
           // ---------- водосточная труба ----------
@@ -412,6 +433,154 @@ export function buildingMaterial() {
           c = mix(vec3(0.94, 0.93, 0.90), c, st);
           c *= 0.93 + 0.10 * hash21(floor(vWall.xy * 3.0));
           rough = 0.80;
+        } else if (vKind > 13.5) {
+          // ---- типовой дом: хрущёвка (14) и девятиэтажка (16) ----
+          // Ритм массового жилья: ровная сетка одинаковых окон, стояки
+          // балконов или лоджий, лестничная клетка с окнами в полэтажа над
+          // дверью подъезда. Сетка пролётов целая на каждой стене (series.js).
+          float p9 = step(15.5, vKind);
+          float fk = fract(vKind);
+          float blank = step(0.8, fk);                         // глухой торец
+          float S = (1.0 - blank) * floor(fk * 16.0 + 0.5);    // пролётов на секцию
+          float B = mix(3.2, 3.0, p9);
+          float top = vWall.z - 1.2;                           // верх последнего этажа
+          float nf = max(1.0, floor(top / 3.2 + 0.5));
+          float fh = top / nf;
+          float fpos = vWall.y / fh;
+          float fi = floor(fpos), fy = fract(fpos);
+          float bpos = vWall.x / B;
+          float bi = floor(bpos), fx = fract(bpos);
+          // Зерно дома — от его цвета: у всех пятиэтажек высота одна и та же.
+          // Округляем, а не отбрасываем дробь: цвет вершины приходит в
+          // интерполяции с ошибкой в последнем знаке, и floor мигал бы по
+          // пикселям — фасад шёл сыпью из разных балконов и стёкол.
+          float bs = hash21(floor(c.rg * 255.0 + 0.5));
+          float r = hash21(vec2(bi, fi) + bs * 31.0);
+          float rc = hash21(vec2(bi, 4.0) + bs * 17.0);        // свойство стояка
+          float roofZone = step(top, vWall.y);
+          float ground = step(fpos, 1.0) * (1.0 - roofZone);
+          float panel = max(p9, step(0.55, bs));               // 1-464 панель или 1-447 кирпич
+
+          // лестничная клетка: середина каждой секции на стене подъездов
+          float stair = step(0.5, S) * (1.0 - step(0.5, abs(mod(bi, max(S, 1.0)) - floor(S * 0.5))));
+          float wide = step(0.5, mod(bi, 2.0));                // комната / кухня
+          float x0 = mix(0.30, 0.22, wide), x1 = mix(0.70, 0.78, wide);
+          float y0 = 0.32, y1 = 0.80;
+          float sy = fy;
+          float door = stair * ground;
+          if (stair > 0.5) {
+            // окно площадки — в полэтажа выше, узкое
+            x0 = 0.34; x1 = 0.66; sy = fract(fpos - 0.5); y0 = 0.30; y1 = 0.70;
+            if (door > 0.5) { x0 = 0.31; x1 = 0.69; sy = fy; y0 = 0.0; y1 = 2.15 / fh; }
+          }
+          float wx = (fx - x0) * B, wxr = (x1 - fx) * B, wy = (sy - y0) * fh, wyt = (y1 - sy) * fh;
+          float win = lr(wx, 60.0) * lr(wxr, 60.0) * lr(wy, 60.0) * lr(wyt, 60.0);
+          // лестничное окно на уровне земли и над кровлей не рисуем
+          win *= (1.0 - roofZone) * (1.0 - blank) * step(0.4, vWall.y);
+          win *= 1.0 - stair * (1.0 - door) * step(fpos, 0.75);
+
+          // стояк балконов (хрущёвка) или лоджий (девятиэтажка)
+          float balc = (1.0 - stair) * (1.0 - blank) * step(0.55, rc) * step(1.0, fi) * (1.0 - roofZone);
+          float loggia = balc * p9;
+          balc *= 1.0 - p9;
+
+          // ---- стена ----
+          float sw = max(0.018, fwidth(vWall.x) * 0.9);
+          if (panel > 0.5) {
+            // панели на комнату и этаж: тёмный шов, светлая фаска над ним
+            float dv = abs(fx - 0.5) * B;                         // метров от оси пролёта
+            float sv = 1.0 - smoothstep(sw, sw * 2.0, B * 0.5 - dv);
+            float dh = fy * fh;
+            float sh = 1.0 - smoothstep(sw, sw * 2.0, min(dh, fh - dh));
+            c *= 1.0 - 0.20 * max(sv, sh) * (1.0 - roofZone * 0.5);
+            c *= 0.96 + 0.07 * hash21(vec2(bi, fi) + 3.1);
+          } else {
+            // силикатный кирпич: ряды 7.7 см, гаснут дальше пикселя. Без
+            // разнотона по кирпичам — издали он рассыпается в сыпь точек.
+            float kr = fract(vWall.y / 0.077);
+            float fade = clamp(1.6 - fwidth(vWall.y / 0.077) * 2.0, 0.0, 1.0);
+            c *= 1.0 - 0.08 * fade * (1.0 - lr(kr - 0.10, 12.0));
+          }
+          c *= 0.93 + 0.12 * vnoise(vWall.xy * 0.09);             // выцветание пятнами
+          // парапет: слив и тень под ним, у кирпичного — напуск рядов
+          float ty2 = vWall.z - vWall.y;
+          c = mix(c, c * 1.12 + 0.04, lr(0.16 - ty2, 60.0));
+          c *= 1.0 - 0.20 * lr(ty2 - 0.16, 30.0) * (1.0 - lr(ty2 - 0.34, 30.0));
+          c *= 1.0 - 0.16 * (1.0 - panel) * step(0.5, fract(ty2 / 0.23)) * lr(ty2 - 0.34, 30.0) * (1.0 - lr(ty2 - 1.05, 30.0));
+          // потёки под парапетом и брызги у земли
+          float sx = hash21(vec2(floor(vWall.x / 0.21), 7.0));
+          c *= 1.0 - 0.09 * lr(sx - 0.6, 3.0) * lr(ty2 - 0.4, 4.0) * (1.0 - lr(ty2 - 1.6, 0.5));
+          c *= 1.0 - 0.14 * (1.0 - lr(vWall.y - 1.0, 1.4));
+
+          // ---- проём ----
+          vec3 glass = mix(vec3(0.085, 0.100, 0.118), vec3(0.205, 0.245, 0.27), r);
+          glass = mix(glass * 0.55, glass * 1.8, pow(1.0 - sy, 1.6));
+          if (r > 0.84) glass = mix(glass, vec3(0.55, 0.51, 0.45), 0.7);     // занавеска
+          // рамы: старые деревянные или белый пластик — вперемешку, по квартирам
+          vec3 frameC = r < 0.55 ? vec3(0.90, 0.90, 0.88) : vec3(0.42, 0.33, 0.25);
+          float mull = 1.0 - lr(abs(fx - (x0 + x1) * 0.5) * B - 0.03, 50.0);
+          float rim = 1.0 - lr(min(min(wx, wxr), min(wy, wyt)) - 0.05, 40.0);
+          glass = mix(glass, frameC, max(mull * (1.0 - door), rim) * 0.85);
+          glass *= 1.0 - 0.38 * (1.0 - lr(wyt, 2.2));                // тень перемычки
+          // дверь подъезда: металлическое полотно, фрамуга над ним
+          glass = mix(glass, mix(vec3(0.20, 0.17, 0.15), vec3(0.32, 0.26, 0.20), bs), door * step(0.45, wyt));
+          // откос: светлый слив снизу
+          float sill = (1.0 - door) * lr(wx + 0.06, 40.0) * lr(wxr + 0.06, 40.0)
+                     * lr(-wy + 0.07, 40.0) * lr(wy + 0.01, 60.0) * (1.0 - roofZone) * (1.0 - blank);
+          c = mix(c, vec3(0.82, 0.81, 0.79), sill * 0.8);
+
+          // ---- балкон: плита и ограждение ----
+          float bxw = lr(fx - 0.10, 60.0) * lr(0.90 - fx, 60.0);
+          float bfront = balc * bxw * lr(fy - 0.02, 80.0) * (1.0 - lr(fy - 0.33, 80.0));
+          float slab = balc * lr(fx - 0.08, 60.0) * lr(0.92 - fx, 60.0) * (1.0 - lr(fy - 0.02, 80.0)) * lr(fy + 0.04, 80.0);
+          // ограждение у каждого своё: решётка, профлист, остеклённая рама.
+          // Прутья и гофра мельче пикселя гаснут до среднего тона, иначе муар.
+          vec3 railC;
+          float rk = hash21(vec2(bi, fi) + bs * 5.0);
+          float fine = clamp(1.6 - fwidth(fx * B / 0.12) * 2.0, 0.0, 1.0);
+          float bars = mix(0.45, lr(abs(fract(fx * B / 0.12) - 0.5) - 0.22, 12.0), fine);
+          if (rk < 0.4) railC = mix(vec3(0.70, 0.70, 0.68), c * 0.45, bars);
+          else if (rk < 0.75) railC = mix(vec3(0.62, 0.64, 0.62), vec3(0.55, 0.40, 0.30), step(0.6, fract(rk * 7.3)))
+                                    * (0.94 + 0.10 * fine * (abs(fract(fx * B / 0.10) - 0.5) * 2.0 - 0.5));
+          else railC = vec3(0.86, 0.86, 0.84);
+          // застеклённый балкон: рама на всю высоту этажа
+          float glazed = balc * step(0.6, fract(rk * 3.7)) * bxw * lr(fy - 0.33, 80.0) * (1.0 - lr(fy - 0.86, 80.0));
+
+          // ---- лоджия: проём во всю ширину, глубокая тень, экран внизу ----
+          float lgArea = loggia * lr(fx - 0.06, 60.0) * lr(0.94 - fx, 60.0) * (1.0 - lr(fy - 0.97, 80.0));
+          float lgFront = lgArea * (1.0 - lr(fy - 0.36, 80.0));
+          float lgGlaz = lgArea * step(0.62, fract(rk * 5.1)) * (1.0 - lgFront);
+
+          c = mix(c, glass, win);
+          float gl = win;
+          if (lgArea > 0.0) {
+            // в глубине лоджии — тень, окно и балконная дверь
+            vec3 deep = c * 0.42;
+            float inWin = lr(fx - 0.30, 60.0) * lr(0.72 - fx, 60.0) * lr(fy - 0.40, 60.0) * lr(0.92 - fy, 60.0);
+            deep = mix(deep, glass * 0.8, inWin);
+            c = mix(c, deep, lgArea * (1.0 - lgFront));
+            // экран ограждения: гладкая панель, светлее стены, тень под поручнем
+            vec3 scr = c * mix(1.00, 1.10, rk) * (1.0 - 0.25 * (1.0 - lr(0.36 - fy, 25.0)));
+            c = mix(c, scr, lgFront);
+            float lmul = 1.0 - lr(abs(fract(fx * 4.0) - 0.5) * 2.0 - 0.9, 20.0) * clamp(1.6 - fwidth(fx * 4.0) * 2.0, 0.0, 1.0);
+            c = mix(c, mix(glass, frameC, 1.0 - lmul), lgGlaz * 0.85);
+            gl = max(gl, lgGlaz);
+          }
+          c = mix(c, c * 0.62, slab);
+          c = mix(c, railC, bfront);
+          float gmul = 1.0 - lr(abs(fract(fx * 3.0) - 0.5) * 2.0 - 0.88, 16.0) * clamp(1.6 - fwidth(fx * 3.0) * 2.0, 0.0, 1.0);
+          c = mix(c, mix(glass * 1.2, frameC, 1.0 - gmul), glazed);
+          gl = max(gl, glazed);
+          rough = mix(0.88, 0.14, gl);
+
+          if (uNight > 0.01) {
+            float lit = step(hash21(vec2(bi * 1.31 + 7.0, fi * 2.17) + bs * 9.1), uNight * 0.6);
+            lit = max(lit, stair * (1.0 - door));                      // в подъезде свет всю ночь
+            vec3 lc = mix(vec3(1.0, 0.72, 0.38), vec3(0.74, 0.85, 1.0), step(0.85, fract(r * 13.7)));
+            lc *= 0.75 + 0.5 * fract(r * 31.3);
+            procEmit = lc * lit * uNight * gl * (1.0 - door) * (0.75 + 0.45 * sy);
+            procEmit += vec3(1.0, 0.86, 0.6) * 0.6 * uNight * door * (1.0 - lr(wyt - 0.45, 4.0));   // фонарь над дверью
+          }
         } else if (vKind > 11.5 && vKind < 12.5) {
           // ---- школа: широкие ленты окон, простенки, лестничный витраж ----
           // Типовая советская школа узнаётся по ритму: окна класса идут
@@ -591,7 +760,7 @@ export function buildingMaterial() {
           float r2 = 0.93;
           // окна полуподвала у жилого фасада: где цоколь высокий, он читается
           // как этаж, а не как глухая стена. Где мелко — их прячет грунт.
-          if (vKind < 0.5 || (vKind > 6.5 && vKind < 7.5) || (vKind > 10.5 && vKind < 12.5)) {
+          if (vKind < 0.5 || (vKind > 6.5 && vKind < 7.5) || (vKind > 10.5 && vKind < 12.5) || vKind > 13.5) {
             float fyb = fract(d / 3.3), bxw = fract(vWall.x / 3.0);
             float bw = step(0.30, bxw) * step(bxw, 0.70) * step(0.36, fyb) * step(fyb, 0.70) * step(1.0, d);
             stone = mix(stone, vec3(0.06, 0.07, 0.075), bw);
