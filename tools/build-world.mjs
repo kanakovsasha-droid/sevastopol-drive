@@ -709,6 +709,8 @@ function reverse(p) {
   // навес и по нему же ровняем площадку), где только точка — ставим компактную.
   world.fuel = (AREAS.fuel || []).map(f => ({
     x: f.x, z: f.z, ...(f.n ? { n: f.n } : {}), ...(f.poly ? { poly: f.poly } : {}),
+    // бренд и виды топлива — для вывесок (web/js/fuel.js)
+    ...(f.brand ? { b: f.brand } : {}), ...(f.fu?.length ? { fu: f.fu } : {}),
   }));
   for (const f of AREAS.fuel || [])
     if (f.poly && f.poly.length >= 8) world.areas.push({ k: 'fuel', poly: f.poly, ...(f.n ? { n: f.n } : {}) });

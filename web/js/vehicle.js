@@ -1232,6 +1232,11 @@ function envFor(renderer) {
   return carEnv;
 }
 
+// Карту окружения машины — заранее, за экраном загрузки: свёртка PMREM идёт
+// одним куском на видеокарте (десятки миллисекунд), и если делать её при
+// первой загрузке модели, а модель приезжает уже в игре, — стоп-кадр.
+export function warmCarEnv(renderer) { return envFor(renderer); }
+
 export function loadCarModel(url = '../data/models/e63.glb', renderer = null) {
   const v = document.querySelector('meta[name="build"]')?.content || '';
   return new GLTFLoader().loadAsync(url + (v ? '?v=' + v : '')).then(g => {

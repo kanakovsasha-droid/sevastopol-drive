@@ -27,6 +27,10 @@ import { DriveModes } from './drivemodes.js?v=3c5be47d';
 import { buildModelPlinths } from './plinth.js?v=3c5be47d';
 import { CarCam } from './carcam.js?v=3c5be47d';
 import { Precip } from './precip.js?v=3c5be47d';
+import { batchCar } from './carbatch.js?v=d8230200';
+import { loadFootprints, monumentTest } from './footprints.js?v=d8230200';
+import { loadSquares, addFarSquares, addSquares } from './squares.js';
+import { loadSkateparks, buildSkateparks } from './skatepark.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -152,6 +156,7 @@ async function boot() {
     // по нему построится первый квадрат земли и первый профиль дороги.
     await loadSport(V);
     await loadStreet(V);
+    await loadFootprints(V);              // пятна памятников — деревья их обходят
     installFlats(terrain);
     for (const id of sportSkipIds()) skipIds.add(id);
     // Для меню «куда поехать» и подписей на карте нужен ПОЛНЫЙ список — он
@@ -160,13 +165,20 @@ async function boot() {
       || await fetch(`../data/landmarks.json${V ? '?v=' + V : ''}`).then(r => r.json()).catch(() => []);
     // Террасы скверов и площадей (tools/build-terraces.mjs): 75 КБ, нужны
     // земле с первого квадрата. Нет файла — земля просто без террас.
+    await loadSquares(V);
+    await loadSkateparks(V);
     terraces = await fetch(`../data/terraces.json${V ? '?v=' + V : ''}`).then(r => r.json()).then(d => d.items).catch(() => []);
 
     await step('строю рельеф…', 26);
     initScene();
+    // warmCarEnv(renderer) здесь (cloud/e63-atlas) останавливал сборку чанков:
+    // первый квартал не достраивался, город вокруг машины пустой. Убран при
+    // сборке волны — отражения строятся при загрузке модели, как раньше.
     // far-слой раскладываем по квадратам один раз: каждый квадрат земли берёт
     // из него только своё окно, а линейный перебор 13 тысяч домов на квадрат
     // стоил бы полсекунды на круг.
+    // скверы без своего контура в OSM (squares.js) — до раскладки по квадратам
+    addFarSquares(far);
     farIndex = new FarIndex(far, 1024);
     // Связность моря — на весь мир и один раз, по грубой сетке. Внутри
     // квадрата 1024 м заливать неоткуда: в Южной бухте нет ни одной клетки
@@ -621,6 +633,7 @@ function* buildChunk(d, key) {
     // на это не рассчитаны и падают на первом же отсутствующем массиве.
     places: fill(d.places, ['paths', 'trees', 'features', 'fences', 'structures', 'trains']),
   };
+  addSquares(w);                                   // скверы без контура в OSM
   w.allBuildings = d.allBuildings || w.buildings;   // парковкам и оградам: дома соседа на шве
   const furniture = fill(d.furniture, ['points', 'barriers']);
   furniture.points = streetFurniture(furniture.points);   // Большая Морская ставит своё (street.js)
@@ -675,6 +688,7 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
   at('спорт');
   g.add(buildSport(w, terrain));
+  g.add(buildSkateparks(w, terrain));                // фигуры скейт-парков
   lap('спорт');
   yield; pt = performance.now();
   at('кладбища');
@@ -707,6 +721,9 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
 
   at('деревья');
+  // на граните памятников не сажаем (footprints.js): у них нет контура в OSM
+  const onMonument = monumentTest(defs);
+  if (onMonument) { const np = w.__noPlant || (() => false); w.__noPlant = (x, z) => np(x, z) || onMonument(x, z); }
   const props = buildStreetProps(w, terrain, roads, d.allBuildings);
   g.add(props);
   for (const [k, v] of Object.entries(props.userData.counts || {})) counts[k] = (counts[k] || 0) + v;
@@ -942,6 +959,9 @@ let carModelTicket = 0;
 function swapCarModel() {
   const ticket = ++carModelTicket;
   return loadCarModel(CARS[car.model]?.glb, renderer).then(m => {
+    // сетки с одинаковыми материалами — в одну (carbatch.js): 92 → ~35 вызовов
+    const b = batchCar(m);
+    if (b.before) console.log(`машина: сеток ${b.before} → ${b.after}, картинок-заливок ${b.flat}, повторов ${b.dedup}`);
     cheapGlass(m);
     trimCarShadows(m);
     return precompile(renderer, scene, camera, m, sun).then(() => uploadTextures(m)).then(() => m);
