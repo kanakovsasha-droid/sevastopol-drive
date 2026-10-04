@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { lampGlow } from './env.js?v=6faf90df';
-import { plantFlora, ST } from './flora.js?v=6faf90df';
-import { roadMaterial } from './materials.js?v=6faf90df';
+import { lampGlow, registerLamps } from './env.js?v=6d78c889';
+import { plantFlora, ST } from './flora.js?v=6d78c889';
+import { roadMaterial } from './materials.js?v=6d78c889';
 
 // Большая Морская — витрина города. Всё, что делает её улицей, а не дорогой
 // между коробками: ряды молодых софор в газонной полосе у бордюра, стриженые
@@ -637,7 +637,7 @@ export function buildStreet(world, terrain, onRoad, buildings) {
     }
   }
   const lampMesh = inst('фонари', G.lamp, lamps);
-  if (lampMesh) lampMesh.userData.far = 450;
+  if (lampMesh) { lampMesh.userData.far = 450; registerLamps(lampMesh, [[0.84, 4.35, 0], [-0.84, 4.35, 0]]); }
 
   // ---- остановки: у бордюра, параллельно дороге, открыты к проезжей части
   const stops = [];

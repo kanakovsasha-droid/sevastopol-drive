@@ -15,7 +15,7 @@
 //   △ / Y — выйти и сесть · ○ / B — вид камеры · □ / X — вернуть на дорогу
 //   R3 — камера за корму · L3 — автомат / ручная
 //   Options / Menu — пауза · Share / View — карта
-//   крестовина: ↑ — места, ↓ — гараж
+//   крестовина: ↑ — места, ↓ — гараж, ← — свет, → — зажигание · тачпад — режим езды
 // Китайские клоны «под PlayStation» почти все отдаются браузеру как
 // стандартный пад (mapping === 'standard'). Если нет — любую кнопку и ось
 // можно переназначить в настройках (T → Управление).
@@ -49,6 +49,9 @@ export const ACTIONS = [
   { id: 'map',     name: 'Карта',               def: { b: 8 }, key: 'Tab' },
   { id: 'places',  name: 'Места',               def: { b: 12 }, key: 'KeyM' },
   { id: 'garage',  name: 'Гараж',               def: { b: 13 }, key: 'KeyO' },
+  { id: 'lights',  name: 'Свет: фары, габариты', def: { b: 14 }, key: 'KeyL' },
+  { id: 'engine',  name: 'Завести / заглушить', def: { b: 15 }, key: 'KeyZ' },
+  { id: 'drive',   name: 'Режим езды',          def: { b: 17 }, key: 'KeyY' },
 ];
 const BY_ID = Object.fromEntries(ACTIONS.map(a => [a.id, a]));
 

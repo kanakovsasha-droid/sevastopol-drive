@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=6faf90df';
-import { surfaceTop } from './surface.js?v=6faf90df';
+import { PolyGrid } from './worldgen.js?v=6d78c889';
+import { surfaceTop } from './surface.js?v=6d78c889';
+import { buildTrafficLights } from './trafficlights.js?v=6d78c889';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
@@ -84,46 +85,6 @@ function binGeo() {
   const b = new THREE.CylinderGeometry(0.24, 0.20, 0.72, 8); b.translate(0, 0.36, 0);
   const p = new THREE.CylinderGeometry(0.045, 0.045, 0.95, 5); p.translate(0, 0.47, -0.28);
   return merge([{ geo: b, color: [0.24, 0.28, 0.24] }, { geo: p, color: DARK }]);
-}
-
-// Светофор Т.1 на консоли: стойка, вынос над полотном и головка из трёх линз.
-// Раньше это была палка с коробочкой — над дорогой ничего не висело, и на
-// перекрёстке светофор было не видно из машины.
-function trafficGeo() {
-  const parts = [];
-  const BODY = [0.10, 0.11, 0.12];
-  const pole = new THREE.CylinderGeometry(0.075, 0.10, 5.4, 8); pole.translate(0, 2.7, 0);
-  parts.push({ geo: pole, color: DARK });
-  // консоль загибается над проезжей частью — в сторону, куда светит головка
-  const arm = new THREE.CylinderGeometry(0.055, 0.065, 2.6, 6);
-  arm.rotateZ(Math.PI / 2); arm.translate(1.25, 5.28, 0);
-  const knee = new THREE.SphereGeometry(0.075, 6, 5); knee.translate(0, 5.28, 0);
-  parts.push({ geo: arm, color: DARK }, { geo: knee, color: DARK });
-
-  // основная головка — на конце консоли, линзами навстречу потоку
-  const head = new THREE.BoxGeometry(0.34, 0.98, 0.28); head.translate(2.4, 4.72, 0);
-  const visorTop = new THREE.BoxGeometry(0.40, 0.04, 0.12); visorTop.translate(2.4, 5.22, 0.09);
-  parts.push({ geo: head, color: BODY }, { geo: visorTop, color: BODY });
-  const cols = [[0.78, 0.12, 0.09], [0.80, 0.62, 0.10], [0.14, 0.60, 0.24]];
-  cols.forEach((c, i) => {
-    const l = new THREE.CylinderGeometry(0.098, 0.098, 0.06, 10);
-    l.rotateX(Math.PI / 2); l.translate(2.4, 5.05 - i * 0.29, 0.16);
-    parts.push({ geo: l, color: c });
-    // козырёк над линзой — по нему светофор и узнаётся с любого расстояния
-    const v = new THREE.BoxGeometry(0.26, 0.03, 0.10);
-    v.translate(2.4, 5.05 - i * 0.29 + 0.115, 0.20);
-    parts.push({ geo: v, color: BODY });
-  });
-
-  // пешеходная головка П.1 на самой стойке, ниже и на 90° к основной
-  const ped = new THREE.BoxGeometry(0.30, 0.62, 0.26); ped.translate(0, 2.95, 0.20);
-  parts.push({ geo: ped, color: BODY });
-  [[0.78, 0.12, 0.09], [0.14, 0.60, 0.24]].forEach((c, i) => {
-    const l = new THREE.BoxGeometry(0.19, 0.19, 0.04);
-    l.translate(0, 3.10 - i * 0.28, 0.34);
-    parts.push({ geo: l, color: c });
-  });
-  return merge(parts);
 }
 
 // ---------------------------------------------------------------- знаки ПДД
@@ -407,7 +368,8 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   // полширины полотна плюс бордюр, лицом к дороге. Если корпус не влезает —
   // отодвигаем дальше от бордюра, потом едем вдоль улицы и лишь в крайнем
   // случае переходим на другую обочину: остановка обязана остаться у дороги.
-  const snapToKerb = (p, fp, base, along = false) => {
+  // only — только эта сторона дороги (+1 — правая по ходу звена, −1 — левая)
+  const snapToKerb = (p, fp, base, along = false, only = 0) => {
     const hit = roadIndex.nearest(p.x, p.z, 45, DRIVE) || roadIndex.nearest(p.x, p.z, 120, DRIVE);
     if (!hit) return null;
     const road = hit.road;
@@ -417,7 +379,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
     // Порядок проб не случаен: своя обочина важнее всего — на ней автобус и
     // останавливается. Поэтому сперва вычерпываем её целиком (отступ от
     // бордюра, затем сдвиг вдоль улицы) и только потом идём на противоположную.
-    for (const s of [side0, -side0])
+    for (const s of only ? [only] : [side0, -side0])
       for (const t of ALONG) {
         // на сдвиге вдоль улицы заново садимся на ЕЁ ЖЕ осевую: на повороте
         // направление сегмента меняется, и отступ по старой нормали уводит в дом
@@ -495,8 +457,26 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   // перекрёстка — там на асфальте стоят все 14. Выносим на бордюр и
   // разворачиваем ВДОЛЬ улицы, навстречу потоку: линзами поперёк дороги,
   // как было раньше, светофор смотреть не может.
-  put('светофоры', trafficGeo(), byKind.traffic_light,
-    p => snapToKerb(p, FP.pole, 0.9, true) || offRoad(p, FP.pole, anyAngle));
+  // Модель и цикл огней — trafficlights.js. Точка OSM стоит на осевой,
+  // светофор нужен каждому направлению: столб у бордюра с каждой стороны
+  // (на односторонней — только справа по ходу потока). Узлы одного
+  // перекрёстка в OSM часто стоят на каждом подходе — головку, у которой
+  // в 7 м уже стоит такая же, смотрящая туда же, не дублируем.
+  {
+    const lights = [];
+    for (const p of byKind.traffic_light || []) {
+      const hit = roadIndex.nearest(p.x, p.z, 45, DRIVE);
+      const sides = hit && hit.road.ow ? [1] : [1, -1];
+      for (const sd of sides) {
+        const r = snapToKerb(p, FP.pole, 0.9, true, sd);
+        if (!r) continue;
+        if (lights.some(o => Math.hypot(o.x - r.x, o.z - r.z) < 7 && Math.cos(o.a - r.a) > 0.7)) continue;
+        lights.push(r);
+      }
+    }
+    if (lights.length) group.add(buildTrafficLights(lights, H));
+    stats['светофоры'] = lights.length;
+  }
 
   // ---------------- знаки ПДД ----------------
   // Ставим так же, как светофор: на бордюр своей стороны, щитком навстречу
