@@ -76,10 +76,14 @@ export async function loadModPack(ctx, id, base = '../data/') {
 export async function loadCarSounds(ctx, base = '../data/audio/') {
   const v = document.querySelector('meta[name="build"]')?.content || '';
   const q = v ? '?v=' + v : '';
-  const meta = await fetch(base + 'sounds.json' + q).then(r => r.json());
+  // no-cache — не «не кешировать», а «сверься с сервером»: файл с тем же
+  // адресом, но новым содержимым (петлю пересобрали) иначе живёт в кеше
+  // браузера неделями — так владелец слышал уже вырезанный свист холостых.
+  const opt = { cache: 'no-cache' };
+  const meta = await fetch(base + 'sounds.json' + q, opt).then(r => r.json());
   const names = [...Object.keys(meta.loops), ...meta.shots];
   const bufs = {};
-  await Promise.all(names.map(n => fetch(base + n + '.wav' + q).then(r => r.arrayBuffer())
+  await Promise.all(names.map(n => fetch(base + n + '.wav' + q, opt).then(r => r.arrayBuffer())
     .then(ab => ctx.decodeAudioData(ab)).then(b => { bufs[n] = b; })));
   return { bufs, meta };
 }

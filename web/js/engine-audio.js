@@ -161,15 +161,15 @@ export class E63Sound {
     nz.connect(this.intakeBP).connect(this.intakeGain).connect(this.master);
     this.noise = nz;
 
-    // ---- турбины: тихий свист по наддуву
-    this.turbo = ctx.createOscillator(); this.turbo.type = 'sine'; this.turbo.frequency.value = 2500;
-    this.turboGain = g(0);
-    this.turbo.connect(this.turboGain).connect(this.master);
-    // блоу-офф: шипение клапана при сбросе газа под наддувом
+    // ---- турбины: свиста НЕТ. Был чистый синус 7.5–8.1 кГц по наддуву — мимо
+    // всех фильтров, и на разгоне он звучал «электромотором»; владелец
+    // попросил убрать совсем. Остался блоу-офф: шипение клапана при сбросе
+    // газа под наддувом — шум, не тон; и он под ФНЧ 4 кГц, чтобы не пищал.
     this.bovBP = flt('bandpass', 2300, 1.4);
+    this.bovLP = flt('lowpass', 4000, 0.6);
     this.bovGain = g(0);
     const nz2 = ctx.createBufferSource(); nz2.buffer = nz.buffer; nz2.loop = true; nz2.loopStart = 0.7;
-    nz2.connect(this.bovBP).connect(this.bovGain).connect(this.master);
+    nz2.connect(this.bovBP).connect(this.bovLP).connect(this.bovGain).connect(this.master);
     this.noise2 = nz2;
 
     // ---- шины: визг (тон с вибрато) и шорох скольжения
@@ -195,7 +195,7 @@ export class E63Sound {
     this.shots = 0;                    // счётчик разовых звуков — для стенда
     this.on = true;
     const t0 = ctx.currentTime;
-    for (const o of [this.oscA, this.oscB, this.wob, this.sub, nz, nz2, this.turbo, this.squeal, this.vib, nz3]) o.start(t0);
+    for (const o of [this.oscA, this.oscB, this.wob, this.sub, nz, nz2, this.squeal, this.vib, nz3]) o.start(t0);
   }
 
   _curve(k) {
@@ -393,7 +393,9 @@ export class E63Sound {
       // газ — открыто и громко, сброс — тише и под фильтром НЧ
       const vol = 0.38 * (0.65 + 0.35 * load) * (cut ? 0.35 : 1) * dip * S.mix;
       P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.04);
-      P(S.lp.frequency, load > 0.15 ? 9000 : 700 + 1200 * load / 0.15, 0.05);
+      // как у открытого набора: верха растут с оборотами медленно, на отсечке —
+      // не выше 3 кГц (петля мода на 7000 разогнана втрое — без этого визг)
+      P(S.lp.frequency, load > 0.15 ? Math.min(3000, 900 + rpm * 0.3 + 600 * load) : 700 + 1200 * load / 0.15, 0.05);
     } else if (S) {
       // две ближайшие по оборотам петли, равномощный переход по логарифму
       // оборотов; высота — отношение оборотов к оборотам записи
@@ -427,10 +429,8 @@ export class E63Sound {
       P(S.low.gain, 1.4 * (1 - 0.2 * r) * (0.75 + 0.25 * st.loadS) * dip * S.mix, 0.06);
     }
 
-    // турбины
+    // блоу-офф: сброс газа под наддувом
     const boost = s.boost || 0;
-    P(this.turbo.frequency, 2400 + boost * 4200 + r * 1500, 0.08);
-    P(this.turboGain.gain, 0.006 * boost, 0.08);
     if (st.boost - boost > 0.25 && t - st.bovT > 0.8) {           // сброс под наддувом
       st.bovT = t;
       const gg = this.bovGain.gain;
