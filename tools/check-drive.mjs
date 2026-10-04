@@ -51,7 +51,7 @@ for (const r of W.roads) {
     const i = nodeAt(p[k], p[k + 1]);
     if (prev >= 0 && prev !== i) {
       const L = Math.hypot(NX[i] - NX[prev], NZ[i] - NZ[prev]);
-      adj[prev].push(i, L * pen[r.c], r.c); adj[i].push(prev, L * pen[r.c], r.c);
+      adj[prev].push(i, L, r.c); adj[i].push(prev, L, r.c);
     }
     prev = i;
   }
@@ -69,6 +69,7 @@ const nearestNode = (x, z, maxC = 1) => {
 };
 // Дейкстра на двоичной куче
 let allow = null;               // фильтр вершин (для трассы — коридор вдоль осевой)
+let penT = pen;                  // цена метра по классу — для квартальных маршрутов своя
 const path = (a, b, maxC) => {
   const n = NX.length, dist = new Float64Array(n).fill(Infinity), prev = new Int32Array(n).fill(-1);
   const heap = [[0, a]]; dist[a] = 0;
@@ -82,7 +83,7 @@ const path = (a, b, maxC) => {
     for (let k = 0; k < l.length; k += 3) {
       if (l[k + 2] > maxC) continue;
       if (allow && !allow(l[k])) continue;
-      const v = l[k], nd = d + l[k + 1];
+      const v = l[k], nd = d + l[k + 1] * penT[l[k + 2]];
       if (nd < dist[v]) { dist[v] = nd; prev[v] = u; push([nd, v]); }
     }
   }
@@ -137,6 +138,14 @@ const ROUTES = {
   severnaya: () => routeThrough(ends('улица Богданова'), 2, 1),
   korabelnaya: () => routeThrough([...ends('улица Героев Севастополя'), ...ends('улица Генерала Жидилова')], 2, 1),
   gagarin: () => routeThrough([...ends('проспект Октябрьской Революции'), ...ends('проспект Гагарина')], 2, 1),
+  // Кварталы: по улицам и проездам (класс 2–3), магистрали — в обход.
+  ...Object.fromEntries([
+    ['q_severnaya', [[3600, -2600], [5200, -1500], [6400, -2600]]],
+    ['q_gagarin', [[-4700, 3600], [-3900, 2700], [-3000, 3600]]],
+    ['q_korabelnaya', [[2300, 1300], [3000, 400], [3800, 1100]]],
+    ['q_center', [[-500, 1500], [100, 2100], [600, 2500]]],
+    ['q_kamyshovaya', [[-6500, 5200], [-5600, 6200], [-6800, 6800]]],
+  ].map(([n, w]) => [n, () => { penT = { 0: 3, 1: 2, 2: 1, 3: 1.15 }; const r = routeThrough(w, 3, 3); penT = pen; return r; }])),
 };
 
 const routes = [];
