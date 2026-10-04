@@ -15,7 +15,7 @@ import { buildMap, drawFull, mapUnproject } from './minimap.js?v=d8230200';
 import { Hud } from './hud.js?v=d8230200';
 import { ChunkManager } from './chunks.js?v=d8230200';
 import { Collider, RoadIndex } from './collision.js?v=d8230200';
-import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh, warmCarEnv } from './vehicle.js?v=d8230200';
+import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=d8230200';
 import { batchCar } from './carbatch.js?v=d8230200';
 import { CarFX } from './carfx.js?v=d8230200';
 import { precompile } from './warm.js?v=d8230200';
@@ -171,7 +171,9 @@ async function boot() {
 
     await step('строю рельеф…', 26);
     initScene();
-    warmCarEnv(renderer);                 // отражения машины — до первого кадра, не в игре
+    // warmCarEnv(renderer) здесь (cloud/e63-atlas) останавливал сборку чанков:
+    // первый квартал не достраивался, город вокруг машины пустой. Убран при
+    // сборке волны — отражения строятся при загрузке модели, как раньше.
     // far-слой раскладываем по квадратам один раз: каждый квадрат земли берёт
     // из него только своё окно, а линейный перебор 13 тысяч домов на квадрат
     // стоил бы полсекунды на круг.
