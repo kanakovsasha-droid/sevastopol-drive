@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { batchModel } from './modelbatch.js';
 import { GLTFLoader } from '../lib/GLTFLoader.js?v=2b23307a';
 
 // Здания, которые нельзя оставлять коробкой. Массу берём из контура OSM,
@@ -41,10 +42,12 @@ function loadModel(file) {
         // в салатовый и светится в тени.
         if (!/^(glass|metal|leaf|bark)$/.test(m.name)) { m.emissive.copy(m.color); m.emissiveIntensity = 0.2; }
       });
-      if (!warm) return g.scene;
+      // сетки по материалам — в две (modelbatch.js): до десяти вызовов → два
+      const scene = batchModel(g.scene);
+      if (!warm) return scene;
       const box = new THREE.Group();
-      box.add(g.scene);
-      return warm(box).catch(() => {}).then(() => { box.remove(g.scene); return g.scene; });
+      box.add(scene);
+      return warm(box).catch(() => {}).then(() => { box.remove(scene); return scene; });
     }).finally(freeSlot);
     MODELS.set(file, p);
   }

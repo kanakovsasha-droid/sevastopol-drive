@@ -724,7 +724,10 @@ function* buildChunk(d, key) {
   w.buildings.forEach((b, i) => { if (b.id && skipIds.has(b.id)) skip.add(i); });
   for (const i of skip) { const b = w.buildings[i]; if (b && b.id) skipIds.add(b.id); }
   at('дома');
-  g.add(yield* buildBuildings(w, terrain, 500, skip));
+  // Куски домов — по сетке 512 м, кратной квадрату 1024: при 500 м границы
+  // кусков не совпадали с краями квадрата, и он резался на девять сеток (с
+  // узкими полосками по краям) вместо четырёх — вызовы в кадре и в тени.
+  g.add(yield* buildBuildings(w, terrain, 512, skip));
   g.add(buildSchools(w, terrain, skip));           // школы: парапет и крыльцо
   lap('дома');
   yield; pt = performance.now();
