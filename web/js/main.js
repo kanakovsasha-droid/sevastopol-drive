@@ -23,6 +23,7 @@ import { Environment } from './env.js?v=6faf90df';
 import { CarLights } from './carlights.js?v=6faf90df';
 import { Settings } from './settings.js?v=6faf90df';
 import { Pause } from './pause.js';
+import { DriveModes } from './drivemodes.js';
 import { buildModelPlinths } from './plinth.js?v=6faf90df';
 
 const $ = id => document.getElementById(id);
@@ -129,6 +130,7 @@ const keys = new Set();
 let pointerLocked = false;
 let pad = null;                                // геймпад (gamepad.js)
 let pause = null;                              // меню паузы (pause.js)
+let driveModes = null;                         // Eco / Comfort / Sport / Sport+ (drivemodes.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -254,6 +256,8 @@ async function boot() {
       isBusy: () => mapOpen || $('menu').classList.contains('on') || settings.isOpen(),
       audio: () => carFx,
     });
+    // режимы езды: 1–4 или Y (drivemodes.js)
+    driveModes = new DriveModes({ car: () => car, audio: () => carFx, toast: t => hud.toast(t) });
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam, get mode() { return mode; } };
@@ -1677,6 +1681,7 @@ function loop(now) {
       if (!input.steer) input.steer = p.steer;
       input.gas ||= p.gas; input.brake ||= p.brake;
     }
+    driveModes?.apply();                         // после смены машины в гараже — тот же режим
     car.update(dt, input);
     pad?.feel(dt, car);
   } else if (mode === 'fly') {

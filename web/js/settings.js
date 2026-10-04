@@ -211,7 +211,7 @@ export class Settings {
       <div class="row" style="margin-top:10px"><button data-reset="1">Вернуть раскладку по умолчанию</button></div>
       <h3>Клавиатура</h3>
       <div class="sub">WASD — ехать · Space — ручник · E — выйти · C — камера · R — на дорогу · F — полёт · Tab — карта · M — места ·
-        O — гараж · G — автомат/ручная, Shift/Q — передачи · Esc — пауза · T — настройки · [ ] — время · ? — все клавиши</div>`;
+        O — гараж · G — автомат/ручная, Shift/Q — передачи · 1–4 / Y — режим езды · Esc — пауза · T — настройки · [ ] — время · ? — все клавиши</div>`;
     this._padStatus();
     for (const k of ['scheme', 'layout']) s.querySelectorAll(`[data-${k}]`).forEach(b => b.addEventListener('click', () => {
       c[k] = b.dataset[k]; p.save();
