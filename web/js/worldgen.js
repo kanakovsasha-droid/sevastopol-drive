@@ -3,6 +3,7 @@ import { SEA_FLOOR } from './terrain.js?v=b077ef04';
 import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=b077ef04';
 import { buildCoverage } from './coverage.js?v=b077ef04';
 import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=b077ef04';
+import { ROAD_LEVELS, levelWeight, levelAt } from './roadlevels.js?v=b077ef04';
 import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=b077ef04';
 import { resolveAreas, sportSkipIds } from './sport.js?v=b077ef04';
 import { planParking, roadSegIndex } from './parking.js?v=b077ef04';
@@ -389,6 +390,25 @@ function roadProfile(terrain, r) {
       }
     }
     if (worst < 0.02 * STEP) break;
+  }
+  // ДОРОГИ ПЕРВИЧНЫ (roadlevels.js): в центре профиль — отметки, посчитанные
+  // по графу улиц, а снятый с рельефа остаётся только за краем квадрата.
+  if (ROAD_LEVELS && id !== undefined && ROAD_LEVELS.roads[id]) {
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      const w = levelWeight(sx[i], sz[i]);
+      if (w <= 0) continue;
+      const lv = levelAt(id, r.pts, sx[i], sz[i]);
+      if (lv === null) continue;
+      h[i] = h[i] * (1 - w) + lv * w;
+      if (w >= 1) any = true;
+    }
+    if (any && !full) {
+      // целиком в квадрате — детальный рельеф профилю не нужен
+      let all = true;
+      for (let i = 0; i < n && all; i++) if (levelWeight(sx[i], sz[i]) < 1) all = false;
+      if (all) full = true;
+    }
   }
   // Ключ узла берём по ИСХОДНЫМ концам улицы из OSM, а не по растянутым:
   // extendEnds добавляет до пяти метров, и растянутые концы соседних улиц
@@ -1845,6 +1865,11 @@ export function* buildRoads(world, terrain, chunk = 500) {
     //     (шаг 6 м) — изгиб профиля вместо горба.
     if (cls <= 3) for (let i = 0; i < mt.n; i++)
       if (up[i] && junctionDist(px(i * 2), pz(i * 2)) < 3) up[i] = 0;
+    // Пешеходная дорожка на проезжей части не поднимается вовсе: поднятая
+    // поправкой, она вылезала поверх асфальта светлой полосой поперёк улицы
+    // (пл. Лазарева у «Мир Бургера»).
+    if (cls === 4 && FLD) for (let i = 0; i < mt.n; i++)
+      if (up[i] && (FLD.at(px(i * 2), pz(i * 2)) < 0.6 || FLD.at(px(i * 2 + 1), pz(i * 2 + 1)) < 0.6)) up[i] = 0;
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 1; i < mt.n; i++) if (up[i - 1] - 0.03 > up[i]) up[i] = up[i - 1] - 0.03;
       for (let i = mt.n - 2; i >= 0; i--) if (up[i + 1] - 0.03 > up[i]) up[i] = up[i + 1] - 0.03;
