@@ -56,8 +56,22 @@ export class Pause {
     el.querySelectorAll('button').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); act[b.dataset.a](); }));
     el.addEventListener('click', e => { if (e.target === el) this.set(false); });
 
+    // клавиши пунктов меню — работают и на паузе (снимают её)
+    const KEYS = { KeyO: 'garage', KeyM: 'places', KeyT: 'settings', Slash: 'keys' };
     // перехват: раньше main.js, settings.js и гаража
     addEventListener('keydown', e => {
+      if (this.paused && e.code !== 'Escape') {
+        // на паузе до игры не доходит ничего: ни режимы езды (1–4, Y), ни свет
+        // (L), ни зажигание (Z), ни геймпад (он шлёт те же клавиши). Только
+        // пункты меню; Enter/Space на кнопке меню жмут её сами (действие
+        // браузера по умолчанию не отменяем)
+        e.stopImmediatePropagation();
+        if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)
+          && !(e.target instanceof HTMLButtonElement)) e.preventDefault();
+        const a = KEYS[e.code] || (e.key === '?' ? 'keys' : null);
+        if (a && !e.repeat) act[a]();
+        return;
+      }
       if (e.code !== 'Escape' || e.repeat) return;
       if (this.paused) { this.set(false); e.stopImmediatePropagation(); return; }
       if (this.isBusy()) return;              // Esc закроет открытое — это делают его хозяева

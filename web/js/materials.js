@@ -64,22 +64,28 @@ float snowAmt(float up, float n){
 #endif
 `;
 
-// Свет фонарей (env.js → ENV.uLamps): тёплое пятно от ближайших плафонов,
-// ламбертом по нормали, затухание по расстоянию и обрезка на 30 м.
+// Свет фонарей (env.js → ENV.uLamps): мягкий тёплый круг от ближайших
+// плафонов, ламбертом по нормали. Спад — гаусс по расстоянию, к ~24 м сходит
+// на нет без ступени. Раньше оранжевый свет (1, .70, .40) множился на тёмный
+// серый асфальт и давал бурые, как грязь, пятна. Теперь свет почти белый с
+// тёплым оттенком, а цвет под ним наполовину обесцвечен и не темнее 0.16 —
+// пятно светлее асфальта и без коричневого.
 const LAMP_LIGHT = `
   if (uNight > 0.01) {
-    vec3 lampAcc = vec3(0.0);
+    float lampAcc = 0.0;
     for (int i = 0; i < ${LAMP_N}; i++) {
       vec4 L = uLamps[i];
       if (L.w <= 0.0) continue;
       vec3 d = L.xyz - vLampP;
       float r2 = dot(d, d);
-      if (r2 > 520.0) continue;
+      if (r2 > 600.0) continue;
       vec3 ld = normalize((viewMatrix * vec4(d, 0.0)).xyz);
       float ndl = max(dot(normal, ld), 0.0);
-      lampAcc += vec3(ndl * L.w / (1.0 + r2 * 0.11) * (1.0 - smoothstep(250.0, 520.0, r2)));
+      lampAcc += ndl * L.w * exp(-r2 / 95.0) * (1.0 - smoothstep(320.0, 600.0, r2));
     }
-    reflectedLight.directDiffuse += diffuseColor.rgb * vec3(1.0, 0.70, 0.40) * lampAcc * uNight;
+    vec3 lampAlb = diffuseColor.rgb;
+    lampAlb = max(mix(lampAlb, vec3(dot(lampAlb, vec3(0.30, 0.59, 0.11))), 0.5), vec3(0.16));
+    reflectedLight.directDiffuse += lampAlb * vec3(1.0, 0.88, 0.70) * (lampAcc * 0.22 * uNight);
   }
 `;
 
