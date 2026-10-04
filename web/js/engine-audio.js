@@ -214,7 +214,15 @@ export class E63Sound {
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 9000; lp.Q.value = 0.6;
     const shelf = ctx.createBiquadFilter(); shelf.type = 'lowshelf'; shelf.frequency.value = 180; shelf.gain.value = 8;
     const bus = g(0);
-    lp.connect(shelf).connect(bus).connect(this.master);
+    // V8-«рокот»: громкость петель качается на полупорядке вспышек (rpm/30) —
+    // у кроссплейн-V8 ряды вспыхивают неравномерно, отсюда бас-рябь. Без неё
+    // разогнанная петля на высоких звучала гладко, как V12.
+    const ripple = g(1), rippleOsc = ctx.createOscillator(), rippleDepth = g(0);
+    rippleOsc.frequency.value = 30; rippleOsc.connect(rippleDepth).connect(ripple.gain); rippleOsc.start(t0);
+    // и второй ФНЧ подряд: один срез 12 дБ/окт оставлял на отсечке 4–16 кГц
+    // пятую часть энергии — тот самый визг
+    const lp2 = ctx.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 9000; lp2.Q.value = 0.5;
+    lp.connect(lp2).connect(ripple).connect(shelf).connect(bus).connect(this.master);
     const loops = Object.entries(meta.loops).filter(([n]) => n.startsWith('eng_') && bufs[n])
       .map(([n, m]) => {
         const src = ctx.createBufferSource(); src.buffer = bufs[n]; src.loop = true;
@@ -237,7 +245,7 @@ export class E63Sound {
     const lowLP = ctx.createBiquadFilter(); lowLP.type = 'lowpass'; lowLP.frequency.value = 150; lowLP.Q.value = 0.7;
     const low = g(0);
     lp.connect(lowLP).connect(low).connect(this.master);
-    this.smp = { loops, lp, bus, squeal, low, pops: pick('pop_'), bangs: pick('bang_'), mix: 0, t0 };
+    this.smp = { loops, lp, lp2, bus, squeal, low, ripple, rippleOsc, rippleDepth, pops: pick('pop_'), bangs: pick('bang_'), mix: 0, t0 };
   }
 
   // Звуковой пакет из мода (только локальная игра, см. carfx.js) — ровно как
@@ -404,7 +412,17 @@ export class E63Sound {
       // прыгали за ней — на слух это были «провалы», похожие на переключения.
       const vol = 1.5 * (0.45 + 0.35 * r) * (0.55 + 0.45 * st.loadS) * (cut ? 0.4 : 1) * dip * S.mix;
       P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.05);
-      P(S.lp.frequency, 2000 + 7000 * Math.max(st.loadS, r * 0.4), 0.06);
+      // Тембр: срез растёт с оборотами МЕДЛЕННО — на отсечке не выше 2.5 кГц
+      // (газ добавляет «открытости» до +600 Гц, на сбросе глуше).
+      const cutHz = Math.min(2500, 700 + rpm * 0.22 + 600 * st.loadS);
+      P(S.lp.frequency, cutHz, 0.06);
+      if (S.lp2) P(S.lp2.frequency, cutHz * 1.25, 0.06);
+      if (S.ripple) {
+        P(S.rippleOsc.frequency, rpm / 30, 0.012);
+        const d = 0.12 + 0.22 * r;                        // глубже на высоких
+        P(S.rippleDepth.gain, d, 0.05);
+        P(S.ripple.gain, 1 - d, 0.05);
+      }
       // низ: отдельным голосом на всех оборотах, на высоких — чуть меньше
       P(S.low.gain, 1.4 * (1 - 0.2 * r) * (0.75 + 0.25 * st.loadS) * dip * S.mix, 0.06);
     }
