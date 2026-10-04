@@ -129,6 +129,90 @@ function seamless(ctx, buf, xf) {
   return out;
 }
 
+// ---- гранулярный голос мотора. Основной путь — AudioWorklet
+// (grain-worklet.js, там же подробно); этот класс — запасной, для браузеров
+// без worklet: те же зёрна, но расставленные из главного потока.
+// Петля, даже ровная, на высоких оборотах
+// повторяется раз в 2–3 с, и любая её особенность слышна как событие —
+// «переключение», которого нет. Здесь звук собирается из зёрен ~0.1 с (окно
+// Ханна, перекрытие 50%), каждое — из СЛУЧАЙНОГО места пула ровных записей
+// (data/audio/sounds.json → pools), не ближе 0.5 с к прошлому зерну. Высота
+// у всех зёрен одна: playbackRate = обороты / обороты пула. Чтобы зёрна не
+// «фазили», каждое ставится так, что фаза цикла мотора продолжает
+// предыдущее: в пуле размечен сдвиг цикла по блокам 0.25 с (tau), а поток
+// ведёт свою «виртуальную» фазу. Повторов нет — у огибающей нет ритма.
+class GrainStream {
+  constructor(ctx, buf, pool, dur, hop) {
+    this.ctx = ctx; this.buf = buf; this.pool = pool; this.dur = dur; this.hop = hop;
+    this.out = ctx.createGain();
+    const n = 64; this.win = new Float32Array(n);
+    for (let i = 0; i < n; i++) this.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1));
+    this.next = 0; this.live = []; this.vpos = 0; this.lastT = 0; this.lastPos = -9; this.grains = 0;
+    this.total = pool.segs.reduce((a, q) => a + (q.e - q.s), 0);
+  }
+  // t — время контекста сейчас, rate — скорость чтения, on — поток звучит
+  run(t, rate, on) {
+    this.vpos += rate * Math.max(0, t - this.lastT); this.lastT = t;
+    this.live = this.live.filter(g => g.end > t);
+    for (const g of this.live) g.src.playbackRate.setTargetAtTime(rate, t, 0.015);
+    if (!on || this.stopped) { this.next = Math.max(this.next, t); return; }
+    if (this.next < t) this.next = t + 0.005;
+    while (this.next < t + 0.12) { this._grain(this.next, rate, t); this.next += this.hop; }
+  }
+  _grain(T, rate, t) {
+    const { pool, dur } = this, P = pool.P, need = dur * Math.max(rate, 0.3) * 1.6 + 0.01;
+    let seg = null, pos = 0;
+    for (let tries = 0; tries < 8; tries++) {
+      let r = Math.random() * this.total;
+      seg = pool.segs[0];
+      for (const q of pool.segs) { if (r < q.e - q.s) { seg = q; break; } r -= q.e - q.s; }
+      if (seg.e - seg.s < need + P) continue;
+      pos = seg.s + Math.random() * (seg.e - seg.s - need - P);
+      if (Math.abs(pos - this.lastPos) > 0.5) break;
+    }
+    // фаза цикла: (pos - tau) ≡ виртуальная фаза потока в момент T (mod P)
+    const theta = this.vpos + rate * (T - t);
+    const tau = seg.tau[Math.min(seg.tau.length - 1, Math.max(0, Math.floor((pos - seg.s) / pool.block)))] || 0;
+    let p = tau + theta + P * Math.round((pos - tau - theta) / P);
+    while (p < seg.s) p += P;
+    while (p > seg.e - need) p -= P;
+    this.lastPos = p;
+    const ctx = this.ctx, src = ctx.createBufferSource(), g = ctx.createGain();
+    src.buffer = this.buf; src.playbackRate.value = rate;
+    g.gain.value = 0; src.connect(g).connect(this.out);
+    g.gain.setValueCurveAtTime(this.win, T, dur);
+    src.start(T, Math.max(0, p)); src.stop(T + dur + 0.01);
+    src.onended = () => { src.disconnect(); g.disconnect(); };
+    this.live.push({ src, end: T + dur + 0.02 });
+    this.grains++;
+  }
+  stop() { this.stopped = true; this.out.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05); }
+}
+
+// Модуль worklet грузится один раз на контекст (carfx.js — до записей).
+const grainReady = new WeakSet();
+export async function loadGrainWorklet(ctx) {
+  if (!ctx.audioWorklet || grainReady.has(ctx)) return;
+  const v = (typeof document !== 'undefined' && document.querySelector('meta[name="build"]')?.content) || '';
+  await ctx.audioWorklet.addModule(new URL('./grain-worklet.js' + (v ? '?v=' + v : ''), import.meta.url));
+  grainReady.add(ctx);
+}
+function grainVoice(ctx, buf, pool, dur, hop) {
+  if (grainReady.has(ctx)) {
+    const node = new AudioWorkletNode(ctx, 'grain-voice', {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+      processorOptions: { data: buf.getChannelData(0).slice(), sampleRate: buf.sampleRate, pool, dur, hop },
+    });
+    const rate = node.parameters.get('rate'), on = node.parameters.get('on');
+    return {
+      out: node, kind: 'worklet',
+      run(t, r, act) { rate.setTargetAtTime(r, t, 0.015); on.setValueAtTime(act ? 1 : 0, t); },
+      stop() { on.setValueAtTime(0, ctx.currentTime); setTimeout(() => node.disconnect(), 400); },
+    };
+  }
+  return new GrainStream(ctx, buf, pool, dur, hop);
+}
+
 export class E63Sound {
   constructor(ctx, dest = ctx.destination) {
     this.ctx = ctx;
@@ -242,27 +326,28 @@ export class E63Sound {
     const fireCut = flt('peaking', 60, 5, 0), fireCut2 = flt('peaking', 120, 7, 0), fireCut3 = flt('peaking', 180, 8, 0);
     const bus = g(0);
     lp.connect(lp2).connect(fireCut).connect(fireCut2).connect(fireCut3).connect(shelf).connect(bus).connect(this.master);
-    // Две петли: холостые и ровный ход. «Под газом» — не третья запись, а
-    // тот же ровный ход через перегруз и полку на верха, параллельно чистому
-    // (один источник — фазы совпадают, гребёнки нет). Прежняя третья петля
-    // (перегазовка/разгон) плыла по тембру за круг: бас и верха на 7 дБ, и на
-    // скорости раз в круг слышалась «ещё одна передача». А две разные записи
-    // на одной высоте складывались то в фазе, то в противофазе.
+    // Два гранулярных потока: холостые (зёрна из записи холостых) и ход
+    // (зёрна из пула ровной езды). «Под газом» — не отдельная запись, а тот
+    // же поток через перегруз и полку на верха, параллельно чистому.
     const shaper = ctx.createWaveShaper(); shaper.curve = this._curve(2.6); shaper.oversample = '2x';
-    const loops = ['v8_idle', 'v8_cruise'].filter(n => bufs[n] && meta.loops[n]).map(n => {
-      const src = ctx.createBufferSource(); src.buffer = bufs[n]; src.loop = true;
-      const gg = g(0); src.connect(gg).connect(lp);
-      const off = Math.random() * bufs[n].duration;
-      src.start(t0, off);
-      const L = { name: n, rpm: meta.loops[n].rpm, src, g: gg, t0, off, len: bufs[n].duration };
-      if (n === 'v8_cruise') {
-        const pre = g(0.9), bright = flt('highshelf', 1100, 0.7, 5), dg = g(0);
-        src.connect(pre).connect(shaper).connect(bright).connect(dg).connect(lp);
-        L.drive = dg;
-      }
-      // t0 и off — чтобы стенд мог посчитать, где сейчас шов петли
-      return L;
-    });
+    const pools = meta.pools || {};
+    // Перекрытие 75%: и сумма окон Ханна (когда соседние зёрна совпадают по
+    // фазе), и сумма их квадратов (когда не совпадают) тогда постоянны — у
+    // громкости нет «дрожи» с частотой зёрен. При 50% она была: огибающая
+    // повторялась через каждые 60 мс, и автокорреляция ловила её на кратных
+    // лагах.
+    const loops = [['v8_idle', 'v8_idle', 0.24, 0.06], ['v8_drive', 'v8_pool', 0.12, 0.03]]
+      .filter(([, b]) => bufs[b] && pools[b]).map(([name, b, dur, hop]) => {
+        const gg = g(0), st = grainVoice(ctx, bufs[b], pools[b], dur, hop);
+        st.out.connect(gg).connect(lp);
+        const L = { name, rpm: pools[b].rpm, g: gg, stream: st };
+        if (name === 'v8_drive') {
+          const pre = g(0.9), bright = flt('highshelf', 1100, 0.7, 5), dg = g(0);
+          st.out.connect(pre).connect(shaper).connect(bright).connect(dg).connect(lp);
+          L.drive = dg;
+        }
+        return L;
+      });
     let squeal = null;
     if (bufs.tyre_squeal) {
       const src = ctx.createBufferSource(); src.buffer = bufs.tyre_squeal; src.loop = true;
@@ -283,7 +368,7 @@ export class E63Sound {
     // глухая на любых. Треск — редкие искры шума 1–3 кГц, тихо. Оба идут
     // через ту же полку и шину, что и мотор: громкость шины на сбросе — и их.
     let burble = null;
-    const bsrc = bufs.v8_cruise;
+    const bsrc = bufs.v8_pool;
     if (bsrc) {
       const src = ctx.createBufferSource(); src.buffer = bsrc; src.loop = true; src.playbackRate.value = 0.9;
       const lpB = flt('lowpass', 260, 1.2), hpB = flt('highpass', 38, 0.7), gB = g(0);
@@ -343,7 +428,7 @@ export class E63Sound {
     const S = this.smp;
     if (!S) return;
     S.bus.gain.setTargetAtTime(0, t, 0.05);
-    for (const l of S.loops) l.src.stop(t + 0.4);
+    for (const l of S.loops) { if (l.stream) l.stream.stop(); else l.src.stop(t + 0.4); }
     if (S.squeal) { S.squeal.g.gain.setTargetAtTime(0, t, 0.05); S.squeal.src.stop(t + 0.4); }
   }
 
@@ -552,7 +637,7 @@ export class E63Sound {
       // 2–3 дБ раз в круг петли — на 200+ это слышалось как переключение.
       const k = Math.min(1, Math.max(0, Math.log(rs / 950) / Math.log(1700 / 950)));
       const on = Math.sin(k * Math.PI / 2), ld = Math.min(1, st.loadS);
-      const W = { v8_idle: Math.cos(k * Math.PI / 2), v8_cruise: on * (1 - 0.35 * ld) };
+      const W = { v8_idle: Math.cos(k * Math.PI / 2), v8_drive: on * (1 - 0.35 * ld) };
       // Холостые живые: обороты чуть «плавают» случайно (±2.5%, как в самой
       // записи холостых — там 53.7…58.7 Гц; новая цель
       // каждые 0.12–0.42 с, сглажено). Ровно стоящая высота давала на
@@ -565,7 +650,7 @@ export class E63Sound {
         const w = W[l.name] || 0;
         P(l.g.gain, w, 0.05);
         if (l.drive) P(l.drive.gain, on * 0.75 * ld, 0.05);   // «под газом» — перегруз
-        P(l.src.playbackRate, rsw / l.rpm, 0.02);
+        l.stream.run(t, rsw / l.rpm, w > 0.003 || (l.drive && ld > 0.01 && on > 0.003));
       }
       const rr = Math.min(1, Math.max(0, (rs - 800) / 6200));
       // перегазовка: на 0.3 с звук «под газом» (громче, открытее)

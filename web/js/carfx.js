@@ -1,4 +1,4 @@
-import { E63Sound } from './engine-audio.js?v=14dfd539';
+import { E63Sound, loadGrainWorklet } from './engine-audio.js?v=14dfd539';
 import { RoadSurface } from './roadsurf.js?v=14dfd539';
 import { TireSmoke } from './smoke.js?v=14dfd539';
 import { Garage } from './garage.js?v=14dfd539';
@@ -88,7 +88,7 @@ export async function loadCarSounds(ctx, base = '../data/audio/') {
   // браузера неделями — так владелец слышал уже вырезанный свист холостых.
   const opt = { cache: 'no-cache' };
   const meta = await fetch(base + 'sounds.json' + q, opt).then(r => r.json());
-  const names = [...Object.keys(meta.loops), ...meta.shots];
+  const names = [...new Set([...Object.keys(meta.loops), ...Object.keys(meta.pools || {}), ...meta.shots])];
   const bufs = {};
   await Promise.all(names.map(n => fetch(base + n + '.wav' + q, opt).then(r => r.arrayBuffer())
     .then(ab => ctx.decodeAudioData(ab)).then(b => { bufs[n] = b; })));
@@ -162,6 +162,7 @@ export class CarFX {
   // поверх, если он есть. ?snd=w213-stock | w212-gta | open … выбирает пакет.
   async _packs() {
     const ctx = this.ctx;
+    try { await loadGrainWorklet(ctx); } catch (e) { console.warn('гранулярный голос — запасной, без worklet:', e.message); }
     try { this.open = await loadCarSounds(ctx); } catch (e) { console.warn('записи звука не загрузились, остаётся синтез:', e.message); }
     this.packs = ['open'];
     try { this.packs = [...await findModPacks(), 'open']; } catch { /* нет — значит нет */ }
