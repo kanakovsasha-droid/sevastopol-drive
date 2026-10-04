@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PolyGrid } from './worldgen.js?v=6faf90df';
+import { brandOf, signOf, DEFAULT_COL, buildFuelSigns } from './fuel.js';
 
 // Оборудование детских площадок и машины на парковках. Места берутся из OSM
 // (data/areas.json -> world.areas): качели и горки ставим только там, где в
@@ -775,7 +776,10 @@ export function buildStructures(world, terrain) {
   // ---- АЗС: навес на колоннах, колонки под ним, касса и стела с ценами
   // Точки из OSM (amenity=fuel). Навес разворачиваем вдоль ближайшей улицы,
   // чтобы заезд был с дороги, а не в бок.
+  const fuelSigns = [];                    // надписи сетей — одним атласом (fuel.js)
   for (const f of world.fuel || []) {
+    // сеть по имени из OSM: её цвета (если сверены) и подпись
+    const brand = brandOf(f.n), col = brand?.col || DEFAULT_COL, sign = signOf(f.n);
     // Разворот и габарит берём из КОНТУРА OSM, если он есть: раньше навес
     // ставился «в пяти метрах от точки» под углом к ближайшей улице и вставал
     // вкривь, а на склоне повисал в воздухе. Площадку АЗС теперь ровняет
@@ -833,7 +837,12 @@ export function buildStructures(world, terrain) {
     parts.push({ geo: canopy, color: [0.90, 0.90, 0.88] });
     const band = new THREE.BoxGeometry(CW + 0.3, 0.45, CD + 0.3);
     band.rotateY(ang); band.translate(cx0, g0 + CH - 0.42, cz0);
-    parts.push({ geo: band, color: [0.16, 0.36, 0.24] });   // зелёный подзор
+    parts.push({ geo: band, color: col.band });   // подзор в цвет сети
+    // имя сети на фризе навеса — с обеих длинных сторон
+    if (sign) for (const sd of [1, -1]) fuelSigns.push({
+      text: sign, col, w: Math.min(CW * 0.6, 8), h: 0.6,
+      x: cx0 + ux * sd * (CD / 2 + 0.17), y: g0 + CH, z: cz0 + uz * sd * (CD / 2 + 0.17), ang: sd > 0 ? ang : ang + Math.PI,
+    });
     for (const su of [-1, 1]) for (const sv of [-1, 1]) {
       const px = cx0 + ux * su * (CW / 2 - 1.6) + nx * sv * (CD / 2 - 1.4);
       const pz = cz0 + uz * su * (CW / 2 - 1.6) + nz * sv * (CD / 2 - 1.4);
@@ -858,7 +867,7 @@ export function buildStructures(world, terrain) {
         parts.push({ geo: disp, color: [0.13, 0.14, 0.16] });
         const top = new THREE.BoxGeometry(0.80, 0.30, 1.20);
         top.rotateY(ang); top.translate(px, g0 + 2.10, pz);
-        parts.push({ geo: top, color: [0.16, 0.36, 0.24] });
+        parts.push({ geo: top, color: col.band });
       }
     }
     // касса-магазин за навесом
@@ -868,7 +877,7 @@ export function buildStructures(world, terrain) {
     parts.push({ geo: shop, color: [0.90, 0.89, 0.85] });
     const par = new THREE.BoxGeometry(10.1, 0.55, 6.6);
     par.rotateY(ang); par.translate(sx, g0 + 3.75, sz);
-    parts.push({ geo: par, color: [0.16, 0.36, 0.24] });
+    parts.push({ geo: par, color: col.band });
     const win = new THREE.BoxGeometry(7.8, 1.9, 0.12);
     win.rotateY(ang);
     win.translate(sx - nx * 3.06, g0 + 1.95, sz - nz * 3.06);
@@ -880,14 +889,17 @@ export function buildStructures(world, terrain) {
     parts.push({ geo: pole, color: [0.72, 0.72, 0.70] });
     const board = new THREE.BoxGeometry(2.5, 3.0, 0.30);
     board.rotateY(ang); board.translate(tx, g0 + 5.6, tz);
-    parts.push({ geo: board, color: [0.16, 0.36, 0.24] });
-    for (let i = 0; i < 3; i++) {
-      const row = new THREE.BoxGeometry(2.0, 0.5, 0.36);
-      row.rotateY(ang); row.translate(tx, g0 + 6.6 - i * 0.85, tz);
-      parts.push({ geo: row, color: [0.92, 0.92, 0.88] });
-    }
+    parts.push({ geo: board, color: col.board });
+    // на щите — имя сети и виды топлива (без цен: их взять неоткуда)
+    const lines = /пропан|метан|агзс|агнкс|газ/i.test(f.n || '') ? ['ПРОПАН'] : ['АИ-92', 'АИ-95', 'ДТ'];
+    for (const sd of [1, -1]) fuelSigns.push({
+      text: sign, lines, col, w: 2.3, h: 2.8,
+      x: tx + ux * sd * 0.16, y: g0 + 5.6, z: tz + uz * sd * 0.16, ang: sd > 0 ? ang : ang + Math.PI,
+    });
     bump('АЗС');
   }
+  const signMesh = buildFuelSigns(fuelSigns);
+  if (signMesh) group.add(signMesh);
 
   if (!parts.length) { group.userData.stats = stats; return group; }
   const mesh = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({
