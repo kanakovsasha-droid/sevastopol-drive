@@ -27,7 +27,53 @@ export const ENV = {
   uNight:  { value: 0 },                              // 0 — день, 1 — ночь (свет в окнах, фонари)
   uSeason: { value: new THREE.Vector4(0, 0, 0, 0) },  // x — осенний цвет, y — облетело, z — снег, w — весна
   uTime:   { value: 0 },
+  // ближайшие фонари: xyz — плафон в мире, w — сила (0 — пусто)
+  uLamps:  { value: Array.from({ length: 24 }, () => new THREE.Vector4(0, -1e4, 0, 0)) },
 };
+export const LAMP_N = 24;
+
+// ---------------------------------------------------------------- свет фонарей
+// Настоящий источник света на каждый фонарь — это тысячи источников в каждом
+// шейдере. Вместо этого шейдеры асфальта, тротуаров, фасадов и газонов сами
+// прибавляют тёплое пятно от 24 ближайших плафонов (ENV.uLamps). Список
+// пересобираем раз в треть секунды по положению игрока.
+// registerLamps(mesh, heads): mesh — InstancedMesh фонарей, heads — где у
+// модели плафоны, в её осях ([[x, y, z], …]).
+const lampMeshes = new Set();
+export function registerLamps(mesh, heads) { mesh.userData.lampHeads = heads; lampMeshes.add(mesh); }
+const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _c = new THREE.Vector3();
+let lampT = 0;
+const cand = [];
+function updateLamps(dt, at, night) {
+  if ((lampT -= dt) > 0) return;
+  lampT = 0.33;
+  const L = ENV.uLamps.value;
+  if (night < 0.01) { for (const v of L) v.w = 0; return; }
+  cand.length = 0;
+  for (const mesh of lampMeshes) {
+    // выгруженный квартал: меша больше нет в сцене — забываем
+    let o = mesh; while (o.parent) o = o.parent;
+    if (!o.isScene) { lampMeshes.delete(mesh); continue; }
+    if (!mesh.boundingSphere) mesh.computeBoundingSphere();
+    _c.copy(mesh.boundingSphere.center).applyMatrix4(mesh.matrixWorld);
+    if (_c.distanceTo(at) > mesh.boundingSphere.radius + 120) continue;
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, _m);
+      _m.premultiply(mesh.matrixWorld);
+      for (const h of mesh.userData.lampHeads) {
+        _p.set(h[0], h[1], h[2]).applyMatrix4(_m);
+        const d = _p.distanceToSquared(at);
+        if (d < 120 * 120) cand.push(d, _p.x, _p.y, _p.z);
+      }
+    }
+  }
+  // 24 ближайших
+  const n = cand.length / 4, idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => cand[a * 4] - cand[b * 4]);
+  for (let k = 0; k < L.length; k++) {
+    if (k < n) { const i = idx[k] * 4; L[k].set(cand[i + 1], cand[i + 2], cand[i + 3], 4.5); }
+    else L[k].set(0, -1e4, 0, 0);
+  }
+}
 
 const LAT = 44.6 * Math.PI / 180;
 const LON = 33.52;                    // градусы, восток
@@ -382,6 +428,7 @@ export class Environment {
     // ---- ночь для окон и фонарей: зажигаются в сумерках постепенно
     this.night = smooth(4, -7, e) * (0.75 + 0.25 * (1 - w.sun)) + w.grey * 0.12 * smooth(30, 5, e);
     ENV.uNight.value = clamp(this.night, 0, 1);
+    if (target) updateLamps(dt || 1, target, ENV.uNight.value);
     // сколько дневного света: отражения на кузове и прочее, что светит небом
     this.day = smooth(-6, 12, e) * (0.4 + 0.6 * w.sun);
   }

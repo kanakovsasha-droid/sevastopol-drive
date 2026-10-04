@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { lampGlow } from './env.js?v=46b82387';
+import { lampGlow, registerLamps } from './env.js?v=46b82387';
 import { plantFlora, ST } from './flora.js?v=46b82387';
 import { roadMaterial } from './materials.js?v=46b82387';
 
@@ -637,7 +637,7 @@ export function buildStreet(world, terrain, onRoad, buildings) {
     }
   }
   const lampMesh = inst('фонари', G.lamp, lamps);
-  if (lampMesh) lampMesh.userData.far = 450;
+  if (lampMesh) { lampMesh.userData.far = 450; registerLamps(lampMesh, [[0.84, 4.35, 0], [-0.84, 4.35, 0]]); }
 
   // ---- остановки: у бордюра, параллельно дороге, открыты к проезжей части
   const stops = [];
