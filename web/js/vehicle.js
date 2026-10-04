@@ -190,6 +190,8 @@ const HOLD_C = 9500;          // его демпфер, Н·с/м
 const BUMP_K = 240000;        // отбойник, Н/м
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+// Режим езды по умолчанию (= Sport в drivemodes.js): машина как до режимов.
+const DM0 = { gas: 1, rise: 1, upLo: 2600, upHi: 4100, down: 2200, shift: 1, steer: 1, esp: null, tcMin: null, tcSlip: null, short: '' };
 const wrapPi = a => { a = (a + Math.PI) % (2 * Math.PI); return a < 0 ? a + Math.PI : a - Math.PI; };
 
 // Кривая шины: линейный участок, пик в s = 1, плавный спад за ним. s — общее
@@ -510,6 +512,7 @@ export class Car {
     T.drive = this.rwd ? 'RWD' : 'AWD'; T.manual = this.manual;
     T.slip = Math.max(this.slipVel[0], this.slipVel[1], this.slipVel[2], this.slipVel[3]);
     T.onLimiter = this.limiter > 0; T.throttle = this.throttle; T.boost = this.boost;
+    T.dm = this.dm?.short || ''; T.dmColor = this.dm?.color || '#fff';
     this.crash *= Math.exp(-dt * 4);
   }
 
@@ -547,7 +550,10 @@ export class Car {
       if (vLong > 1.0) brakeT = -thr; else { gasT = -thr; wantRev = true; }
     }
     this._lift = gasT < this._gas - 0.02;              // газ отпускают — для коробки
-    this._gas += clamp(gasT - this._gas, -CAR.throttleDown * h, CAR.throttleUp * h);
+    // режим езды (drivemodes.js): кривая педали и скорость её нажатия
+    const dm = this.dm || DM0;
+    if (gasT > 0 && dm.gas !== 1) gasT = Math.pow(gasT, dm.gas);
+    this._gas += clamp(gasT - this._gas, -CAR.throttleDown * h, CAR.throttleUp * dm.rise * h);
     this._brake += clamp(brakeT - this._brake, -12 * h, CAR.brakeUp * h);
     const gas = this._gas;
     // Без газа на малом ходу автомат сам придерживает машину: иначе после
@@ -577,7 +583,7 @@ export class Car {
     // К нулю и в занос руль идёт быстро. От нуля — за steerTime до упора на
     // малом ходу и вдвое дольше на трассе: клавиша — это рывок руля, и на 100
     // км/ч он давал бросок рыскания в полтора раза выше установившегося.
-    const tSteer = CAR.steerTime * (1 + clamp((Math.abs(vLong) - 8) / 22, 0, 1) * CAR.steerTimeFast);
+    const tSteer = CAR.steerTime * (this.dm || DM0).steer * (1 + clamp((Math.abs(vLong) - 8) / 22, 0, 1) * CAR.steerTimeFast);
     const steerRate = (toZero || Math.abs(assist) > 0.02 ? CAR.maxSteer / CAR.steerReturn * 0.5 : lim / tSteer) * h;
     this.steer += clamp(want - this.steer, -steerRate, steerRate);
     const cs = Math.cos(this.steer), sn = Math.sin(this.steer);
@@ -766,7 +772,9 @@ export class Car {
       // бёрнауте её нет — это и есть просьба покрутить колёса.
       const kPrev = this._kap[i] * Math.sign(ratio);
       const tc = !burn && (!this.rwd || CAR.tcRwd);
-      if (tc && kPrev > CAR.tcSlip && driveT * ratio > 0) driveT *= clamp(1 - (kPrev - CAR.tcSlip) / CAR.tcBand, CAR.tcMin, 1);
+      // противобуксовочная по режиму езды; на заднем приводе — как у машины
+      const tcMin = this.rwd ? CAR.tcMin : (this.dm?.tcMin ?? CAR.tcMin), tcSlip = this.rwd ? CAR.tcSlip : (this.dm?.tcSlip ?? CAR.tcSlip);
+      if (tc && kPrev > tcSlip && driveT * ratio > 0) driveT *= clamp(1 - (kPrev - tcSlip) / CAR.tcBand, tcMin, 1);
       // вязкая блокировка: колесо, убежавшее от соседа по оси, подтормаживается
       driveT += CAR.diffLock * (om0[i ^ 1] - om0[i]);
       // в бёрнауте тормоз только на передней оси (как «line lock»)
@@ -867,7 +875,7 @@ export class Car {
     // вращения и немного потери хода. Ручник её отключает: он и есть просьба
     // о заносе. Под полным газом она слабее — занос газом остаётся.
     this.espActive = 0;
-    const esp = this.rwd ? CAR.espRwd : CAR.esp;
+    const esp = this.rwd ? CAR.espRwd : (this.dm?.esp ?? CAR.esp);
     if (esp > 0 && !hand && vLong > 6 && contacts >= 3) {
       const beta = Math.abs(Math.atan2(vLat, vLong));
       const rMax = 0.95 * CAR.muLat * GRAV / vLong;
@@ -1044,21 +1052,25 @@ export class Car {
     // пороги — от отсечки этой машины (7000 у M177, 6400 у M157)
     // Пока газ отпускают (педаль ещё не дошла до нуля), порог «вверх» тоже не
     // снижаем: иначе он падал вместе с газом ниже оборотов — тот же апшифт.
-    const up = Math.min(gas < 0.03 || this._lift ? CAR.redline - 150 : 2600 + 4100 * gas, CAR.redline - 150);
+    const dm = this.dm || DM0;                       // режим езды: пороги и скорость переключений
+    const up = Math.min(gas < 0.03 || this._lift ? CAR.redline - 150 : dm.upLo + dm.upHi * gas, CAR.redline - 150);
     // После любого переключения коробка 0.8 с ничего не решает.
     const LOCK = 0.8;
     if (n < g.length && rpm > up) {
-      this.gear = n + 1; this._shiftT = CAR.shiftTime; this._shiftLock = LOCK;
+      this.gear = n + 1; this._shiftT = CAR.shiftTime * dm.shift; this._shiftLock = LOCK;
       return;
     }
     // Кикдаун: газ в пол дольше 0.25 с и мотор ниже 4200 — вниз на столько
     // ступеней, чтобы обороты не перевалили за 5800.
-    if (this._wot > 0.25 && rpm < 4200 && n > 1) {
+    // Порог и цель — ниже порога «вверх» этого режима, иначе в Eco коробка
+    // охотится: вверх на 4400, обороты падают ниже 4200 — и тут же кикдаун.
+    const kdTop = Math.min(CAR.redline - 1200, up - 300);
+    if (this._wot > 0.25 && rpm < Math.min(4200, up - 1500) && n > 1) {
       let m = n;
-      while (m > 1 && k * g[m - 2] < CAR.redline - 1200) m--;
+      while (m > 1 && k * g[m - 2] < kdTop) m--;
       if (m < n) { this.gear = m; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK; return; }
     }
-    if (n > 1 && k * g[n - 2] < (gas < 0.05 ? 1600 : 2200)) {
+    if (n > 1 && k * g[n - 2] < (gas < 0.05 ? 1600 : dm.down)) {
       this.gear = n - 1; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK;
     }
   }
