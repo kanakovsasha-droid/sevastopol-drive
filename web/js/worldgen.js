@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=68e005bd';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=68e005bd';
-import { buildCoverage } from './coverage.js?v=68e005bd';
-import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=68e005bd';
-import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt } from './roadlevels.js?v=68e005bd';
-import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=68e005bd';
-import { resolveAreas, sportSkipIds } from './sport.js?v=68e005bd';
-import { planParking, roadSegIndex } from './parking.js?v=68e005bd';
+import { SEA_FLOOR } from './terrain.js?v=e5a5d2b1';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=e5a5d2b1';
+import { buildCoverage } from './coverage.js?v=e5a5d2b1';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=e5a5d2b1';
+import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt } from './roadlevels.js?v=e5a5d2b1';
+import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=e5a5d2b1';
+import { resolveAreas, sportSkipIds } from './sport.js?v=e5a5d2b1';
+import { planParking, roadSegIndex } from './parking.js?v=e5a5d2b1';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
