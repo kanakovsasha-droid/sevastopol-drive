@@ -15,7 +15,8 @@ import { buildMap, drawFull, mapUnproject } from './minimap.js?v=6faf90df';
 import { Hud } from './hud.js?v=6faf90df';
 import { ChunkManager } from './chunks.js?v=6faf90df';
 import { Collider, RoadIndex } from './collision.js?v=6faf90df';
-import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=6faf90df';
+import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh, warmCarEnv } from './vehicle.js?v=6faf90df';
+import { batchCar } from './carbatch.js';
 import { CarFX } from './carfx.js?v=6faf90df';
 import { precompile } from './warm.js?v=6faf90df';
 import { Gamepad } from './gamepad.js?v=6faf90df';
@@ -171,6 +172,7 @@ async function boot() {
 
     await step('строю рельеф…', 26);
     initScene();
+    warmCarEnv(renderer);                 // отражения машины — до первого кадра, не в игре
     // far-слой раскладываем по квадратам один раз: каждый квадрат земли берёт
     // из него только своё окно, а линейный перебор 13 тысяч домов на квадрат
     // стоил бы полсекунды на круг.
@@ -936,6 +938,9 @@ let carModelTicket = 0;
 function swapCarModel() {
   const ticket = ++carModelTicket;
   return loadCarModel(CARS[car.model]?.glb, renderer).then(m => {
+    // сетки с одинаковыми материалами — в одну (carbatch.js): 92 → ~35 вызовов
+    const b = batchCar(m);
+    if (b.before) console.log(`машина: сеток ${b.before} → ${b.after}, картинок-заливок ${b.flat}, повторов ${b.dedup}`);
     cheapGlass(m);
     trimCarShadows(m);
     return precompile(renderer, scene, camera, m, sun).then(() => uploadTextures(m)).then(() => m);
