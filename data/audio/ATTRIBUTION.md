@@ -10,8 +10,8 @@
 
 | Файлы | Запись | Автор | Лицензия |
 |---|---|---|---|
-| `v8_idle` (холостые), `v8_load` (удержанные высокие обороты) | [mustang 1.wav](https://freesound.org/s/205504/) | [VacekH](https://freesound.org/people/VacekH/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-| `v8_cruise` (ровный ход) | [mustang 9.wav](https://freesound.org/s/205511/) | [VacekH](https://freesound.org/people/VacekH/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `v8_idle` (холостые) | [mustang 1.wav](https://freesound.org/s/205504/) | [VacekH](https://freesound.org/people/VacekH/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `v8_pool` (пул ровной езды для зёрен) | [mustang 9.wav](https://freesound.org/s/205511/), [mustang 10.wav](https://freesound.org/s/205503/) | [VacekH](https://freesound.org/people/VacekH/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | `pop_1` … `pop_6` | [Car Antilag (No cleanup, 32float)](https://freesound.org/s/797835/) | modusmogulus | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | `bang_1`, `bang_3` | [S41-25 Car backfires; reverberant.wav](https://freesound.org/s/675723/) | craigsmith | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | `bang_2` | [BACKFIRE.ogg](https://freesound.org/s/105351/) | CeebFrack | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
@@ -19,7 +19,10 @@
 | `tyre_squeal` | [Chrysler LHS tire squeal 04 (04-25-2009).wav](https://freesound.org/s/71739/) | audible-edge | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 
 Мотор — Ford Mustang Shelby GT500 (V8), записи VacekH (Roland R4 PRO,
-Sennheiser MKH60), все три петли от одной машины. Запуска мотора в этом
+Sennheiser MKH60), всё от одной машины. Ход звучит не петлёй, а зёрнами по
+~0.1 с из случайных мест пула `v8_pool`: четыре ровных участка езды,
+выпрямленных к одной высоте и выровненных по тембру (разметка — в
+`sounds.json` → `pools`). Запуска мотора в этом
 наборе нет, поэтому стартер взят из записи Ford 5.0 V8 (noiseloop, CC BY 3.0 —
 с указанием автора, как здесь); схватывание и рык после него играют петли
 Mustang. Записи именно E63 (M177) со

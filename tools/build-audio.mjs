@@ -29,6 +29,7 @@ export const SOURCES = {
   71739: { file: '71/71739_995351-hq.mp3', author: 'audible-edge', title: 'Chrysler LHS tire squeal 04 (04-25-2009).wav', license: 'CC0 1.0' },
   205504: { file: '205/205504_1970026-hq.mp3', author: 'VacekH', title: 'mustang 1.wav', license: 'CC0 1.0' },
   205511: { file: '205/205511_1970026-hq.mp3', author: 'VacekH', title: 'mustang 9.wav', license: 'CC0 1.0' },
+  205503: { file: '205/205503_1970026-hq.mp3', author: 'VacekH', title: 'mustang 10.wav', license: 'CC0 1.0' },
   455925: { file: '455/455925_8138660-hq.mp3', author: 'noiseloop', title: 'Starting of Ford V8 5 Liter engine', license: 'CC BY 3.0' },
 };
 
@@ -50,13 +51,24 @@ const V8 = [
   // звучали ровным гулом (линия 120 Гц выступала на 32 дБ). Начало и конец
   // куска — на одних оборотах, шов не прыгает.
   ['v8_idle', 205504, 6.2, 12.6, [104, 120], 2, 100],
-  // ровный ход ~2750 об/мин 6 с подряд — основа на всех оборотах: обороты в
-  // записи почти не меняются, поэтому тембр по петле ровный и шов не слышен
-  ['v8_cruise', 205511, 26.6, 32.6, [176, 190], 1, 0.06, true],
-  // Отдельной петли «под газом» нет: и выпрямленный разгон (205508), и
-  // «перегазовка» (205504, 18–21 с) плыли по тембру за круг — бас и верха на
-  // 7 дБ, на скорости это звучало как лишнее переключение раз в круг. Газ
-  // теперь — тот же ровный ход через перегруз в engine-audio.js.
+];
+
+// Пул для гранулярного звука хода (engine-audio.js): мотор играет не петлёй,
+// а зёрнами по ~0.1 с из случайных мест этих кусков. Любая петля, даже
+// выпрямленная и выровненная, на высоких оборотах повторяется раз в 2–3 с, и
+// любая её особенность звучит как событие — владелец слышал «кучу передач»
+// на 7-й. У зёрен из случайных мест повторов нет. Куски — все ровные участки
+// езды из записей VacekH (найдены по треку оборотов: без рывков, наклон
+// меньше 6%/с); каждый выпрямлен к одной высоте (вспышки 200 Гц = 3000 об/мин)
+// и выровнен по громкости в трёх полосах к среднему по пулу — зёрна разных
+// кусков не отличаются ни тоном, ни тембром.
+// [источник, начало, конец, полоса старта трека, Гц]
+const POOL_F = 200;
+const POOL = [
+  [205511, 13.6, 22.0, [150, 175]],
+  [205511, 24.4, 32.2, [160, 180]],
+  [205503, 12.1, 18.7, [143, 162]],
+  [205503, 21.6, 24.4, [170, 185]],
 ];
 const LOOPS = [
   ['tyre_squeal', 71739, 5.0, 6.6],
@@ -235,6 +247,59 @@ for (const [name, id, a, b, band, order, sm, fixed] of V8) {
   console.log(name, `${(y.length / SR).toFixed(2)} с`, `вспышки ${fire.toFixed(2)} Гц ≈ ${rpm} об/мин`,
     `исходный трек ${Math.min(...raw.map(q => q[1] / order)).toFixed(1)}…${Math.max(...raw.map(q => q[1] / order)).toFixed(1)} Гц`,
     `в петле отклонение ≤ ${dev.toFixed(2)}%`);
+}
+// Фаза цикла мотора (2 оборота = 8 вспышек) по блокам 0.25 с: сдвиг tau,
+// при котором блок лучше всего совпадает с опорным циклом (взаимная
+// корреляция по гармоникам частоты цикла). Движок ставит каждое зерно так,
+// чтобы фаза цикла продолжала предыдущее — зёрна складываются без «фазера».
+function cyclePhases(y, F, ref) {
+  const P = 8 / F, B = Math.round(SR * 0.25), K = 48, out = [];
+  const spec = s0 => { const X = []; for (let k = 1; k <= K; k++) { const f = k / P; if (f > 3000) break; let re = 0, im = 0;
+    for (let i = 0; i < B && s0 + i < y.length; i++) { const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / B), a = 2 * Math.PI * f * (s0 + i) / SR; re += y[s0 + i] * w * Math.cos(a); im -= y[s0 + i] * w * Math.sin(a); }
+    X.push([re, im, k]); } return X; };
+  const R = ref || spec(0);
+  for (let s0 = 0; s0 + B <= y.length; s0 += B) {
+    const X = spec(s0); let best = -Infinity, bt = 0;
+    for (let j = 0; j < 160; j++) { const tau = j / 160 * P; let sc = 0;
+      // X·conj(R)·e^{-i2πk·tau/P}: блок, сдвинутый на tau, против опорного
+      for (let q = 0; q < X.length; q++) { const [xr, xi, k] = X[q], [rr, ri] = R[q]; const cr = xr * rr + xi * ri, ci = xi * rr - xr * ri, a = -2 * Math.PI * k * tau / P; sc += cr * Math.cos(a) - ci * Math.sin(a); }
+      if (sc > best) { best = sc; bt = tau; } }
+    out.push(+bt.toFixed(5));
+  }
+  return { tau: out, ref: R };
+}
+const bandsOf = y => { const low = biquad(y, 'lp', 250), rest = biquad(y, 'hp', 250); return [low, biquad(rest, 'lp', 700), biquad(rest, 'hp', 700)].map(b => Float32Array.from(b)); };
+{
+  const segs = [];
+  for (const [id, a, b, band] of POOL) {
+    const x = decode(fetchSrc(id), a, b - a);
+    const tr = smoothTrack(follow(x, band), 0.06);
+    const y = retime(x, tr, POOL_F);
+    const bands = bandsOf(y); for (const bb of bands) flattenEnv(bb, 0.09, 0.9);
+    segs.push({ id, a, b, bands, n: y.length, f0: Math.min(...tr.map(q => q[1])), f1: Math.max(...tr.map(q => q[1])) });
+  }
+  // общий тембр: каждая полоса каждого куска — к средней по пулу
+  const target = [0, 1, 2].map(j => segs.reduce((s, q) => s + rms(q.bands[j]), 0) / segs.length);
+  const trim = Math.round(SR * 0.08), gap = Math.round(SR * 0.05);
+  const total = segs.reduce((s, q) => s + q.n - 2 * trim + gap, 0), pool = new Float32Array(total);
+  let at = 0, ref = null; const meta = { rpm: POOL_F * 15, F: POOL_F, P: 8 / POOL_F, block: 0.25, segs: [] };
+  for (const q of segs) {
+    const y = new Float32Array(q.n - 2 * trim);
+    q.bands.forEach((bb, j) => { const k = target[j] / rms(bb); for (let i = 0; i < y.length; i++) y[i] += bb[i + trim] * k; });
+    const ph = cyclePhases(y, POOL_F, ref); ref = ref || ph.ref;
+    pool.set(y, at);
+    meta.segs.push({ s: +(at / SR).toFixed(4), e: +((at + y.length) / SR).toFixed(4), tau: ph.tau });
+    console.log('пул:', q.id, q.a + '–' + q.b + ' с', `трек ${q.f0.toFixed(0)}…${q.f1.toFixed(0)} Гц → ${POOL_F}`, `${(y.length / SR).toFixed(2)} с`);
+    at += y.length + gap;
+  }
+  const k = 0.18 / rms(pool); for (let i = 0; i < pool.length; i++) pool[i] *= k;
+  writeFileSync(`${OUT}/v8_pool.wav`, wav(pool));
+  manifest.pools = { v8_pool: meta };
+  // холостые: та же разметка фаз по петле холостых (без выпрямления — живая)
+  const idleF = manifest.loops.v8_idle.hz;
+  const b = execFileSync('ffmpeg', ['-v', 'quiet', '-i', `${OUT}/v8_idle.wav`, '-f', 'f32le', '-'], { maxBuffer: 1 << 28 });
+  const yi = new Float32Array(b.buffer, b.byteOffset, b.length / 4);
+  manifest.pools.v8_idle = { rpm: manifest.loops.v8_idle.rpm, F: idleF, P: 8 / idleF, block: 0.25, segs: [{ s: 0, e: +(yi.length / SR).toFixed(4), tau: cyclePhases(yi, idleF).tau }] };
 }
 for (const [name, id, a, b] of LOOPS) {
   const x = decode(fetchSrc(id), a, b - a);
