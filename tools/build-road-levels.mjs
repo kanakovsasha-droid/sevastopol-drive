@@ -135,6 +135,16 @@ const nodeId = new Map(), NX = [], NZ = [], NC = [];
 const node = (x, z, osm) => {
   let key = null;
   if (osm) { const jid = junctionOf(x, z); key = jid ? 'J' + jid : 'P' + Math.round(x * 2) + ',' + Math.round(z * 2); }
+  else {
+    // Вставная точка (шаг 8 м) внутри пятна перекрёстка — тоже его вершина.
+    // Иначе между двумя узлами OSM, сведёнными в одну вершину перекрёстка,
+    // оставалась свободная точка: перелом её не держал (тройка «узел — точка —
+    // тот же узел» отбрасывается), и в перекрёстке выходила яма на полметра
+    // (Пластунская × 2-я Линия Бомборы, 614, 2091: перелом 14%).
+    // В положение вершины такие точки не идут — его задают узлы OSM.
+    const jid = junctionOf(x, z);
+    if (jid && nodeId.has('J' + jid)) return nodeId.get('J' + jid);
+  }
   if (key && nodeId.has(key)) { const id = nodeId.get(key); NX[id] += x; NZ[id] += z; NC[id]++; return id; }
   const id = NX.length; NX.push(x); NZ.push(z); NC.push(1);
   if (key) nodeId.set(key, id);
@@ -147,6 +157,8 @@ for (const r of use) {
   let s = 0, prev = null;
   for (let k = 0; k < p.length / 2; k++) {
     const x = p[k * 2], z = p[k * 2 + 1];
+    // узел конца звена — раньше вставных точек: те ищут вершину перекрёстка
+    const end = node(x, z, true);
     if (k > 0) {
       const px = p[k * 2 - 2], pz = p[k * 2 - 1], L = Math.hypot(x - px, z - pz);
       const m = Math.max(1, Math.ceil(L / STEP));
@@ -156,7 +168,7 @@ for (const r of use) {
       }
       s += L;
     }
-    ids.push(node(x, z, true)); ss.push(s);
+    ids.push(end); ss.push(s);
   }
   const base = r.c <= 1 && r.w >= 10 ? 0.06 : 0.09;
   // Вес ребра в сглаживании — по значимости улицы: в узле главная улица
@@ -210,10 +222,14 @@ for (let it = 0; it < 70; it++) {
   for (let i = 0; i < N; i++) { let s = GS[i] * 2, w = 2; const l = nb[i]; for (let k = 0; k < l.length; k += 2) { s += GS[l[k]]; w++; } T[i] = s / w; }
   GS.set(T);
 }
+// Потолок — 25%, а не 18%: там, где склон сам круче (2-я Линия Бомборы —
+// 27% в среднем на 148 м), предел 18% невыполним — решатель строил насыпь
+// на 7 м внизу и выемку на 4 м наверху, и всё равно оставлял 20 рёбер по
+// 19–20%. Физика машины держит подъём до 28%.
 for (const e of edges) {
   if (e[4]) continue;
   const slope = Math.abs(GS[e[0]] - GS[e[1]]) / e[2];
-  e[3] = Math.min(0.18, Math.max(e[3], slope * 1.15 + 0.01));
+  e[3] = Math.min(0.20, Math.max(e[3], slope * 1.15 + 0.01));
 }
 
 // ---------------------------------------------------------------- решатель
@@ -229,13 +245,24 @@ const KMAX = 0.025;
 const nodeImp = new Float32Array(N);
 for (const e of edges) { if (e[5] > nodeImp[e[0]]) nodeImp[e[0]] = e[5]; if (e[5] > nodeImp[e[1]]) nodeImp[e[1]] = e[5]; }
 const mob = (v, imp) => imp >= nodeImp[v] - 1e-6 ? 1 : 0.08;
+// Цепочку сжимаем: подряд идущие одинаковые вершины (несколько точек улицы
+// внутри пятна перекрёстка — одна вершина) становятся одной, со своими
+// краями по длине. Иначе тройка «подход — перекрёсток — перекрёсток»
+// отбрасывалась, и перелом на въезде в перекрёсток ничем не держался (до 15%).
 const triples = [];
-for (const c of chains) for (let k = 1; k < c.ids.length - 1; k++) {
-  const a = c.ids[k - 1], b = c.ids[k], d = c.ids[k + 1];
-  if (a === b || b === d || a === d) continue;
-  const l1 = c.ss[k] - c.ss[k - 1], l2 = c.ss[k + 1] - c.ss[k];
-  if (l1 < 0.5 || l2 < 0.5) continue;
-  triples.push([a, b, d, l1, l2, (c.r.c <= 1 ? 4 : c.r.c === 2 ? 1.5 : 0.5) * Math.max(0.5, c.r.w / 9)]);
+for (const c of chains) {
+  const v = [];                              // [вершина, s начала, s конца]
+  for (let k = 0; k < c.ids.length; k++) {
+    const last = v[v.length - 1];
+    if (last && last[0] === c.ids[k]) last[2] = c.ss[k]; else v.push([c.ids[k], c.ss[k], c.ss[k]]);
+  }
+  for (let k = 1; k < v.length - 1; k++) {
+    const [a, , a1] = v[k - 1], [b, b0, b1] = v[k], [d, d0] = v[k + 1];
+    if (a === d) continue;
+    const l1 = b0 - a1, l2 = d0 - b1;
+    if (l1 < 0.5 || l2 < 0.5) continue;
+    triples.push([a, b, d, l1, l2, (c.r.c <= 1 ? 4 : c.r.c === 2 ? 1.5 : 0.5) * Math.max(0.5, c.r.w / 9)]);
+  }
 }
 const bend = () => {
   for (const [a, b, d, l1, l2, imp] of triples) {
@@ -250,15 +277,19 @@ const bend = () => {
     Hh[b] += t * kb * mb; Hh[a] -= t / l1 * ma; Hh[d] -= t / l2 * md;
   }
 };
+// Перелом проверяется перед КАЖДЫМ проходом по уклонам, а не раз на три:
+// иначе три прохода по уклону перебивали один по перелому, и на коротких
+// рёбрах (4–5 м, Троллейбусный спуск) переломы оставались до 12%.
 const project = () => {
-  bend();
-  for (let pass = 0; pass < 3; pass++)
+  for (let pass = 0; pass < 3; pass++) {
+    bend();
     for (const [a, b, len, g, , imp] of edges) {
       const d = Hh[a] - Hh[b], lim = g * len;
       if (Math.abs(d) <= lim) continue;
       const ma = mob(a, imp), mb = mob(b, imp), ex = (Math.abs(d) - lim) * Math.sign(d) / (ma + mb);
       Hh[a] -= ex * ma; Hh[b] += ex * mb;
     }
+  }
 };
 for (let it = 0; it < 900; it++) {
   for (let i = 0; i < N; i++) {
@@ -273,7 +304,9 @@ for (let it = 0; it < 900; it++) {
   for (let i = 0; i < N; i++) Hh[i] = Hh[i] * 0.3 + T[i] * 0.7;
   if (it % 3 === 0) project();
 }
-for (let k = 0; k < 120; k++) project();
+// Доводка одними проекциями: 1200 кругов (было 120) — переломов сверх
+// предела 83 → 2, худший 9.6% → 5.1%; ~15 с вместо 4.
+for (let k = 0; k < 1200; k++) project();
 // итог: отклонение от земли и уклоны
 {
   let maxDev = 0, over = 0;
