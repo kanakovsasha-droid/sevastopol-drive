@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { lampGlow } from './env.js?v=6faf90df';
+import { lampGlow, registerLamps } from './env.js?v=6faf90df';
 import { PolyGrid } from './worldgen.js?v=6faf90df';
 import { plantFlora, crownRadius, ST } from './flora.js?v=6faf90df';
 import { streetOwnsRoad } from './street.js?v=6faf90df';
@@ -114,6 +114,8 @@ function lampTwinGeo() {
 }
 
 const LAMP_GEO = { street: lampStreetGeo, park: lampParkGeo, twin: lampTwinGeo };
+// где у каждого типа плафоны — отсюда светят на улицу ночью
+const LAMP_HEADS = { street: [[0, 8.2, 1.76]], park: [[0, 4.1, 0]], twin: [[0, 8.85, 1.16], [0, 8.85, -1.16]] };
 
 // Улицу сажают ОДНОЙ породой — и в жизни, и здесь: в квартале оказывается
 // три-четыре породы, а не все девять. По фото проспекта Нахимова и Большой
@@ -618,7 +620,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null)
   // такие куски по расстоянию до камеры. Фонарь за полкилометра — доли
   // пикселя, а вызов отрисовки стоит как за целый. У деревьев, кустов и
   // изгородей свои дальности — в flora.js.
-  const place = (geoFn, arr, far = 0) => {
+  const place = (geoFn, arr, far = 0, heads = null) => {
     const n = arr.length / LST;
     if (!n) return 0;
     const cs = chunkFor(n);
@@ -641,12 +643,13 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null)
       });
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
+      if (heads) registerLamps(mesh, heads);     // ночью светят на улицу (env.js)
       group.add(mesh);
     }
     return n;
   };
   let nL = 0;
-  for (const k in LAMP_GEO) nL += place(LAMP_GEO[k], lampBins[k], 400);
+  for (const k in LAMP_GEO) nL += place(LAMP_GEO[k], lampBins[k], 400, LAMP_HEADS[k]);
 
   group.userData.counts = { деревья: nT, 'из них обмеренных': measured, 'снято с асфальта': onAsphalt,
                             'не сели у дороги': rejected, кусты: bushes, изгороди: counts.hedge || 0, фонари: nL };

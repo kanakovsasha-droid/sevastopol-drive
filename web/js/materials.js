@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ENV } from './env.js?v=6faf90df';
+import { ENV, LAMP_N } from './env.js?v=6faf90df';
 
 // Всё рисуется процедурно прямо в шейдере, без единой картинки.
 // Причина простая: координаты в атрибутах — метры, поэтому окно всегда 1.4 м,
@@ -36,6 +36,8 @@ float band(float x, float c, float hw){
 // материала, прибавляется к излучению после <emissivemap_fragment>.
 const SEASON = `
 uniform float uNight;
+uniform vec4 uLamps[${LAMP_N}];
+varying vec3 vLampP;
 uniform vec4 uSeason;     // x — осень, y — облетело/пожухло, z — снег, w — весна
 // насколько цвет — зелень: газон, трава, кустарник в цвете земли
 float greenness(vec3 c){ return clamp((c.g - max(c.r, c.b) * 0.94) * 7.0, 0.0, 1.0); }
@@ -60,6 +62,25 @@ float snowAmt(float up, float n){
 #endif
 `;
 
+// Свет фонарей (env.js → ENV.uLamps): тёплое пятно от ближайших плафонов,
+// ламбертом по нормали, затухание по расстоянию и обрезка на 30 м.
+const LAMP_LIGHT = `
+  if (uNight > 0.01) {
+    vec3 lampAcc = vec3(0.0);
+    for (int i = 0; i < ${LAMP_N}; i++) {
+      vec4 L = uLamps[i];
+      if (L.w <= 0.0) continue;
+      vec3 d = L.xyz - vLampP;
+      float r2 = dot(d, d);
+      if (r2 > 520.0) continue;
+      vec3 ld = normalize((viewMatrix * vec4(d, 0.0)).xyz);
+      float ndl = max(dot(normal, ld), 0.0);
+      lampAcc += vec3(ndl * L.w / (1.0 + r2 * 0.11) * (1.0 - smoothstep(250.0, 520.0, r2)));
+    }
+    reflectedLight.directDiffuse += diffuseColor.rgb * vec3(1.0, 0.70, 0.40) * lampAcc * uNight;
+  }
+`;
+
 // Цвет правим в <color_fragment>, а шероховатость — только после
 // <roughnessmap_fragment>: раньше roughnessFactor ещё не объявлен.
 // Значение проносим через переменную, объявленную вне блока.
@@ -70,14 +91,16 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody, season = '' 
   mat.onBeforeCompile = shader => {
     shader.uniforms.uNight = ENV.uNight;
     shader.uniforms.uSeason = ENV.uSeason;
+    shader.uniforms.uLamps = ENV.uLamps;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\n' + vertHead)
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + vertBody);
+      .replace('#include <common>', '#include <common>\nvarying vec3 vLampP;\n' + vertHead)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLampP = (modelMatrix * vec4(transformed, 1.0)).xyz;\n' + vertBody);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\n' + HASH + NOISE + SEASON + fragHead)
       .replace('#include <color_fragment>', '#include <color_fragment>\nfloat procRough = 0.9;\nvec3 procEmit = vec3(0.0);\n' + fragBody + season)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = procRough;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += procEmit;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += procEmit;')
+      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n' + LAMP_LIGHT);
   };
   return mat;
 }
