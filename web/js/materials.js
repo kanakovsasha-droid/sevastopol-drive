@@ -39,6 +39,7 @@ uniform float uNight;
 uniform vec4 uLamps[${LAMP_N}];
 varying vec3 vLampP;
 uniform vec4 uSeason;     // x — осень, y — облетело/пожухло, z — снег, w — весна
+uniform vec4 uWet;        // x — снег от снегопада, y — мокро после дождя
 // насколько цвет — зелень: газон, трава, кустарник в цвете земли
 float greenness(vec3 c){ return clamp((c.g - max(c.r, c.b) * 0.94) * 7.0, 0.0, 1.0); }
 vec3 seasonGreen(vec3 c, float k, float n){
@@ -53,7 +54,8 @@ vec3 seasonGreen(vec3 c, float k, float n){
 // снег лежит только на том, что смотрит вверх, и пятнами — он тонкий
 // (макрос, а не функция: vNormal объявляется ниже <common>, куда это вставлено)
 float snowAmt(float up, float n){
-  return uSeason.z * smoothstep(0.55, 0.85, up) * smoothstep(0.62, 0.32, n - uSeason.z * 0.35);
+  float z = max(uSeason.z, uWet.x);      // сезонный тонкий снег или нападавший
+  return z * smoothstep(0.55, 0.85, up) * smoothstep(0.62, 0.32, n - z * 0.35);
 }
 #ifndef FLAT_SHADED
   #define snowCover(n) snowAmt(dot(normalize(vNormal), normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz)), n)
@@ -92,6 +94,7 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody, season = '' 
     shader.uniforms.uNight = ENV.uNight;
     shader.uniforms.uSeason = ENV.uSeason;
     shader.uniforms.uLamps = ENV.uLamps;
+    shader.uniforms.uWet = ENV.uWet;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vLampP;\n' + vertHead)
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLampP = (modelMatrix * vec4(transformed, 1.0)).xyz;\n' + vertBody);
@@ -628,7 +631,7 @@ export function buildingMaterial() {
       }`,
     // снег на кровлях: черепица, плоские крыши, профнастил
     season: `
-      if (uSeason.z > 0.01 && (abs(vKind - 1.0) < 0.5 || abs(vKind - 3.0) < 0.5 || abs(vKind - 5.0) < 0.5)) {
+      if (max(uSeason.z, uWet.x) > 0.01 && (abs(vKind - 1.0) < 0.5 || abs(vKind - 3.0) < 0.5 || abs(vKind - 5.0) < 0.5)) {
         float n = fbm(vWall.xy * 0.18);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.88, 0.90, 0.94), snowCover(n) * 0.9);
       }`,
@@ -836,6 +839,39 @@ export function roadMaterial() {
         diffuseColor.rgb = c;
         procRough = rough;
       }`,
+    // Снег на дорогах: после снегопада полотно белое, по полосам — тёмные
+    // мокрые колеи от колёс; тротуары — сплошняком, с протоптанной серединой.
+    // После дождя асфальт темнее и блестит, в низинах — лужи.
+    season: `
+      {
+        float m = vRoad.x * vRoad.z * 0.5, halfW = vRoad.z * 0.5;
+        float sn = uWet.x;
+        if (sn > 0.01) {
+          float n = fbm(vXZ * 0.55);
+          float rut = 0.0;
+          if (vCls < 3.5) {
+            float lanes = max(1.0, floor(abs(vRoad.w)));
+            float laneW = vRoad.z / lanes;
+            float lp = fract((m + halfW) / laneW) * laneW - laneW * 0.5;
+            rut = 1.0 - smoothstep(0.12, 0.42, abs(abs(lp) - 0.82) - 0.05 * n);
+            rut *= smoothstep(0.25, 0.6, sn);          // колеи появляются, когда снега уже много
+          } else if (vCls > 3.5 && vCls < 5.5) {
+            rut = 0.5 * (1.0 - smoothstep(0.3, 0.9, abs(m - halfW) / max(halfW, 0.5))) * smoothstep(0.4, 0.8, n);
+          }
+          float cover = clamp(sn * 1.4 * smoothstep(0.1, 0.45, n + sn * 0.7), 0.0, 1.0) * (1.0 - rut * 0.85);
+          vec3 snowC = vec3(0.84, 0.87, 0.92) * (0.92 + 0.1 * fbm(vXZ * 3.1));
+          diffuseColor.rgb = mix(diffuseColor.rgb, snowC, cover);
+          diffuseColor.rgb *= 1.0 - rut * sn * 0.3;          // колея — мокрая каша
+          procRough = mix(procRough, 0.55, cover);
+          procRough = mix(procRough, 0.3, rut * sn);
+        }
+        if (uWet.y > 0.01) {
+          float puddle = smoothstep(0.58, 0.72, fbm(vXZ * 0.33));
+          float w = uWet.y * (0.65 + 0.35 * puddle);
+          diffuseColor.rgb *= 1.0 - 0.42 * w;
+          procRough = mix(procRough, 0.06, w * (0.55 + 0.45 * puddle));
+        }
+      }`,
   });
 }
 
@@ -881,7 +917,7 @@ export function terrainMaterial() {
         float n = fbm(vXZ * 0.07);
         float k = greenness(diffuseColor.rgb) * (1.0 - vTer.x * 0.4);
         diffuseColor.rgb = seasonGreen(diffuseColor.rgb, max(k, (1.0 - vTer.x) * 0.6), n);
-        float sn = snowCover(n + fbm(vXZ * 0.9) * 0.25) * (1.0 - vTer.x * 0.7) * (1.0 - vTer.y * 0.6);
+        float sn = snowCover(n + fbm(vXZ * 0.9) * 0.25) * (1.0 - vTer.x * 0.7 * (1.0 - uWet.x)) * (1.0 - vTer.y * 0.6 * (1.0 - uWet.x));
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.93), sn);
       }`,
   });
