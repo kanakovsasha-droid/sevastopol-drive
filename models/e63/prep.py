@@ -5,8 +5,10 @@
 #
 # Что делает: метры вместо условных единиц, нос — в сторону +Z игры, ноль —
 # на земле посередине между осями; четыре колеса — отдельные узлы с началом в
-# центре колеса (wheel_FL/FR/RL/RR), остальное — кузов, склеенный по материалам;
-# сетка прорежена, картинки ужаты до 512.
+# центре колеса (wheel_FL/FR/RL/RR), остальное — кузов, склеенный по материалам.
+# Сетка — как в исходнике, без прореживания (177 тыс. треугольников): прореженная
+# в 0.42 давала грани на капоте и крыльях и рваные кромки бамперов. Картинки — в
+# родном разрешении (у автора до 1024), потолок 2048; WebP с качеством 90.
 import bpy, os, math
 from mathutils import Vector, Matrix
 
@@ -14,7 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, 'src', 'mercedes-amg_e_63_s_w213.glb')
 OUT = os.path.normpath(os.path.join(HERE, '..', '..', 'data', 'models', 'e63.glb'))
 WHEELBASE = 2.939            # м, паспорт W213
-RATIO = 0.42                 # доля треугольников, что остаётся у тяжёлых деталей
+MAX_TEX = 2048               # потолок для картинок; у исходника они до 1024, не трогаются
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=SRC)
@@ -71,17 +73,7 @@ def tris(objs):
     for o in objs:
         o.data.calc_loop_triangles(); n += len(o.data.loop_triangles)
     return n
-print('ДО', tris(body), tris(sum(wheels.values(), [])))
-
-def decimate(o, ratio):
-    o.data.calc_loop_triangles()
-    if len(o.data.loop_triangles) < 700: return
-    m = o.modifiers.new('d', 'DECIMATE'); m.ratio = ratio
-    bpy.context.view_layer.objects.active = o
-    bpy.ops.object.modifier_apply(modifier=m.name)
-for o in body: decimate(o, RATIO)
-for v in wheels.values():
-    for o in v: decimate(o, 0.5)
+print('ИСХОДНИК', tris(body), tris(sum(wheels.values(), [])))
 
 def join(objs, name):
     bpy.ops.object.select_all(action='DESELECT')
@@ -115,11 +107,11 @@ for o in out:
     print('УЗЕЛ', o.name, [round(v, 3) for v in c], 'R', round(corner[k][1] * S, 3))
 
 for im in bpy.data.images:
-    if im.size[0] > 512 or im.size[1] > 512:
-        f = 512 / max(im.size); im.scale(max(1, int(im.size[0] * f)), max(1, int(im.size[1] * f)))
+    if max(im.size) > MAX_TEX:
+        f = MAX_TEX / max(im.size); im.scale(max(1, int(im.size[0] * f)), max(1, int(im.size[1] * f)))
 print('ПОСЛЕ', tris(out), 'объектов', len(out), 'материалов', len({s.material.name for o in out for s in o.material_slots if s.material}))
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, 'e63.blend'))
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', export_apply=True, export_yup=True,
-                          export_image_format='WEBP', export_image_quality=80)
+                          export_image_format='WEBP', export_image_quality=90)
 print('GLB', os.path.getsize(OUT) // 1024, 'КБ')

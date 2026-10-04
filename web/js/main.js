@@ -1,23 +1,23 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=d1eef0ad';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=d1eef0ad';
-import { buildStreetProps } from './props.js?v=d1eef0ad';
-import { updateFlora, floraStats, warmFlora } from './flora.js?v=d1eef0ad';
-import { buildYards, buildStructures } from './yards.js?v=d1eef0ad';
-import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=d1eef0ad';
-import { buildFurniture } from './furniture.js?v=d1eef0ad';
-import { buildLandmarks, setModelWarm } from './landmarks.js?v=d1eef0ad';
-import { buildSigns } from './signs.js?v=d1eef0ad';
-import { loadStreet, buildStreet, streetFurniture } from './street.js?v=d1eef0ad';
-import { buildCemeteries } from './cemetery.js?v=d1eef0ad';
-import { audit } from './audit.js?v=d1eef0ad';
-import { buildMap, drawFull, mapUnproject } from './minimap.js?v=d1eef0ad';
-import { Hud } from './hud.js?v=d1eef0ad';
-import { ChunkManager } from './chunks.js?v=d1eef0ad';
-import { Collider, RoadIndex } from './collision.js?v=d1eef0ad';
-import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=d1eef0ad';
-import { CarFX } from './carfx.js?v=d1eef0ad';
-import { precompile } from './warm.js?v=d1eef0ad';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=e5a5d2b1';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=e5a5d2b1';
+import { buildStreetProps } from './props.js?v=e5a5d2b1';
+import { updateFlora, floraStats, warmFlora } from './flora.js?v=e5a5d2b1';
+import { buildYards, buildStructures } from './yards.js?v=e5a5d2b1';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=e5a5d2b1';
+import { buildFurniture } from './furniture.js?v=e5a5d2b1';
+import { buildLandmarks, setModelWarm } from './landmarks.js?v=e5a5d2b1';
+import { buildSigns } from './signs.js?v=e5a5d2b1';
+import { loadStreet, buildStreet, streetFurniture } from './street.js?v=e5a5d2b1';
+import { buildCemeteries } from './cemetery.js?v=e5a5d2b1';
+import { audit } from './audit.js?v=e5a5d2b1';
+import { buildMap, drawFull, mapUnproject } from './minimap.js?v=e5a5d2b1';
+import { Hud } from './hud.js?v=e5a5d2b1';
+import { ChunkManager } from './chunks.js?v=e5a5d2b1';
+import { Collider, RoadIndex } from './collision.js?v=e5a5d2b1';
+import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=e5a5d2b1';
+import { CarFX } from './carfx.js?v=e5a5d2b1';
+import { precompile } from './warm.js?v=e5a5d2b1';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -926,11 +926,38 @@ function swapCarModel() {
   return loadCarModel(CARS[car.model]?.glb, renderer).then(m => {
     cheapGlass(m);
     trimCarShadows(m);
-    return precompile(renderer, scene, camera, m, sun).then(() => m);
+    return precompile(renderer, scene, camera, m, sun).then(() => uploadTextures(m)).then(() => m);
   }).then(m => {
     if (ticket !== carModelTicket) return;            // пока грузилась, выбрали другую
     scene.remove(carMesh); carMesh = m; scene.add(m);
   }).catch(e => console.warn('модель машины не загрузилась, остаётся прежняя:', e.message));
+}
+
+// Картинки модели — в видеопамять понемногу за кадр, до подмены. Иначе их
+// грузит первый кадр с новой машиной: у E63 полсотни картинок до 1024 px со
+// всеми мип-уровнями — около 0.17 с одним куском (замер в headless), и машина
+// появляется со стоп-кадром. За кадр — сколько влезет в ~6 мс, но не меньше
+// одной: самая большая — до ~12 мс.
+function uploadTextures(root) {
+  const tex = new Set();
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material])
+      for (const v of Object.values(m)) if (v && v.isTexture && !v.isRenderTargetTexture) tex.add(v);
+  });
+  const list = [...tex];
+  return new Promise(done => {
+    const step = () => {
+      const t0 = performance.now();
+      do {
+        const t = list.pop();
+        if (!t) return done();
+        renderer.initTexture(t);
+      } while (performance.now() - t0 < 6);
+      requestAnimationFrame(step);
+    };
+    step();
+  });
 }
 
 function trimCarShadows(root) {
