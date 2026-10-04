@@ -79,6 +79,10 @@ export class Settings {
       mb.insertBefore(b, mb.querySelector('h2')?.nextSibling || mb.firstChild);
     }
     this._padHints();
+    // в подсказку клавиш — T и [ ] (без правки index.html)
+    const more = document.querySelector('#keys .row.more') || document.querySelector('#keys .row:last-of-type');
+    if (more && !more.querySelector('.kc-t')) more.insertAdjacentHTML('beforeend',
+      '<span class="g sh"><span class="kc kc-t">T</span>настройки</span><span class="g sh"><span class="kc">[</span><span class="kc">]</span>время</span>');
 
     addEventListener('keydown', e => {
       if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && e.code !== 'Escape') return;
