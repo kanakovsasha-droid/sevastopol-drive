@@ -20,3 +20,7 @@ data/*-center.json
 # звуки из чужих модов — только для локальной игры, в репозиторий и на сайт нельзя
 data/audio-local/
 shots-audio/
+
+# автопроверка (tools/qa.mjs): снимки и отчёты не в git, набор мест qa/spots.json — в git
+qa/runs/
+qa/report.html
