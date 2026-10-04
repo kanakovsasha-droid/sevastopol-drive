@@ -4,6 +4,7 @@ import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildB
 import { buildStreetProps } from './props.js?v=e4f92276';
 import { updateFlora, floraStats, warmFlora } from './flora.js?v=e4f92276';
 import { buildYards, buildStructures } from './yards.js?v=e4f92276';
+import { prepFuel } from './fuel.js?v=e4f92276';
 import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=e4f92276';
 import { buildFurniture } from './furniture.js?v=e4f92276';
 import { buildLandmarks, setModelWarm } from './landmarks.js?v=e4f92276';
@@ -670,7 +671,10 @@ function* buildChunk(d, key) {
   // Стены и улицы в индексы кладём В ТОМ ЖЕ шаге, что и геометрию дорог, до
   // первой паузы: дом, который уже видно, обязан и толкать машину.
   roads.add(part, w.roads);
-  collider.add(part, w.buildings);
+  // АЗС (fuel.js): дома-коробки на площадке снимаются, вместо них в индекс
+  // идут стены павильона, опоры навеса и стела модели сети
+  const fuelWalls = prepFuel(w);
+  collider.add(part, fuelWalls.length ? w.buildings.filter(b => !b.fuelBox).concat(fuelWalls) : w.buildings);
   lap('дороги');
   yield; pt = performance.now();
 
