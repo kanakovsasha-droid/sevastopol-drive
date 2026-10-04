@@ -6,7 +6,7 @@ import { updateFlora, floraStats, warmFlora } from './flora.js?v=2b23307a';
 import { buildYards, buildStructures } from './yards.js?v=2b23307a';
 import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=2b23307a';
 import { buildFurniture } from './furniture.js?v=2b23307a';
-import { buildLandmarks, setModelWarm } from './landmarks.js?v=2b23307a';
+import { buildLandmarks, setModelWarm, updateModels } from './landmarks.js?v=2b23307a';
 import { buildSigns } from './signs.js?v=2b23307a';
 import { loadStreet, buildStreet, streetFurniture } from './street.js?v=2b23307a';
 import { buildCemeteries } from './cemetery.js?v=2b23307a';
@@ -817,6 +817,18 @@ function cullFar() {
     }
     c.o.visible = cp.distanceTo(c.s.center) - c.s.radius < c.o.userData.far;
   }
+  // Дальний силуэт — по вызову отрисовки на квадрат 1 км, и с земли в кадре
+  // их под сотню, большей частью там, где туман уже съел всё. Туман FogExp2:
+  // доля цвета предмета exp(−(d·density)²); при d·density = 2.76 это 0.05% —
+  // ни на каком фоне не различить. Квадраты дальше гасим. В тумане и
+  // ночью плотность больше — и граница сама подходит ближе.
+  const fog = scene.fog;
+  const far = fog && fog.density > 0 ? 2.76 / fog.density : Infinity;
+  for (const m of farCells.values()) {
+    if (m.userData.covered) continue;
+    const bb = m.geometry.boundingBox || (m.geometry.computeBoundingBox(), m.geometry.boundingBox);
+    m.visible = bb.distanceToPoint(cp) < far;
+  }
 }
 
 function revealSome() {
@@ -850,7 +862,7 @@ function revealSome() {
     staging = null;
     st.g.traverse(o => { if (o.userData.far) farCull.push({ o, g: st.g, s: null }); });
     const fc = farCells.get(st.key);
-    if (fc) fc.visible = false;                  // под детальным кварталом силуэт не нужен
+    if (fc) { fc.visible = false; fc.userData.covered = true; }   // под детальным кварталом силуэт не нужен
   }
 }
 
@@ -895,7 +907,7 @@ function dropChunk(g, key) {
   // Силуэт возвращаем, только если этот квартал его и прятал: пачка сирот
   // хозяина выгружается вместе с ним, а недособранный квартал силуэт не трогал.
   const fc = farCells.get(key);
-  if (fc && wasShown) fc.visible = true;
+  if (fc && wasShown) { fc.visible = true; fc.userData.covered = false; }
 }
 
 // Мосты всех загруженных чанков одним полем: полотно ищем по всем частям и
@@ -1698,6 +1710,7 @@ function loop(now) {
   lt('HUD');
   revealSome();
   cullFar();
+  updateModels(camera);            // уровень подробности памятных моделей
   lt('показ');
   // деревья: ближний и средний план вокруг камеры, ветер
   updateFlora(camera, scene, now);
