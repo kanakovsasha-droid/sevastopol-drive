@@ -159,7 +159,12 @@ for (const r of use) {
     ids.push(node(x, z, true)); ss.push(s);
   }
   const base = r.c <= 1 && r.w >= 10 ? 0.06 : 0.09;
-  for (let k = 1; k < ids.length; k++) if (ids[k] !== ids[k - 1]) edges.push([ids[k - 1], ids[k], Math.max(0.5, ss[k] - ss[k - 1]), base, 0]);
+  // Вес ребра в сглаживании — по значимости улицы: в узле главная улица
+  // ведёт свою линию, а второстепенная подстраивается к ней. Поровну
+  // крутой переулок утаскивал узел вниз, и Большая Морская на перекрёстке
+  // проседала ямой на метр.
+  const imp = (r.c <= 1 ? 4 : r.c === 2 ? 1.5 : 0.5) * Math.max(0.5, r.w / 9);
+  for (let k = 1; k < ids.length; k++) if (ids[k] !== ids[k - 1]) edges.push([ids[k - 1], ids[k], Math.max(0.5, ss[k] - ss[k - 1]), base, 0, imp]);
   chains.push({ r, ids, ss });
 }
 const N = NX.length;
@@ -186,7 +191,7 @@ for (let i = 0; i < N; i++) { NX[i] /= NC[i]; NZ[i] /= NC[i]; }
       if (best < 0) continue;
       const k = Math.min(id, best) + ',' + Math.max(id, best);
       if (seen.has(k)) continue; seen.add(k);
-      edges.push([id, best, bd, 0.02, 1]);      // проезжие части почти на одной отметке
+      edges.push([id, best, bd, 0.02, 1, 2]);   // проезжие части почти на одной отметке
     }
   });
 }
@@ -198,7 +203,7 @@ for (let i = 0; i < N; i++) { const g = ground(NX[i], NZ[i]); G0[i] = g === null
 console.log('земля посчитана');
 // соседи
 const nb = Array.from({ length: N }, () => []);
-for (const [a, b, len, , kind] of edges) { nb[a].push(b, kind ? 1 : 1); nb[b].push(a, kind ? 1 : 1); }
+for (const [a, b, len, , kind, imp] of edges) { nb[a].push(b, imp); nb[b].push(a, imp); }
 // склон, сглаженный на ~70 м: по нему решаем, где улица и правда крутая
 const GS = Float32Array.from(G0), T = new Float32Array(N);
 for (let it = 0; it < 70; it++) {
@@ -219,33 +224,40 @@ const WD = 0.035;
 // ломался с −1% на +11% за 16 м (Троллейбусный спуск). Перелом не больше
 // 2.5 пункта на ребро в 8 м: на 60 км/ч это меньше 0.1 g.
 const KMAX = 0.025;
+// Подвижность вершины в проекциях: узел, через который идёт более важная
+// улица, второстепенной почти не двигается.
+const nodeImp = new Float32Array(N);
+for (const e of edges) { if (e[5] > nodeImp[e[0]]) nodeImp[e[0]] = e[5]; if (e[5] > nodeImp[e[1]]) nodeImp[e[1]] = e[5]; }
+const mob = (v, imp) => imp >= nodeImp[v] - 1e-6 ? 1 : 0.08;
 const triples = [];
 for (const c of chains) for (let k = 1; k < c.ids.length - 1; k++) {
   const a = c.ids[k - 1], b = c.ids[k], d = c.ids[k + 1];
   if (a === b || b === d || a === d) continue;
   const l1 = c.ss[k] - c.ss[k - 1], l2 = c.ss[k + 1] - c.ss[k];
   if (l1 < 0.5 || l2 < 0.5) continue;
-  triples.push([a, b, d, l1, l2]);
+  triples.push([a, b, d, l1, l2, (c.r.c <= 1 ? 4 : c.r.c === 2 ? 1.5 : 0.5) * Math.max(0.5, c.r.w / 9)]);
 }
 const bend = () => {
-  for (const [a, b, d, l1, l2] of triples) {
+  for (const [a, b, d, l1, l2, imp] of triples) {
     // перелом уклона на средней вершине
     const k = (Hh[d] - Hh[b]) / l2 - (Hh[b] - Hh[a]) / l1, lim = KMAX * 2 * Math.min(l1, l2) / STEP;
     if (Math.abs(k) <= lim) continue;
     const ex = (Math.abs(k) - lim) * Math.sign(k);
     // сдвиг b на δ меняет перелом на −δ(1/l1 + 1/l2), a и d — на δ/l1 и δ/l2
-    const kb = 1 / l1 + 1 / l2, den = kb * kb + 1 / (l1 * l1) + 1 / (l2 * l2);
+    const ma = mob(a, imp), mb = mob(b, imp), md = mob(d, imp);
+    const kb = 1 / l1 + 1 / l2, den = kb * kb * mb + ma / (l1 * l1) + md / (l2 * l2);
     const t = ex / den;
-    Hh[b] += t * kb; Hh[a] -= t / l1; Hh[d] -= t / l2;
+    Hh[b] += t * kb * mb; Hh[a] -= t / l1 * ma; Hh[d] -= t / l2 * md;
   }
 };
 const project = () => {
   bend();
   for (let pass = 0; pass < 3; pass++)
-    for (const [a, b, len, g] of edges) {
+    for (const [a, b, len, g, , imp] of edges) {
       const d = Hh[a] - Hh[b], lim = g * len;
-      if (d > lim) { const ex = (d - lim) / 2; Hh[a] -= ex; Hh[b] += ex; }
-      else if (d < -lim) { const ex = (-d - lim) / 2; Hh[a] += ex; Hh[b] -= ex; }
+      if (Math.abs(d) <= lim) continue;
+      const ma = mob(a, imp), mb = mob(b, imp), ex = (Math.abs(d) - lim) * Math.sign(d) / (ma + mb);
+      Hh[a] -= ex * ma; Hh[b] += ex * mb;
     }
 };
 for (let it = 0; it < 900; it++) {
@@ -253,8 +265,9 @@ for (let it = 0; it < 900; it++) {
     const dev = (Hh[i] - G0[i]) / 2;
     const wd = WD * (1 + dev * dev);
     let s = 0, w = 0; const l = nb[i];
-    for (let k = 0; k < l.length; k += 2) { s += Hh[l[k]]; w += 1; }
-    T[i] = w ? (wd * G0[i] + s) / (wd + w) : G0[i];
+    for (let k = 0; k < l.length; k += 2) { s += Hh[l[k]] * l[k + 1]; w += l[k + 1]; }
+    // данные — в долях от суммы весов: у главной улицы сглаживание то же
+    T[i] = w ? (wd * w / Math.max(1, l.length / 2) * G0[i] + s) / (wd * w / Math.max(1, l.length / 2) + w) : G0[i];
   }
   // Якоби с релаксацией
   for (let i = 0; i < N; i++) Hh[i] = Hh[i] * 0.3 + T[i] * 0.7;
@@ -281,6 +294,27 @@ for (const c of chains) {
   for (let k = 0; k < c.ids.length; k++) { s.push(Math.round(c.ss[k] * 10) / 10); h.push(Math.round(Hh[c.ids[k]] * 100) / 100); }
   out.roads[c.r.id] = { s, h };
 }
+// Длинная улица в чанках разрезана на куски «id:0», «id:1»…, а коридор
+// рельефа строится по far-слою, где она одна, с исходным id. Склеиваем.
+{
+  const parts = new Map();
+  for (const c of chains) { const m = /^(.*):(\d+)$/.exec(c.r.id); if (m) (parts.get(m[1]) || parts.set(m[1], []).get(m[1])).push([+m[2], c]); }
+  for (const [id, ps] of parts) {
+    ps.sort((a, b) => a[0] - b[0]);
+    const s = [], h = [];
+    let off = 0, ok = true;
+    for (let q = 0; q < ps.length; q++) {
+      const c = ps[q][1];
+      if (q > 0) {
+        const pv = ps[q - 1][1].r.pts, cur = c.r.pts;
+        if (Math.hypot(cur[0] - pv[pv.length - 2], cur[1] - pv[pv.length - 1]) > 0.5) { ok = false; break; }
+      }
+      for (let k = (q > 0 ? 1 : 0); k < c.ids.length; k++) { s.push(Math.round((off + c.ss[k]) * 10) / 10); h.push(Math.round(Hh[c.ids[k]] * 100) / 100); }
+      off += c.ss[c.ss.length - 1];
+    }
+    if (ok) out.roads[id] = { s, h };
+  }
+}
 // ПЛОСКОСТИ ПЕРЕКРЁСТКОВ. Полотна узла накладываются друг на друга, и
 // поверхность коридора в узле — склейка плато разных улиц: не плоскость.
 // Треугольник поперёк улицы шириной 10 м ложился хордой на 9–12 см выше
@@ -294,16 +328,20 @@ out.junctions = [];
   for (const j of juncs.values()) {
     if (j.x < BOX.x0 - MARGIN / 2 || j.x > BOX.x1 + MARGIN / 2 || j.z < BOX.z0 - MARGIN / 2 || j.z > BOX.z1 + MARGIN / 2) continue;
     if ((j.mw || 0) < 5) continue;
-    const R = Math.min(30, j.r) + 8;
+    const R = Math.min(30, j.r) + 5;
     let n = 0, sx = 0, sz = 0, sh = 0, sxx = 0, szz = 0, sxz = 0, sxh = 0, szh = 0;
     for (let a = Math.floor((j.x - R) / G); a <= Math.floor((j.x + R) / G); a++)
       for (let b = Math.floor((j.z - R) / G); b <= Math.floor((j.z + R) / G); b++)
         for (const i of g.get(a * 100003 + b) || []) {
           const x = NX[i] - j.x, z = NZ[i] - j.z;
           if (x * x + z * z > R * R) continue;
-          n++; sx += x; sz += z; sh += Hh[i]; sxx += x * x; szz += z * z; sxz += x * z; sxh += x * Hh[i]; szh += z * Hh[i];
+          // Вес — квадрат значимости улицы: плоскость ведёт главная улица,
+          // переулок лишь задаёт поперечный наклон. Поровну плоскость
+          // проваливала Большую Морскую на перекрёстке на полметра.
+          const q = nodeImp[i] * nodeImp[i];
+          n += q; sx += x * q; sz += z * q; sh += Hh[i] * q; sxx += x * x * q; szz += z * z * q; sxz += x * z * q; sxh += x * Hh[i] * q; szh += z * Hh[i] * q;
         }
-    if (n < 3) continue;
+    if (n <= 0) continue;
     // нормальные уравнения 3×3
     const A = [[n, sx, sz], [sx, sxx, sxz], [sz, sxz, szz]], B = [sh, sxh, szh];
     const det = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);

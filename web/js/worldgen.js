@@ -1890,7 +1890,11 @@ export function* buildRoads(world, terrain, chunk = 500) {
     //   * в остальном подъём раскатывается пандусом не круче 3 см на вершину
     //     (шаг 6 м) — изгиб профиля вместо горба.
     if (cls <= 3) for (let i = 0; i < mt.n; i++)
-      if (up[i] && junctionDist(px(i * CC), pz(i * CC)) < 12) up[i] = 0;
+      if (up[i] && (junctionDist(px(i * CC), pz(i * CC)) < 12 || levelWeight(px(i * CC), pz(i * CC)) > 0.5)) up[i] = 0;
+    // В центре дороги первичны (roadlevels.js): земля под полотном и на 13 м
+    // вокруг лежит ровно на его профиле, протыкать его нечему, — и поправка
+    // там только поднимала полотно на 30 см над колеёй соседнего (Красный
+    // спуск у 160, 1550: ступенька 29 см).
     // Пешеходная дорожка на проезжей части не поднимается вовсе: поднятая
     // поправкой, она вылезала поверх асфальта светлой полосой поперёк улицы
     // (пл. Лазарева у «Мир Бургера»).
@@ -1903,7 +1907,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
       for (let i = mt.n - 2; i >= 0; i--) if (up[i + 1] - 0.03 > up[i]) up[i] = up[i + 1] - 0.03;
     }
     if (cls <= 3) for (let i = 0; i < mt.n; i++)
-      if (up[i] && junctionDist(px(i * CC), pz(i * CC)) < 12) up[i] = 0;
+      if (up[i] && (junctionDist(px(i * CC), pz(i * CC)) < 12 || levelWeight(px(i * CC), pz(i * CC)) > 0.5)) up[i] = 0;
     for (let i = 0; i < mt.n; i++) {
       if (!up[i]) continue;
       for (let q = 0; q < CC; q++) ch.P[lo + (i * CC + q) * 3] += up[i];
