@@ -926,11 +926,38 @@ function swapCarModel() {
   return loadCarModel(CARS[car.model]?.glb, renderer).then(m => {
     cheapGlass(m);
     trimCarShadows(m);
-    return precompile(renderer, scene, camera, m, sun).then(() => m);
+    return precompile(renderer, scene, camera, m, sun).then(() => uploadTextures(m)).then(() => m);
   }).then(m => {
     if (ticket !== carModelTicket) return;            // пока грузилась, выбрали другую
     scene.remove(carMesh); carMesh = m; scene.add(m);
   }).catch(e => console.warn('модель машины не загрузилась, остаётся прежняя:', e.message));
+}
+
+// Картинки модели — в видеопамять понемногу за кадр, до подмены. Иначе их
+// грузит первый кадр с новой машиной: у E63 полсотни картинок до 1024 px со
+// всеми мип-уровнями — около 0.17 с одним куском (замер в headless), и машина
+// появляется со стоп-кадром. За кадр — сколько влезет в ~6 мс, но не меньше
+// одной: самая большая — до ~12 мс.
+function uploadTextures(root) {
+  const tex = new Set();
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material])
+      for (const v of Object.values(m)) if (v && v.isTexture && !v.isRenderTargetTexture) tex.add(v);
+  });
+  const list = [...tex];
+  return new Promise(done => {
+    const step = () => {
+      const t0 = performance.now();
+      do {
+        const t = list.pop();
+        if (!t) return done();
+        renderer.initTexture(t);
+      } while (performance.now() - t0 < 6);
+      requestAnimationFrame(step);
+    };
+    step();
+  });
 }
 
 function trimCarShadows(root) {
