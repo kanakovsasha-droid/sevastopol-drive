@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ENV } from './env.js?v=2b23307a';
+import { ENV } from './env.js?v=d41c04b3';
 
 // Снегопад и дождь: облако точек в коробке 70 м вокруг камеры.
 //
