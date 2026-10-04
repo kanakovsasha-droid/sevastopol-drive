@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Terrain, SEA_FLOOR } from './terrain.js?v=2df4b869';
 import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=2df4b869';
+import { levelsReady } from './roadlevels.js?v=2df4b869';
 import { buildStreetProps } from './props.js?v=2df4b869';
 import { updateFlora, floraStats, warmFlora } from './flora.js?v=2df4b869';
 import { buildYards, buildStructures } from './yards.js?v=2df4b869';
@@ -384,10 +385,12 @@ class TerrainTiles {
         this.asked.add(c.key);
         asked++;
         terrain.ensureRect(x0, z0, x1, z1);
+        levelsReady(x0, z0, x1, z1);             // дворовые проезды квадрата (roadlevels.js)
       }
       // Пока детальные высоты под квадратом не приехали, собирать нельзя:
       // всё сядет по грубой сетке, а это промах до восемнадцати метров.
-      if (!pick && terrain.detailReady(x0, z0, x1, z1)) pick = c;
+      // и отметки дворовых проездов: без них коридор соберётся без проездов
+      if (!pick && terrain.detailReady(x0, z0, x1, z1) && levelsReady(x0, z0, x1, z1)) pick = c;
       if (pick && asked >= 4) break;
     }
     if (!pick) return;

@@ -3,7 +3,7 @@ import { SEA_FLOOR } from './terrain.js?v=2df4b869';
 import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=2df4b869';
 import { buildCoverage } from './coverage.js?v=2df4b869';
 import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=2df4b869';
-import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt } from './roadlevels.js?v=2df4b869';
+import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn } from './roadlevels.js?v=2df4b869';
 import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=2df4b869';
 import { resolveAreas, sportSkipIds } from './sport.js?v=2df4b869';
 import { planParking, roadSegIndex } from './parking.js?v=2df4b869';
@@ -394,7 +394,7 @@ function roadProfile(terrain, r) {
   }
   // ДОРОГИ ПЕРВИЧНЫ (roadlevels.js): в центре профиль — отметки, посчитанные
   // по графу улиц, а снятый с рельефа остаётся только за краем квадрата.
-  if (ROAD_LEVELS && id !== undefined && ROAD_LEVELS.roads[id]) {
+  if (ROAD_LEVELS && id !== undefined && hasLevels(id)) {
     let any = false;
     for (let i = 0; i < n; i++) {
       const w = levelWeight(sx[i], sz[i]);
@@ -458,7 +458,10 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
   const profiles = [];
   let work = 0, any = false;
   for (const r of world.roads) {
-    if (r.c > 3 || r.br || r.tn) continue;      // мосты и тоннели на грунт не сажаем
+    // Мосты на грунт не сажаем. Тоннели тоже — кроме тоннелей магистралей
+    // (Меласский на трассе, галерея): без коридора трасса шла поверх горы
+    // по сырому рельефу с уклоном 25%. Теперь там выемка по отметкам графа.
+    if (r.c > 3 || r.br || (r.tn && r.c > 1)) continue;
     const pr = roadProfile(terrain, r);
     if (!pr) continue;
     // Пересекает ли улица окно. Не пересекает — она в списке только ради
@@ -1320,8 +1323,15 @@ export function* buildTerrainTile(terrain, index, opts) {
   const E = 6, ne = n + 2 * E;
   const ex0 = gx0 - E * step, ez0 = gz0 - E * step;
   lap('коридор дорог');
+  // Дворовые проезды вне far.json (roadlevels.js) — в коридор вместе с
+  // улицами дальнего слоя: без коридора колесо ехало по сырому рельефу.
+  const corrRoads = index.roadsWithJunctions(near.roads);
+  {
+    const have = new Set(corrRoads.map(r => r.id));
+    for (const r of yardRoadsIn(x0, z0, x1, z1)) if (!have.has(r.id)) corrRoads.push(r);
+  }
   const corrWide = yield* roadCorridorGen(
-    { roads: index.roadsWithJunctions(near.roads) }, terrain, x0, z0, x1, z1,
+    { roads: corrRoads }, terrain, x0, z0, x1, z1,
     [ex0, ez0, ex0 + (ne - 1) * step, ez0 + (ne - 1) * step]);
   // Храним только сам квадрат с каймой: по нему ездит машина и садятся дороги.
   const corr = corrWide && crop(corrWide, [gx0, gz0, bx0 + size + step, bz0 + size + step]);
