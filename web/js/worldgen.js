@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=351db2a5';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=351db2a5';
-import { buildCoverage } from './coverage.js?v=351db2a5';
-import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=351db2a5';
-import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=351db2a5';
-import { resolveAreas, sportSkipIds } from './sport.js?v=351db2a5';
-import { planParking, roadSegIndex } from './parking.js?v=351db2a5';
+import { SEA_FLOOR } from './terrain.js?v=2f70386e';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=2f70386e';
+import { buildCoverage } from './coverage.js?v=2f70386e';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=2f70386e';
+import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=2f70386e';
+import { resolveAreas, sportSkipIds } from './sport.js?v=2f70386e';
+import { planParking, roadSegIndex } from './parking.js?v=2f70386e';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
