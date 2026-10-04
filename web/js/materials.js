@@ -38,6 +38,8 @@ const SEASON = `
 uniform float uNight;
 uniform vec4 uLamps[${LAMP_N}];
 varying vec3 vLampP;
+uniform float uLate;      // поздний час (env.js): к глубокой ночи свет в окнах гаснет
+uniform float uTime;      // часы игры — для мерцания телевизоров
 uniform vec4 uSeason;     // x — осень, y — облетело/пожухло, z — снег, w — весна
 uniform vec4 uWet;        // x — снег от снегопада, y — мокро после дождя
 // насколько цвет — зелень: газон, трава, кустарник в цвете земли
@@ -62,6 +64,23 @@ float snowAmt(float up, float n){
 #else
   #define snowCover(n) snowAmt(1.0, n)
 #endif
+
+// Опавшие листья: пятнышки ~20 см по клеткам, гуще кучками. Сколько — от
+// сезона: на пике золотой осени немного, больше всего — когда облетают
+// (ноябрь), под снегом не видно.
+float leafAmt(){ return uSeason.x * (0.45 + 0.55 * uSeason.y) * (1.0 - uSeason.z); }
+vec3 leafLitter(vec3 c, vec2 p, float amt){
+  if (amt < 0.01) return c;
+  float heap = smoothstep(0.35, 0.75, fbm(p * 0.25));
+  vec2 g = p * 5.0, ci = floor(g), f = fract(g) - 0.5;
+  float h = hash21(ci);
+  vec2 o = vec2(hash21(ci + 3.1), hash21(ci + 7.7)) - 0.5;
+  float d = length((f - o * 0.5) * vec2(1.0, 1.6));
+  float leaf = step(h, amt * (0.25 + 0.75 * heap)) * (1.0 - smoothstep(0.16, 0.22, d));
+  vec3 lc = mix(vec3(0.62, 0.42, 0.08), vec3(0.55, 0.20, 0.05), hash21(ci + 11.0));
+  lc = mix(lc, vec3(0.30, 0.20, 0.10), step(0.8, hash21(ci + 5.0)));
+  return mix(c, lc, leaf);
+}
 `;
 
 // Свет фонарей (env.js → ENV.uLamps): тёплое пятно от ближайших плафонов,
@@ -95,6 +114,8 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody, season = '' 
     shader.uniforms.uSeason = ENV.uSeason;
     shader.uniforms.uLamps = ENV.uLamps;
     shader.uniforms.uWet = ENV.uWet;
+    shader.uniforms.uLate = ENV.uLate;
+    shader.uniforms.uTime = ENV.uTime;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vLampP;\n' + vertHead)
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLampP = (modelMatrix * vec4(transformed, 1.0)).xyz;\n' + vertBody);
@@ -340,10 +361,30 @@ export function buildingMaterial() {
           // изредка холодный (телевизор, люминесцентная лампа); витрины первого
           // этажа горят почти все. Свет гаснет к краю рамы и под занавеской.
           if (uNight > 0.01) {
-            float lit = step(hash21(vec2(bi * 1.31 + 7.0, fi * 2.17) + seed * 0.71), uNight * 0.58);
-            vec3 lc = mix(vec3(1.0, 0.70, 0.36), vec3(0.72, 0.84, 1.0), step(0.86, fract(r * 13.7)));
-            lc *= 0.75 + 0.5 * fract(r * 31.3);
-            float shop = ground * (1.0 - door) * step(0.35, r);
+            // Дом — по цвету стен: worldgen красит стены дома одним цветом со
+            // своим случайным оттенком, так что цвет вершины и есть номер дома.
+            // У каждого дома своё: когда зажигается (в сумерках или уже
+            // затемно), какая доля окон горит (есть почти тёмные — конторы,
+            // пустые квартиры), каким светом (тёплая лампа, нейтральный,
+            // холодный светодиод). Окна горят квартирами — по два-три пролёта
+            // подряд на этаже, а к глубокой ночи (uLate) гаснут.
+            vec3 vc = diffuseColor.rgb;
+            float house = hash21(floor(vc.rg * 1021.0) + floor(vc.b * 613.0) + seed * 0.37);
+            float on0 = 0.05 + 0.55 * fract(house * 7.13);                // с какого uNight дом «просыпается»
+            float share = mix(0.08, 0.75, fract(house * 3.71)) * step(0.1, fract(house * 11.9) + 0.02);
+            share *= 1.0 - 0.72 * uLate * (0.6 + 0.4 * fract(house * 5.3));
+            float apt = floor(bi / (2.0 + floor(fract(house * 2.9) * 2.0)));   // квартира: 2–3 пролёта
+            float wr = hash21(vec2(apt * 1.31 + 7.0, fi * 2.17) + seed * 0.71 + house * 13.0);
+            float lit = step(wr, share) * smoothstep(on0, on0 + 0.15, uNight);
+            // свет дома и разброс по квартирам
+            float tone = fract(house * 17.3);
+            vec3 lc = tone < 0.55 ? vec3(1.0, 0.68, 0.34) : tone < 0.85 ? vec3(1.0, 0.86, 0.66) : vec3(0.78, 0.88, 1.0);
+            lc *= 0.7 + 0.6 * fract(wr * 31.3);
+            // изредка — синий отсвет телевизора, мерцает
+            float tv = step(0.93, fract(wr * 53.1)) * (0.6 + 0.4 * sin(uTime * (3.0 + 7.0 * fract(wr * 9.7)) + wr * 40.0));
+            lc = mix(lc, vec3(0.45, 0.6, 1.0) * (0.6 + 0.6 * tv), step(0.93, fract(wr * 53.1)));
+            // витрины первого этажа: горят почти все, гаснут после закрытия
+            float shop = ground * (1.0 - door) * step(0.35, r) * (1.0 - 0.8 * uLate);
             float glow = max(lit * (0.75 + 0.45 * fy), shop * 1.5) * uNight;
             procEmit = lc * glow * win * (1.0 - revMask) * (1.0 - 0.55 * mullion);
           }
@@ -845,6 +886,13 @@ export function roadMaterial() {
     season: `
       {
         float m = vRoad.x * vRoad.z * 0.5, halfW = vRoad.z * 0.5;
+        // осенью — листья на тротуарах и у бордюра проезжей части
+        float la = leafAmt();
+        if (la > 0.01) {
+          float k = (vCls > 3.5 && vCls < 5.5) ? 1.0
+                  : vCls < 3.5 ? 0.6 * (1.0 - smoothstep(0.5, 1.4, halfW - abs(m))) : 0.0;
+          diffuseColor.rgb = leafLitter(diffuseColor.rgb, vXZ, la * k);
+        }
         float sn = uWet.x;
         if (sn > 0.01) {
           float n = fbm(vXZ * 0.55);
@@ -917,6 +965,7 @@ export function terrainMaterial() {
         float n = fbm(vXZ * 0.07);
         float k = greenness(diffuseColor.rgb) * (1.0 - vTer.x * 0.4);
         diffuseColor.rgb = seasonGreen(diffuseColor.rgb, max(k, (1.0 - vTer.x) * 0.6), n);
+        diffuseColor.rgb = leafLitter(diffuseColor.rgb, vXZ, leafAmt() * (0.2 + 0.4 * vTer.x) * (1.0 - vTer.y));
         float sn = snowCover(n + fbm(vXZ * 0.9) * 0.25) * (1.0 - vTer.x * 0.7 * (1.0 - uWet.x)) * (1.0 - vTer.y * 0.6 * (1.0 - uWet.x));
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.93), sn);
       }`,
@@ -1200,6 +1249,7 @@ export function areaMaterial() {
         float n = fbm(vec2(vArea.x, vArea.y) * 0.12);
         float k = greenness(diffuseColor.rgb);
         diffuseColor.rgb = seasonGreen(diffuseColor.rgb, k, n);
+        diffuseColor.rgb = leafLitter(diffuseColor.rgb, vec2(vArea.x, vArea.y), leafAmt() * 0.6 * k);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.93), snowCover(n) * k);
       }`,
   });
