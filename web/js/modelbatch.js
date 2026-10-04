@@ -36,6 +36,11 @@ function material() {
       .replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = vColor.rgb * vMat.y;');
   };
   shared.customProgramCacheKey = () => 'model-batch-1';
+  // Материал общий на все модели города. Выгрузка квартала (main.js,
+  // drainJunk) освобождает материалы его сеток — этот освобождать нельзя:
+  // программу пришлось бы собирать заново для всех остальных моделей
+  // (из cloud/perf).
+  shared.dispose = () => {};
   return shared;
 }
 
