@@ -283,12 +283,13 @@ for (const R of routes) {
   }
   out.playable60 = +(100 * good / Math.max(1, all)).toFixed(1);
   out.playable100 = +(100 * good100 / Math.max(1, all100)).toFixed(1);
-  const sum = k => out.secs.reduce((a, s) => a + (s.runs[60] ? s.runs[60][k] : 0), 0);
-  const sum1 = k => out.secs.reduce((a, s) => a + (s.runs[100] ? s.runs[100][k] : 0), 0);
+  const okS = out.secs.filter(s => s.ready);
+  const sum = k => okS.reduce((a, s) => a + (s.runs[60] ? s.runs[60][k] : 0), 0);
+  const sum1 = k => okS.reduce((a, s) => a + (s.runs[100] ? s.runs[100][k] : 0), 0);
   out.total = { air60: +sum('air').toFixed(2), jolts60: sum('jolts'), launches60: sum('launches'),
     air100: +sum1('air').toFixed(2), jolts100: sum1('jolts'), launches100: sum1('launches'),
-    steps5: out.secs.reduce((a, s) => a + s.steps5, 0), kinks5: out.secs.reduce((a, s) => a + s.kinks5, 0),
-    crest60: out.secs.reduce((a, s) => a + s.crest60, 0),
+    steps5: okS.reduce((a, s) => a + s.steps5, 0), kinks5: okS.reduce((a, s) => a + s.kinks5, 0),
+    crest60: okS.reduce((a, s) => a + s.crest60, 0),
     lost60: out.secs.filter(s => s.runs[60] && s.runs[60].lost !== false).length,
     lost100: out.secs.filter(s => s.runs[100] && s.runs[100].lost !== false).length,
     notReady: out.secs.filter(s => !s.ready).length };
