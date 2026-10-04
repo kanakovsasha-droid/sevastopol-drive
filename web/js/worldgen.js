@@ -743,7 +743,7 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
   const sm = new Float32Array(W * H);
   // Старшинство улицы: полотно старшей улицы не размывается к плато младшей
   // (дворовый проезд на склоне рядом с трассой тянул её край на полметра),
-  // и к полотну соседней улицы, лежащему выше или ниже на 1.5 м и больше.
+  // и к полотну соседней улицы, лежащему выше или ниже на 3 м и больше.
   const rkq = profiles.map(q => q.c * 100 - q.w);
   for (let pass = 0; pass < 2; pass++) {
     sm.set(tgt);
@@ -757,7 +757,7 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
           if (jj < 0 || ii < 0 || jj >= H || ii >= W) continue;
           const k = jj * W + ii;
           if (wgt[k] <= 0) continue;
-          if (core && cown[k] !== own && cown[k] >= 0 && (rkq[cown[k]] > rkq[own] + 1e-6 || Math.abs(tgt[k] - tgt[idx]) > 1.5)) continue;
+          if (core && cown[k] !== own && cown[k] >= 0 && (rkq[cown[k]] > rkq[own] + 1e-6 || Math.abs(tgt[k] - tgt[idx]) > 3)) continue;
           const bw = (di === 0 && dj === 0) ? 4 : (di === 0 || dj === 0) ? 2 : 1;
           sh += tgt[k] * wgt[k] * bw; sw += wgt[k] * bw;
         }
@@ -811,7 +811,8 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
         // Два полотна разных улиц на разной высоте (проезжие части трассы на
         // склоне ЮБК в 8 м друг от друга и в 6 м по высоте) — между ними
         // подпорная стенка, а не общий уклон: сводить их — значит гнуть обе.
-        if (la === 2 && Math.abs(tgt[a] - tgt[b2]) > 1.5) { give[e] = -1; continue; }
+        // Порог 3 м: меньший перепад — это стык улиц в узле, его сводим.
+        if (la === 2 && Math.abs(tgt[a] - tgt[b2]) > 3) { give[e] = -1; continue; }
         const A = profiles[oa], B = profiles[ob];
         const ra = A.c * 100 - A.w, rb = B.c * 100 - B.w;
         give[e] = ra < rb - 1e-6 ? 0 : rb < ra - 1e-6 ? 1 : 0.5;
