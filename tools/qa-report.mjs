@@ -176,7 +176,7 @@ export function buildHtml({ cur, base, cmp, reportDir, curDir, baseDir }) {
     const rs = p.rows;
     if (!rs.length) continue;
     const cls = p.worse ? 'bad' : p.better ? 'good' : p.changed ? 'chg' : 'same';
-    rowsHtml += `<tbody class="pl ${cls}" data-v="${cls}"><tr class="plh"><th colspan="4">${esc(p.name)} <small>${esc(p.group)} · ${esc(p.id)}</small></th></tr>`;
+    rowsHtml += `<tbody class="pl ${cls}" data-v="${cls}" id="pl-${esc(p.id)}"><tr class="plh"><th colspan="4">${esc(p.name)} <small>${esc(p.group)} · ${esc(p.id)}</small></th></tr>`;
     for (const r of rs) {
       const d = typeof r.a === 'number' && typeof r.b === 'number' ? r.b - r.a : null;
       rowsHtml += `<tr class="${VCLS[r.v]}" data-v="${r.v}"><td>${esc(r.label)}</td><td class="n">${fmt(r.a, r.dec)}</td><td class="n">${fmt(r.b, r.dec)}</td><td class="n">${d === null || r.v === 'none' ? '' : (d > 0 ? '+' : '') + +d.toFixed((r.dec ?? 2) + 1)}</td></tr>`;
@@ -237,7 +237,7 @@ ${worsePlaces.length ? `<p>Хуже: ${worsePlaces.map(p => `<a class="bad" href
 <div class="meta">${metaLine(m, 'после')}${metaLine(bm, 'до')}<div><span class="k">мест</span> ${Object.keys(cur.spots).length} · <span class="k">профилей</span> ${Object.keys(cur.profiles || {}).length} · <span class="k">прогонов машины</span> ${Object.keys(cur.physics || {}).length}</div></div>
 <div class="ctl">${base ? '<label><input type="checkbox" id="onlychg" checked> показывать только то, что изменилось</label>' : ''}</div>
 <h2>Ошибки консоли и сети</h2>${errs}
-<h2>Метрики</h2><table>${rowsHtml.replace(/<tbody class="pl ([a-z]+)" data-v="[a-z]+"><tr class="plh"><th colspan="4">/g, (s0, c) => s0)}</table>
+<h2>Метрики</h2><table>${rowsHtml}</table>
 <h2>Кадры</h2>${cards}
 <script>
 const cb=document.getElementById('onlychg');if(cb)cb.onchange=()=>document.body.classList.toggle('hide-same',cb.checked);

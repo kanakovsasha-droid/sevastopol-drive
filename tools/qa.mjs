@@ -55,11 +55,13 @@ const { chromium } = await import(PLAYWRIGHT);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toTimeString().slice(0, 8), ...a);
 
-// Три улицы для заезда машины: старт — как у check-physics (--start x,z).
+// Три улицы для заезда машины: старт — как у check-physics (--start x,z). Выбраны
+// те, где результат заезда повторяется до знака: на Большой Морской (шов чанка
+// на z=1024) и на Гоголя два заезда подряд давали разную тряску — см. отчёт.
 const PHYS = [
   { id: 'lazareva-nakhimova', name: 'проспект Нахимова от пл. Лазарева', start: [-398, 484] },
-  { id: 'bolshaya-morskaya', name: 'Большая Морская', start: [-315, 979] },
   { id: 'lenina', name: 'улица Ленина', start: [92, 784] },
+  { id: 'petrova', name: 'улица Генерала Петрова (спуск)', start: [-1051, 1103] },
 ];
 
 mkdirSync(join(OUT, 'img'), { recursive: true });
@@ -203,15 +205,27 @@ const metricsOf = () => page.evaluate(() => {
 });
 
 async function capture(id, view) {
-  await page.evaluate(() => window.__qaFreeze(true));
-  await page.evaluate(() => window.__qaFrameWait(4));
+  // Кадр считается готовым, когда два снимка подряд (с паузой в несколько
+  // кадров при замороженных часах) совпали байт в байт: дальние фасады и
+  // текстуры достраиваются ещё какое-то время после того, как очереди опустели.
+  let buf = null, tries = 0;
+  for (; tries < 6; tries++) {
+    await page.evaluate(() => window.__qaFreeze(true));
+    await page.evaluate(() => window.__qaFrameWait(4));
+    const a = await page.screenshot({ type: 'jpeg', quality: 84 });
+    await page.evaluate(() => window.__qaFrameWait(3));
+    const b = await page.screenshot({ type: 'jpeg', quality: 84 });
+    buf = b;
+    if (a.equals(b)) break;
+    await page.evaluate(() => window.__qaFreeze(false));
+    await sleep(500);
+  }
   // три кадра подряд: берём максимум (тени/деревья могут обновляться не каждый кадр)
   const ms = [];
   for (let k = 0; k < 3; k++) { ms.push(await metricsOf()); await page.evaluate(() => window.__qaFrameWait(1)); }
   const m = { calls: Math.max(...ms.map(x => x.calls)), tri: Math.max(...ms.map(x => x.tri)),
               geo: Math.max(...ms.map(x => x.geo)), tex: Math.max(...ms.map(x => x.tex)),
-              jitter: Math.max(...ms.map(x => x.tri)) - Math.min(...ms.map(x => x.tri)) };
-  const buf = await page.screenshot({ type: 'jpeg', quality: 84 });
+              jitter: Math.max(...ms.map(x => x.tri)) - Math.min(...ms.map(x => x.tri)), tries: tries + 1 };
   writeFileSync(join(OUT, `img/${id}-${view}.jpg`), buf);
   await page.evaluate(() => window.__qaFreeze(false));
   return m;
