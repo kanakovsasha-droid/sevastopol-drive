@@ -42,6 +42,13 @@ const LOOPS = [
   ['eng_top', 332636, 86.9, 88.2],
   ['tyre_squeal', 71739, 5.0, 6.6],
 ];
+// Свист в записи холостых: два узких постоянных тона 431 и 646 Гц (похоже на
+// ремень или генератор той машины; в игре петля играет на 0.92 своей высоты —
+// 396 и 592 Гц). Владелец послушал и попросил убрать — режем узкими режекторами,
+// соседний спектр не трогаем. В остальных петлях узких тонов, кроме гармоник
+// самого мотора, нет (проверено спектром).
+const NOTCH = { eng_idle: [431, 646] };
+
 // Разовые: хлопки и выстрелы в выхлопе [имя, источник, начало, длительность]
 const SHOTS = [
   ['pop_1', 797835, 1.38, 0.22], ['pop_2', 797835, 1.55, 0.22], ['pop_3', 797835, 1.95, 0.22],
@@ -99,8 +106,21 @@ function pitch(x) {
 
 mkdirSync(OUT, { recursive: true });
 const manifest = { sr: SR, loops: {}, shots: [] };
+// Режектор RBJ, прогон вперёд и назад: фаза не сдвигается, глубина удвоена
+function notch(x, f0, Q = 25) {
+  const w = 2 * Math.PI * f0 / SR, al = Math.sin(w) / (2 * Q), c = Math.cos(w), a0 = 1 + al;
+  const b0 = 1 / a0, b1 = -2 * c / a0, b2 = 1 / a0, a1 = -2 * c / a0, a2 = (1 - al) / a0;
+  const pass = (src) => {
+    const y = new Float32Array(src.length); let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < src.length; i++) { const v = b0 * src[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = src[i]; y2 = y1; y1 = v; y[i] = v; }
+    return y;
+  };
+  return pass(pass(x).reverse()).reverse();
+}
+
 for (const [name, id, a, b] of LOOPS) {
-  const x = decode(fetchSrc(id), a, b - a);
+  let x = decode(fetchSrc(id), a, b - a);
+  for (const f of NOTCH[name] || []) x = notch(x, f);
   // бесшовная петля: последние X отсчётов наложены на первые
   const X = Math.floor(SR * 0.12), L = x.length - X;
   const y = new Float32Array(L);
