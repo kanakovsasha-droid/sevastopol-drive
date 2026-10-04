@@ -262,7 +262,7 @@ export function buildingMaterial() {
           // два пролёта от второго этажа до карниза, и по тяжёлому карнизу
           // с поясом сухариков. Лопатка — светлая полоса 0.5 м с тенью сбоку.
           if (stal > 0.5) {
-            float pm = (fract(bpos * 0.5 + 0.25) - 0.5) * bay * 2.0;   // метров от оси лопатки
+            float pm = (fract(bpos * 0.5 + 0.5) - 0.5) * bay * 2.0;    // метров от оси лопатки (простенок)
             float pil = lr(0.26 - abs(pm), 60.0) * upper * (1.0 - cornice);
             float pilS = lr(0.34 - abs(pm + mix(0.26, -0.26, sunR)), 40.0) * (1.0 - pil) * upper * (1.0 - cornice);
             c = mix(c, c * 1.07 + 0.03, pil);
