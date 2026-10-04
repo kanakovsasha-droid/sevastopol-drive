@@ -30,6 +30,7 @@ export const SOURCES = {
   205504: { file: '205/205504_1970026-hq.mp3', author: 'VacekH', title: 'mustang 1.wav', license: 'CC0 1.0' },
   205508: { file: '205/205508_1970026-hq.mp3', author: 'VacekH', title: 'mustang 3.wav', license: 'CC0 1.0' },
   205511: { file: '205/205511_1970026-hq.mp3', author: 'VacekH', title: 'mustang 9.wav', license: 'CC0 1.0' },
+  455925: { file: '455/455925_8138660-hq.mp3', author: 'noiseloop', title: 'Starting of Ford V8 5 Liter engine', license: 'CC BY 3.0' },
 };
 
 // Петли мотора — Ford Mustang Shelby GT500 (VacekH, CC0): холостые и разгон
@@ -65,6 +66,13 @@ const SHOTS = [
   ['pop_1', 797835, 1.38, 0.22], ['pop_2', 797835, 1.55, 0.22], ['pop_3', 797835, 1.95, 0.22],
   ['pop_4', 797835, 2.15, 0.22], ['pop_5', 797835, 5.25, 0.24], ['pop_6', 797835, 7.08, 0.22],
   ['bang_1', 675723, 5.80, 0.55], ['bang_2', 105351, 0.02, 0.40], ['bang_3', 675723, 3.97, 0.5],
+];
+// Стартер: прокрутка Ford 5.0 V8 до схватывания (в наборе VacekH запуска
+// нет — там только проезды и езда). Ровно 0.6 с — столько крутит стартер в
+// игре; схватывание и рык дальше играют петли Mustang по оборотам.
+// [имя, источник, начало, длительность, нарастание, спад (с)]
+const ONESHOTS = [
+  ['starter', 455925, 0.30, 0.62, 0.03, 0.05],
 ];
 
 function fetchSrc(id) {
@@ -221,6 +229,14 @@ for (const [name, id, a, d] of SHOTS) {
     if (i > n - fo) g *= Math.pow((n - i) / fo, 2);
     x[i] *= g;
   }
+  writeFileSync(`${OUT}/${name}.wav`, wav(x));
+  manifest.shots.push(name);
+  console.log(name, `${d} с`);
+}
+for (const [name, id, a, d, fin, fout] of ONESHOTS) {
+  const x = decode(fetchSrc(id), a, d);
+  const k = 0.18 / rms(x), n = x.length, fi = Math.floor(SR * fin), fo = Math.floor(SR * fout);
+  for (let i = 0; i < n; i++) x[i] *= k * Math.min(1, i / fi, (n - i) / fo);
   writeFileSync(`${OUT}/${name}.wav`, wav(x));
   manifest.shots.push(name);
   console.log(name, `${d} с`);

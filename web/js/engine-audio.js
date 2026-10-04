@@ -64,6 +64,20 @@ function noiseBuffer(ctx, sec, color = 'white') {
   return buf;
 }
 
+// «Тук» при глушении: мотор встал — кузов качнулся на опорах. Низкий
+// глухой удар 45 Гц с быстрым затуханием и чуть шума под ФНЧ — без тона.
+function thumpBuffer(ctx) {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 0.25), buf = ctx.createBuffer(1, n, sr), d = buf.getChannelData(0);
+  let a = 0, b = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr, env = Math.min(1, t / 0.006) * Math.exp(-t / 0.05);
+    // шум через два ФНЧ ~120 Гц — только «тело» удара, без шипения
+    a += ((Math.random() * 2 - 1) - a) * 0.016; b += (a - b) * 0.016;
+    d[i] = (Math.sin(2 * Math.PI * 45 * t * (1 - t * 0.8)) * 0.8 + b * 6) * env;
+  }
+  return buf;
+}
+
 // Хлопок в выхлопе: удар низом плюс треск — короткие случайные искры.
 function popBuffer(ctx, big) {
   const sec = big ? 0.22 : 0.12, sr = ctx.sampleRate, n = Math.floor(sr * sec);
@@ -267,7 +281,7 @@ export class E63Sound {
       burble = { src, lp: lpB, g: gB, crack: gC, crackBP: bpC, until: 0, last: -9 };
     }
     this.smp = { kind: 'v8', loops, lp, lp2, fireCut, fireCut2, fireCut3, bus, squeal, low, burble,
-      pops: pick('pop_'), bangs: pick('bang_'), mix: 0, t0 };
+      pops: pick('pop_'), bangs: pick('bang_'), starter: bufs.starter, mix: 0, t0 };
     this.st.rpmS = this.st.rpm || 900;
   }
 
@@ -410,6 +424,33 @@ export class E63Sound {
     const dtA = Math.min(0.1, Math.max(0, t - st.lastT));
     st.loadS = (st.loadS || 0) + ((s.throttle || 0) - (st.loadS || 0)) * Math.min(1, dtA / 0.25);
     const rpm = Math.max(500, s.rpm || 900), thr = s.throttle || 0;
+    // Зажигание: 'on' | 'start' (стартер, потом схватывание) | 'off'
+    const eng = s.engine || 'on';
+    if (eng !== (st.eng || 'on')) {
+      const was = st.eng || 'on';
+      st.eng = eng;
+      if (eng === 'start') {
+        st.caught = false;
+        const sb = this.smp && this.smp.starter;
+        if (sb) this._shot(sb, t, 0.9);
+        this.log && this.log.push([t, 'стартер']);
+      } else if (eng === 'off' && was !== 'off') {
+        // глушим: обороты сходят на нет за ~0.3 с, потом тихий «тук»
+        st.offT = t;
+        const B = this.smp && this.smp.burble;
+        if (B) { B.until = 0; for (const q of [B.g.gain, B.crack.gain]) { q.cancelScheduledValues(t); q.setTargetAtTime(0, t, 0.02); } }
+        this._shot(this.thump || (this.thump = thumpBuffer(this.ctx)), t + 0.3, 0.3);
+        this.log && this.log.push([t + 0.3, 'тук']);
+      }
+    }
+    // схватывание: обороты пошли вверх со стартерных — громкий рык
+    if (eng === 'start' && !st.caught && (s.rpm || 0) > 500) {
+      st.caught = true; st.roarUntil = t + 0.8;
+      const B = this.smp && this.smp.burble;
+      if (B) this._burbles(B, t + 0.25, 2, 0.35);
+      this.log && this.log.push([t, 'схватил']);
+    }
+    const engOn = eng === 'on' || (eng === 'start' && st.caught);
     const fc = rpm / 120;                                   // частота цикла
     const r = Math.min(1, (rpm - 800) / 6200);              // доля оборотов
     const cut = s.limiter ? 1 : 0;
@@ -437,7 +478,7 @@ export class E63Sound {
         if (B) this._burbles(B, t + 0.06, 1, 0.5 * thr);
         else this._pop(false, t + 0.06, 0.4 * thr, 0.9);
         this.log && this.log.push([t, 'переключение']);
-      } else if (B && thr < 0.1 && s.gear > 0 && s.gear < (st.gear || 99) && rpm > 1200) {
+      } else if (B && st.eng !== 'off' && thr < 0.1 && s.gear > 0 && s.gear < (st.gear || 99) && rpm > 1200) {
         // дауншифт без газа (физика сама поднимает обороты за ~0.15 с) —
         // перегазовка: короткий «газ» по тембру и пара бульков следом
         st.blipUntil = t + 0.3;
@@ -452,7 +493,7 @@ export class E63Sound {
     if (S) S.mix = Math.min(1, (t - S.t0) / 0.5);
     const syn = S ? 1 - S.mix : 1;
     const engV = (0.20 + 0.42 * r) * (0.45 + 0.55 * load) + 0.06;
-    P(this.engGain.gain, engV * (cut ? 0.55 : 1) * dip * syn, cut || dip < 1 ? 0.008 : 0.025);
+    P(this.engGain.gain, engV * (cut ? 0.55 : 1) * dip * syn * (engOn ? 1 : 0), cut || dip < 1 ? 0.008 : 0.025);
     // бас: синус на полупорядке вспышек (кроссплейн-V8 «бубнит» на rpm/30) —
     // он остаётся и при записях: на высоких оборотах вспышки уходят за 300 Гц,
     // а низ должен давить в любой момент
@@ -460,7 +501,7 @@ export class E63Sound {
     // у записей низ свой (smp.low) — синус оставлен только синтезу
     P(this.subGain.gain, S ? (0.10 + 0.25 * load) * (1 - r * 0.6) * syn
       : (0.10 + 0.25 * load) * (1 - r * 0.6), 0.04);
-    if (S && S.kind === 'mod') P(this.subGain.gain, 0, 0.05);
+    if ((S && S.kind === 'mod') || !engOn) P(this.subGain.gain, 0, 0.05);
     P(this.intakeBP.frequency, 500 + rpm * 0.35, 0.05);
     P(this.intakeGain.gain, (0.012 + 0.07 * load * r) * syn, 0.04);
     if (S && S.kind === 'mod') {
@@ -470,8 +511,8 @@ export class E63Sound {
         P(lp.g.gain, lp.role === 'load' ? 1 : 0.25 + 0.75 * load, 0.03);
       }
       // газ — открыто и громко, сброс — тише и под фильтром НЧ
-      const vol = 0.38 * (0.65 + 0.35 * load) * (cut ? 0.35 : 1) * dip * S.mix;
-      P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.04);
+      const vol = 0.38 * (0.65 + 0.35 * load) * (cut ? 0.35 : 1) * dip * S.mix * (engOn ? 1 : 0);
+      P(S.bus.gain, vol, !engOn ? 0.08 : cut || dip < 1 ? 0.008 : 0.04);
       // как у открытого набора: верха растут с оборотами медленно, на отсечке —
       // не выше 3 кГц (петля мода на 7000 разогнана втрое — без этого визг)
       P(S.lp.frequency, load > 0.15 ? Math.min(3000, 900 + rpm * 0.3 + 600 * load) : 700 + 1200 * load / 0.15, 0.05);
@@ -483,8 +524,10 @@ export class E63Sound {
       // Обороты физики уже без рывков от колёс (инерция маховика); подъём без
       // газа и вне перегазовки звук ещё дополнительно сглаживает (0.12 с).
       const up = rpm > st.rpmS, coast = st.loadS < 0.15 && thr < 0.1;
-      const tau = up && coast && !(t < (st.blipUntil || 0)) ? 0.12 : 0.025;
-      st.rpmS += (rpm - st.rpmS) * Math.min(1, dtA / tau);
+      // заглушили — тон сходит вниз за ~0.3 с (под затухание); схватывание — сразу
+      const rIn = eng === 'off' ? 300 : eng === 'start' ? Math.max(250, s.rpm || 0) : rpm;
+      const tau = eng === 'off' ? 0.15 : eng === 'start' ? 0.02 : up && coast && !(t < (st.blipUntil || 0)) ? 0.12 : 0.025;
+      st.rpmS += (rIn - st.rpmS) * Math.min(1, dtA / tau);
       const rs = st.rpmS;
       // Смесь тембров (высота у всех петель одна и та же — rs / обороты
       // записи): холостые — по логарифму оборотов 950→1700, выше — ровный
@@ -498,7 +541,7 @@ export class E63Sound {
       // каждые 0.12–0.42 с, сглажено). Ровно стоящая высота давала на
       // холостых чистые линии 60/120/180 Гц — тот самый гул. Выше 1400 — ноль.
       const idle = 1 - Math.min(1, Math.max(0, (rs - 1000) / 400));
-      if (t > (st.wT || 0)) { st.wT = t + 0.12 + Math.random() * 0.3; st.wGoal = Math.random() * 2 - 1; }
+      if (engOn && t > (st.wT || 0)) { st.wT = t + 0.12 + Math.random() * 0.3; st.wGoal = Math.random() * 2 - 1; }
       st.wv = (st.wv || 0) + ((st.wGoal || 0) - (st.wv || 0)) * Math.min(1, dtA / 0.18);
       const rsw = rs * (1 + 0.025 * idle * st.wv);
       for (const l of S.loops) {
@@ -508,11 +551,17 @@ export class E63Sound {
       }
       const rr = Math.min(1, Math.max(0, (rs - 800) / 6200));
       // перегазовка: на 0.3 с звук «под газом» (громче, открытее)
-      const lS = t < (st.blipUntil || 0) ? Math.max(st.loadS, 0.55) : st.loadS;
+      const roar = t < (st.roarUntil || 0) ? (st.roarUntil - t) / 0.8 : 0;
+      const lS = Math.max(t < (st.blipUntil || 0) ? Math.max(st.loadS, 0.55) : st.loadS, 0.7 * roar);
+      // мотор молчит: заглушен (затухание ~0.1 с, к 0.6 с — совсем ноль) или
+      // ещё крутит стартер; схватил — сразу громко, с рыком
+      const off = eng === 'off' || (eng === 'start' && !st.caught);
+      const engF = off ? 0 : 1 + 0.2 * roar;
+      const engTc = eng === 'off' ? (t - (st.offT || 0) > 0.6 ? 0.01 : 0.1) : 0.015;
       // Газ — громче и открытее, сброс — тише и глуше. Газ сглаженный (0.25 с):
       // клавиша W щёлкает 0↔1, и громкость не должна прыгать за ней.
       const vol = 1.45 * (0.5 + 0.3 * rr) * (0.55 + 0.45 * lS) * (cut ? 0.4 : 1) * dip * S.mix;
-      P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.05);
+      P(S.bus.gain, vol * engF, off || roar > 0 ? engTc : cut || dip < 1 ? 0.008 : 0.05);
       // Тембр: срез растёт с оборотами медленно, на отсечке не выше 2.6 кГц.
       // Верха записи выше — шипение и механика, им в «басовитом» звуке не место.
       const cutHz = Math.min(2600, 650 + rs * 0.2 + 700 * lS);
@@ -527,7 +576,7 @@ export class E63Sound {
       P(S.fireCut3.gain, -18 * idle, 0.08);
       // низ: на холостых слабее (там и так всё — низ), на средних — полный
       const lowW = 0.35 + 0.65 * Math.min(1, Math.max(0, (rs - 1000) / 1500));
-      P(S.low.gain, 1.2 * lowW * (1 - 0.25 * rr) * (0.7 + 0.3 * st.loadS) * dip * S.mix, 0.06);
+      P(S.low.gain, 1.2 * lowW * (1 - 0.25 * rr) * (0.7 + 0.3 * st.loadS) * dip * S.mix * engF, off || roar > 0 ? engTc : 0.06);
     }
 
     // блоу-офф: сброс газа под наддувом
@@ -546,7 +595,7 @@ export class E63Sound {
     // «прошлый кадр был под газом», а взведённый флаг
     if (thr > 0.5) st.armed = true;
     if (S && S.kind === 'v8') {
-      if (S.burble) this._overrun(S.burble, t, thr, st.rpmS);
+      if (S.burble && eng === 'on') this._overrun(S.burble, t, thr, st.rpmS);
     } else if (st.armed && thr < 0.15) {
       st.armed = false;
       if (rpm > 3000) {

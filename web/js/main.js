@@ -1604,13 +1604,9 @@ function loop(now) {
     // на снегу заметно скользко, на мокром — чуть
     car.weatherGrip = 1 - 0.5 * ENV.uWet.value.x - 0.15 * ENV.uWet.value.y;
     car.update(dt, input);
-    // Заглушенного мотора не слышно. Сам звук (carfx.js) не трогаем —
-    // приостанавливаем его аудиоконтекст, пока зажигание выключено.
-    const ax = carFx.ctx;
-    if (ax) {
-      if (car.engine === 'off' && ax.state === 'running') ax.suspend();
-      else if (car.engine !== 'off' && ax.state === 'suspended' && carFx.soundOn && !document.hidden) ax.resume();
-    }
+    // Зажигание звук обрабатывает сам (carfx.js → engine-audio.js): при
+    // глушении мотор сходит на нет с «туком», стартер и шины слышны —
+    // аудиоконтекст не приостанавливаем.
     pad?.feel(dt, car);
   } else if (mode === 'fly') {
     if (!$('menu').classList.contains('on')) updateFly(dt);

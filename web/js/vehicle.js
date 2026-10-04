@@ -234,7 +234,7 @@ export class Car {
     this.rpm = CAR.idle;
     this.engine = 'on';  // 'on' | 'off' | 'start' — зажигание (toggleEngine)
     this.weatherGrip = 1;  // сцепление по погоде: снег, мокрый асфальт (main.js из env.js)
-    this._crank = 0;
+    this._crank = 0; this._flareT = 0;
     this.gear = 1;       // 1..9, −1 задний
     this.slip = [0, 0, 0, 0];         // насколько шина за пиком (>1 — скользит)
     this.gLong = 0; this.gLat = 0;
@@ -656,8 +656,14 @@ export class Car {
     else if (this.engine === 'start') {
       this._crank += h;
       const t = this._crank;
-      rpm = t < 0.6 ? 230 + 70 * Math.sin(t * 60) : 230 + (1450 - 230) * Math.min(1, (t - 0.6) / 0.25);
-      if (t > 0.85) this.engine = 'on';
+      // стартер 0.6 с, схватывание: за 0.2 с до ~1450 (как холодный пуск AMG)
+      rpm = t < 0.6 ? 230 + 70 * Math.sin(t * 60) : 230 + (1450 - 230) * Math.min(1, (t - 0.6) / 0.2);
+      if (t > 0.8) { this.engine = 'on'; this._flareT = 1.4; }
+    } else if (this._flareT > 0) {
+      // после схватывания обороты не падают сразу: держатся и сходят к
+      // холостым за ~1.4 с (под газом — как обычно)
+      this._flareT -= h;
+      if (gas < 0.05) rpm = Math.max(rpm, CAR.idle + (1450 - CAR.idle) * Math.pow(Math.max(0, this._flareT) / 1.4, 1.6));
     }
     this._rpmE = rpm;
     this.rpm = rpm;

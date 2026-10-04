@@ -275,7 +275,7 @@ export class CarFX {
       // вышли из машины — мотор остаётся на холостых
       this.audio.set({
         rpm: driving ? (car.rpmSound ?? car.rpm) : 900, throttle: driving ? car.throttle : 0, limiter: driving ? car.limiter : 0,
-        shiftCount: car.shiftCount, gear: car.gear, boost: driving ? car.boost : 0, skid, burnout: driving && car.burnout,
+        shiftCount: car.shiftCount, gear: car.gear, engine: car.engine || 'on', boost: driving ? car.boost : 0, skid, burnout: driving && car.burnout,
         inside: driving && this.inside(), dist,
       }, this.ctx.currentTime);
     }
