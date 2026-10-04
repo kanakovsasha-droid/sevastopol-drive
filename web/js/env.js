@@ -32,6 +32,9 @@ export const ENV = {
   uWet:    { value: new THREE.Vector4(0, 0, 0, 0) },
   // ближайшие фонари: xyz — плафон в мире, w — сила (0 — пусто)
   uLamps:  { value: Array.from({ length: 24 }, () => new THREE.Vector4(0, -1e4, 0, 0)) },
+  // поздний час: 0 — вечер (до 22:30), 1 — глубокая ночь (2:30–5:00), к утру
+  // обратно; по нему в окнах гаснет свет — к трём часам горит мало
+  uLate:   { value: 0 },
 };
 export const LAMP_N = 24;
 
@@ -115,7 +118,7 @@ export function dayOfYear(d = new Date()) {
 
 // ---------------------------------------------------------------- пресеты
 export const WEATHER = {
-  clear:    { name: 'Ясно',         cloud: 0.06, sun: 1.00, sky: 1.00, fog: 1.0, grey: 0.00 },
+  clear:    { name: 'Ясно',         cloud: 0.00, sun: 1.00, sky: 1.00, fog: 1.0, grey: 0.00 },
   fair:     { name: 'Малооблачно',  cloud: 0.32, sun: 0.97, sky: 1.00, fog: 1.1, grey: 0.05 },
   cloudy:   { name: 'Облачно',      cloud: 0.58, sun: 0.75, sky: 1.08, fog: 1.3, grey: 0.22 },
   overcast: { name: 'Пасмурно',     cloud: 0.96, sun: 0.16, sky: 1.25, fog: 1.9, grey: 0.72 },
@@ -218,8 +221,14 @@ const SKY_FRAG = `
         col += vec3(0.85, 0.9, 1.0) * m * tw * uStars * 1.6 * smoothstep(-0.02, 0.12, d.y);
       }
       // Млечный Путь — едва заметная полоса
-      float mw = exp(-pow(dot(d, normalize(vec3(0.35, 0.25, -0.9))) * 3.2, 2.0));
-      col += vec3(0.10, 0.11, 0.15) * mw * fbm2(d.xz * 9.0) * uStars * smoothstep(0.0, 0.3, d.y);
+      // Шум — в осях самой полосы (угол вдоль и отступ поперёк), а не по
+      // проекции d.xz: та тянулась штрихами вдоль полосы, как «сияние».
+      vec3 mwN = normalize(vec3(0.35, 0.25, -0.9));
+      vec3 mwA = normalize(cross(mwN, vec3(0.0, 1.0, 0.0)));
+      float mw = exp(-pow(dot(d, mwN) * 5.5, 2.0));
+      // координаты на полосе: угол вдоль неё и отступ поперёк
+      vec2 mp = vec2(atan(dot(d, cross(mwN, mwA)), dot(d, mwA)) * 9.0, dot(d, mwN) * 30.0);
+      col += vec3(0.035, 0.038, 0.05) * mw * smoothstep(0.35, 0.8, fbm2(mp + 3.0)) * uStars * smoothstep(0.0, 0.3, d.y);
     }
 
     // Солнце: диск и широкий ореол. Ореол сажаем на яркость неба.
@@ -452,6 +461,10 @@ export class Environment {
     this.night = smooth(4, -7, e) * (0.75 + 0.25 * (1 - w.sun)) + w.grey * 0.12 * smooth(30, 5, e);
     ENV.uNight.value = clamp(this.night, 0, 1);
     if (target) updateLamps(dt || 1, target, ENV.uNight.value);
+    {
+      const h = c.hour;
+      ENV.uLate.value = h >= 12 ? smooth(22.5, 26.5, h) : h < 5 ? smooth(-1.5, 2.5, h) : 1 - smooth(5, 7, h);
+    }
     // сколько дневного света: отражения на кузове и прочее, что светит небом
     this.day = smooth(-6, 12, e) * (0.4 + 0.6 * w.sun);
   }

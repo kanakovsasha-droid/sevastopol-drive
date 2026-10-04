@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=e7384048';
-import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=e7384048';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=0b5515d2';
+import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=0b5515d2';
 
 // Физика машины. Третий заход.
 //
@@ -1251,6 +1251,11 @@ function envFor(renderer) {
   }
   return carEnv;
 }
+
+// Карту окружения машины — заранее, за экраном загрузки: свёртка PMREM идёт
+// одним куском на видеокарте (десятки миллисекунд), и если делать её при
+// первой загрузке модели, а модель приезжает уже в игре, — стоп-кадр.
+export function warmCarEnv(renderer) { return envFor(renderer); }
 
 export function loadCarModel(url = '../data/models/e63.glb', renderer = null) {
   const v = document.querySelector('meta[name="build"]')?.content || '';
