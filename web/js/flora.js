@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ENV } from './env.js?v=b1aacc7c';
+import { ENV } from './env.js?v=daf8a8c2';
 
 // Деревья, кусты и живые изгороди: заготовки пород, три ступени подробности
 // и общий для всех кварталов учёт того, что рисовать вблизи.
