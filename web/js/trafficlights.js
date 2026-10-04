@@ -1,20 +1,20 @@
 import * as THREE from 'three';
 import { ENV } from './env.js?v=e7384048';
 
-// Светофоры: модель как в Севастополе и работающий цикл огней.
+// Светофоры: модель как в Севастополе, расстановка по подходам перекрёстка и
+// работающий цикл огней.
 //
 // Модель — серая стойка, на ней транспортная головка Т.1: жёлтый корпус,
 // три секции (красный, жёлтый, зелёный) с козырьками, чёрный экран вокруг.
-// Лицом (+z) — навстречу своей полосе; ставит furniture.js: точка OSM
-// на осевой → столб у бордюра с каждой стороны дороги (одностороннюю — с
-// той, куда идёт поток).
+// На широких улицах (полотно от 12 м) — стойка с консолью: вторая головка
+// висит над своими полосами. Лицом (+z) — навстречу своему потоку.
 //
 // Цикл — как у нас: зелёный → мигающий зелёный (3 с) → жёлтый (3 с) →
-// красный → красный с жёлтым (2 с) → зелёный. Перекрёсток делится на два
-// направления по углу головки (вдоль и поперёк), у них цикл в противофазе;
-// у разных перекрёстков — свой сдвиг по месту. Огни считает шейдер по
+// красный → красный с жёлтым (2 с) → зелёный. Головки перекрёстка делятся
+// на два направления (вдоль и поперёк его первой улицы), у них цикл в
+// противофазе; у разных перекрёстков — свой сдвиг. Огни считает шейдер по
 // игровым часам (ENV.uTime), на паузе цикл стоит. Фаза едет в красном
-// канале цвета экземпляра (instanceColor), сама геометрия общая.
+// канале цвета экземпляра (instanceColor), геометрия и материал общие.
 
 const C = 46;                       // длина цикла, с
 const GREEN = 20, BLINK = 3, YELLOW = 3, RY = 2;
@@ -23,6 +23,9 @@ const BODY = [0.93, 0.70, 0.08];    // жёлтый корпус (sRGB)
 const SCREEN = [0.05, 0.05, 0.055]; // чёрный экран и козырьки
 const POLE = [0.42, 0.43, 0.44];
 const LENS = [[0.78, 0.10, 0.08], [0.95, 0.62, 0.06], [0.10, 0.75, 0.32]];
+
+const WIDE = 12;                    // с этой ширины полотна — консоль над полосами
+const REACH = 4.4;                  // вынос головки на консоли от стойки, м
 
 const s2l = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 
@@ -50,41 +53,61 @@ function merge(parts) {
   return g;
 }
 
-let GEO = null;
-export function trafficGeo() {
-  if (GEO) return GEO;
-  const parts = [];
-  const pole = new THREE.CylinderGeometry(0.055, 0.075, 3.9, 8); pole.translate(0, 1.95, 0);
-  parts.push({ geo: pole, color: POLE });
-  const cap = new THREE.SphereGeometry(0.06, 6, 4); cap.translate(0, 3.9, 0);
-  parts.push({ geo: cap, color: POLE });
-  // головка на кронштейне у стойки, низ ~2.5 м, лицом в +z
-  const HY = 3.05, HZ = 0.17;
-  const screen = new THREE.BoxGeometry(0.50, 1.18, 0.03); screen.translate(0, HY, HZ - 0.10);
+// головка Т.1 с центром в (x, y), лицом в +z; z — где стоит задняя стенка
+function head(parts, x, y, z) {
+  const HZ = z + 0.11;
+  const screen = new THREE.BoxGeometry(0.50, 1.18, 0.03); screen.translate(x, y, HZ - 0.10);
   parts.push({ geo: screen, color: SCREEN });
-  const body = new THREE.BoxGeometry(0.30, 1.00, 0.22); body.translate(0, HY, HZ);
+  const body = new THREE.BoxGeometry(0.30, 1.00, 0.22); body.translate(x, y, HZ);
   parts.push({ geo: body, color: BODY });
-  const brk = new THREE.BoxGeometry(0.08, 0.08, 0.16); brk.translate(0, HY + 0.35, 0.06);
-  const brk2 = brk.clone(); brk2.translate(0, -0.70, 0);
-  parts.push({ geo: brk, color: POLE }, { geo: brk2, color: POLE });
   LENS.forEach((c, i) => {
-    const y = HY + 0.31 - i * 0.31;
+    const ly = y + 0.31 - i * 0.31;
     const l = new THREE.CylinderGeometry(0.105, 0.105, 0.03, 14);
-    l.rotateX(Math.PI / 2); l.translate(0, y, HZ + 0.115);
+    l.rotateX(Math.PI / 2); l.translate(x, ly, HZ + 0.115);
     parts.push({ geo: l, color: c, lens: i + 1 });
     // козырёк: полутруба над линзой
     const v = new THREE.CylinderGeometry(0.125, 0.125, 0.16, 10, 1, true, -Math.PI / 2, Math.PI);
-    v.rotateX(Math.PI / 2); v.translate(0, y, HZ + 0.19);
+    v.rotateX(Math.PI / 2); v.translate(x, ly, HZ + 0.19);
     parts.push({ geo: v, color: SCREEN });
   });
-  return (GEO = merge(parts));
+}
+
+const GEO = {};
+// 'pole' — стойка 3.9 м с головкой на кронштейне (низ ~2.5 м);
+// 'arm' — стойка 6.3 м, та же головка внизу и консоль вдоль +x с второй
+// головкой над полосой (низ ~4.9 м — под ней проходит фура).
+export function trafficGeo(kind = 'pole') {
+  if (GEO[kind]) return GEO[kind];
+  const parts = [];
+  const tall = kind === 'arm' ? 6.3 : 3.9;
+  const pole = new THREE.CylinderGeometry(0.055, 0.08, tall, 8); pole.translate(0, tall / 2, 0);
+  const cap = new THREE.SphereGeometry(0.06, 6, 4); cap.translate(0, tall, 0);
+  parts.push({ geo: pole, color: POLE }, { geo: cap, color: POLE });
+  const HY = 3.05;
+  const brk = new THREE.BoxGeometry(0.08, 0.08, 0.16); brk.translate(0, HY + 0.35, 0.06);
+  const brk2 = brk.clone(); brk2.translate(0, -0.70, 0);
+  parts.push({ geo: brk, color: POLE }, { geo: brk2, color: POLE });
+  head(parts, 0, HY, 0.06);
+  if (kind === 'arm') {
+    const AY = 6.0;
+    const arm = new THREE.CylinderGeometry(0.045, 0.06, REACH + 0.6, 6);
+    arm.rotateZ(Math.PI / 2); arm.translate((REACH + 0.6) / 2, AY, 0);
+    // раскос под консолью — без него вынос в четыре метра выглядит соломинкой
+    const L = Math.hypot(1.6, 0.7);
+    const brace = new THREE.CylinderGeometry(0.03, 0.03, L, 5);
+    brace.rotateZ(-Math.atan2(1.6, 0.7)); brace.translate(0.8, AY - 0.35, 0);
+    const hang = new THREE.BoxGeometry(0.06, 0.25, 0.06); hang.translate(REACH, AY - 0.12, 0);
+    parts.push({ geo: arm, color: POLE }, { geo: brace, color: POLE }, { geo: hang, color: POLE });
+    head(parts, REACH, AY - 0.75, -0.11);
+  }
+  return (GEO[kind] = merge(parts));
 }
 
 let MAT = null;
 export function trafficMaterial() {
   if (MAT) return MAT;
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1, side: THREE.DoubleSide });
-  m.customProgramCacheKey = () => 'traffic-1';
+  m.customProgramCacheKey = () => 'traffic-2';
   m.onBeforeCompile = sh => {
     sh.uniforms.uTime = ENV.uTime; sh.uniforms.uNight = ENV.uNight;
     sh.vertexShader = sh.vertexShader
@@ -118,28 +141,111 @@ export function trafficMaterial() {
   return (MAT = m);
 }
 
-// list — [{x, z, a}], y(x, z) — высота земли. Фаза: направление по углу
-// головки (вдоль/поперёк — противофаза) + сдвиг перекрёстка по месту.
+// ---------------------------------------------------------------- расстановка
+// Узел OSM highway=traffic_signals лежит на осевой: посреди перекрёстка или
+// на подходе к нему. Светофор нужен каждому потоку, который в узел въезжает:
+// берём все проезжие улицы через узел, у каждой — оба плеча (у односторонней
+// — только то, откуда едут), и на каждом ставим стойку у ПРАВОГО бордюра
+// перед перекрёстком, головкой навстречу потоку. Место — первое от узла,
+// где стойка уже не на асфальте поперечной улицы и не в доме.
+//
+// Узлы одного перекрёстка (их в OSM часто ставят на каждый подход, а у
+// разделённых проспектов — на каждую проезжую часть) собираем в кучку по
+// 35 м: у кучки общий сдвиг цикла и общая ось «вдоль / поперёк».
+//
+// points — узлы OSM; roads — индекс дорог; drive(r) — проезжая ли;
+// clear(x, z, a) — влезает ли стойка. Возвращает [{x, z, a, k, flip, phase}].
+export function placeTrafficLights(points, roads, drive, clear) {
+  const out = [];
+  if (!points?.length) return out;
+
+  // кучки узлов одного перекрёстка
+  const groups = [];
+  for (const p of points) {
+    const g = groups.find(g => g.some(q => Math.hypot(q.x - p.x, q.z - p.z) < 35));
+    if (g) g.push(p); else groups.push([p]);
+  }
+
+  for (const g of groups) {
+    // сдвиг цикла — по узлу кучки с наименьшим x: он один и тот же в любом
+    // квартале, который эту кучку видит
+    const key = g.reduce((a, b) => (b.x < a.x ? b : a));
+    const jn = ((Math.round(key.x) * 73856093) ^ (Math.round(key.z) * 19349663)) >>> 0;
+    const base = (jn % 1000) / 1000 * C;
+    let ref = null;                      // ось перекрёстка: угол первой головки
+
+    for (const p of g) {
+      const seen = new Set();
+      for (let n = 0; n < 4; n++) {
+        const h = roads.nearest(p.x, p.z, 10, r => drive(r) && !seen.has(r));
+        if (!h) break;
+        const road = h.road;
+        seen.add(road);
+        // gs — плечо: +1 по ходу точек улицы, −1 против. Поток на плече gs
+        // едет к узлу (направление −gs), его правый бордюр — сторона −gs.
+        for (const gs of [1, -1]) {
+          if (road.ow && gs > 0) continue;           // односторонняя: едут по ходу точек
+          const r = approach(roads, road, h, gs, clear);
+          if (!r) continue;
+          if (out.some(o => Math.hypot(o.x - r.x, o.z - r.z) < 8 && Math.cos(o.a - r.a) > 0.7)) continue;
+          if (ref === null) ref = r.a;
+          const cross = Math.abs(Math.cos(r.a - ref)) < Math.SQRT1_2 ? 1 : 0;
+          r.phase = (base + cross * (GREEN + YELLOW)) % C;
+          out.push(r);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// Стойка на плече gs улицы road (h — точка узла на её осевой).
+function approach(roads, road, h, gs, clear) {
+  // плечо должно быть: улица, кончающаяся в узле, второго плеча не имеет
+  const tip = roads.nearest(h.x + h.dirX * gs * 8, h.z + h.dirZ * gs * 8, 3, r => r === road);
+  if (!tip) return null;
+  const s = -gs;
+  for (let t = 3; t <= 30; t += 1.5) {
+    // садимся на ту же осевую на каждом шаге: на повороте нормаль другая
+    const q = roads.nearest(h.x + h.dirX * gs * t, h.z + h.dirZ * gs * t, 6, r => r === road);
+    if (!q) return null;
+    const nx = -q.dirZ, nz = q.dirX;
+    const a = Math.atan2(gs * q.dirX, gs * q.dirZ);
+    for (let extra = 0; extra <= 1.6; extra += 0.8) {
+      const d = road.w / 2 + 0.9 + extra;
+      const x = q.x + nx * s * d, z = q.z + nz * s * d;
+      if (!clear(x, z, a)) continue;
+      const wide = road.w >= WIDE;
+      // консоль собрана вдоль локального +x; он в мире — (cos a, −sin a).
+      // Если он смотрит от дороги, а не на неё — отражаем экземпляр.
+      const flip = wide && (Math.cos(a) * -nx * s + -Math.sin(a) * -nz * s) < 0;
+      return { x, z, a, k: wide ? 'arm' : 'pole', flip };
+    }
+  }
+  return null;
+}
+
+// list — из placeTrafficLights, y(x, z) — высота земли. Меш на каждый вид.
 export function buildTrafficLights(list, y) {
-  const mesh = new THREE.InstancedMesh(trafficGeo(), trafficMaterial(), list.length);
+  const group = new THREE.Group();
+  group.name = 'светофоры';
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
-  const p = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1), col = new THREE.Color();
-  list.forEach((r, i) => {
-    p.set(r.x, y(r.x, r.z), r.z);
-    q.setFromAxisAngle(up, r.a);
-    mesh.setMatrixAt(i, m4.compose(p, q, s));
-    // ось головки по модулю π: 0 — «вдоль», π/2 — «поперёк»
-    const ax = ((r.a % Math.PI) + Math.PI) % Math.PI;
-    const cross = Math.abs(ax - Math.PI / 2) < Math.PI / 4 ? 1 : 0;
-    // сдвиг перекрёстка: клетка 60 м — головки одного узла в одной клетке
-    const cx = Math.floor(r.x / 60), cz = Math.floor(r.z / 60);
-    const jn = ((cx * 73856093) ^ (cz * 19349663)) >>> 0;
-    const phase = (jn % 1000) / 1000 * C + cross * (GREEN + YELLOW);
-    mesh.setColorAt(i, col.setRGB(phase, 0, 0));
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.castShadow = true;
-  mesh.name = 'светофоры';
-  return mesh;
+  const p = new THREE.Vector3(), s = new THREE.Vector3(), col = new THREE.Color();
+  for (const kind of ['pole', 'arm']) {
+    const items = list.filter(r => r.k === kind);
+    if (!items.length) continue;
+    const mesh = new THREE.InstancedMesh(trafficGeo(kind), trafficMaterial(), items.length);
+    items.forEach((r, i) => {
+      p.set(r.x, y(r.x, r.z), r.z);
+      q.setFromAxisAngle(up, r.a);
+      s.set(r.flip ? -1 : 1, 1, 1);
+      mesh.setMatrixAt(i, m4.compose(p, q, s));
+      mesh.setColorAt(i, col.setRGB(r.phase, 0, 0));
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.castShadow = true;
+    group.add(mesh);
+  }
+  return group;
 }
