@@ -560,6 +560,7 @@ export class Car {
       if (vLong > 1.0) brakeT = -thr; else { gasT = -thr; wantRev = true; }
     }
     this._lift = gasT < this._gas - 0.02;              // газ отпускают — для коробки
+    this._press = gasT > this._gas + 0.02;             // газ ещё дожимают — тоже
     // режим езды (drivemodes.js): кривая педали и скорость её нажатия
     const dm = this.dm || DM0;
     if (gasT > 0 && dm.gas !== 1) gasT = Math.pow(gasT, dm.gas);
@@ -632,7 +633,16 @@ export class Car {
       // мотор (момент) идёт за колёсами как раньше — на этом держится ловля
       // заноса заднеприводной машины.
       this._rpmW += (rpmWheels - this._rpmW) * Math.min(1, h / 0.15);
-      sndTarget = gas > 0.02 ? Math.max(rpmCar, this._rpmW, floor) : -1;
+      // На скорости (выше ~55 км/ч) — и того спокойнее: по скорости машины с
+      // «ровным» проскальзыванием (отношение колёс к машине, сглаженное на
+      // 0.8 с, не больше 8%). На 200+ на кочке колесо разгружалось и на
+      // десятую долю секунды раскручивалось на 25% быстрее машины — тон и
+      // тахометр вздрагивали на 5%, как переключение.
+      const slipNow = rpmCar > 300 ? clamp(this._rpmW / rpmCar, 1, 1.08) : 1;
+      this._slipS = (this._slipS || 1) + (slipNow - (this._slipS || 1)) * Math.min(1, h / 0.8);
+      const wv = clamp((Math.abs(vLong) - 12) / 6, 0, 1);
+      const sndW = Math.max(rpmCar, this._rpmW) * (1 - wv) + rpmCar * this._slipS * wv;
+      sndTarget = gas > 0.02 ? Math.max(sndW, floor) : -1;
       this._blipT -= h;
       if (rpm > target + 60 && this._dump) {
         // сброс маховика в трансмиссию: мотор тормозится колёсами, колёса
@@ -1062,7 +1072,7 @@ export class Car {
   // Автомат. Решение — по скорости МАШИНЫ, а не колёс: на пробуксовке колёса
   // раскручены, и коробка перебирала бы передачи вверх на ровном месте.
   _shift(h, vLong, gas, wantRev) {
-    this._shiftT -= h; this._shiftLock -= h;
+    this._shiftT -= h; this._shiftLock -= h; this._shiftAge = (this._shiftAge ?? 9) + h;
     if (this.manual) {
       const req = this._req; this._req = 0;
       if (!req || this._shiftLock > 0) return;
@@ -1111,13 +1121,23 @@ export class Car {
     // Газ в пол (>90%) — как у AMG MCT 9G в любом режиме: крутит до 6850 (за
     // 150 до отсечки) и переключается раньше, чем упрётся в ограничитель.
     // Пороги режима — только для частичного газа.
-    const up = Math.min(gas < 0.03 || this._lift || gas > 0.9 ? CAR.redline - 150 : dm.upLo + dm.upHi * gas, CAR.redline - 150);
-    // После любого переключения коробка 0.8 с ничего не решает.
+    // Пока педаль ещё идёт вниз (газ с клавиатуры нарастает за доли секунды),
+    // порог частичного газа не действует: иначе на полпути коробка успевала
+    // уйти вверх, а через миг кикдаун возвращал вниз — «переключение туда и
+    // обратно», которого водитель не просил.
+    const up = Math.min(gas < 0.03 || this._lift || this._press || gas > 0.9 ? CAR.redline - 150 : dm.upLo + dm.upHi * gas, CAR.redline - 150);
+    // После любого переключения коробка 0.8 с ничего не решает, а обратно
+    // (вверх после «вниз» и наоборот) — 1.5 с: без «охоты» туда-обратно.
+    // Исключение — вверх у самой отсечки: в ограничитель не упираемся.
     const LOCK = 0.8;
-    if (n < g.length && rpm > up) {
+    const since = this._shiftAge ?? 9;
+    const backOk = d => this._lastDir !== -d || since > 1.5;
+    if (n < g.length && rpm > up && (backOk(1) || rpm > CAR.redline - 300)) {
       this.gear = n + 1; this._shiftT = CAR.shiftTime * dm.shift; this._shiftLock = LOCK;
+      this._lastDir = 1; this._shiftAge = 0;
       return;
     }
+    if (!backOk(-1)) return;
     // Кикдаун: газ в пол дольше 0.25 с и мотор ниже 4200 — вниз на столько
     // ступеней, чтобы обороты не перевалили за 5800.
     // Порог и цель — ниже порога «вверх» этого режима, иначе в Eco коробка
@@ -1126,7 +1146,7 @@ export class Car {
     if (this._wot > 0.25 && rpm < Math.min(4200, up - 1500) && n > 1) {
       let m = n;
       while (m > 1 && k * g[m - 2] < kdTop) m--;
-      if (m < n) { this.gear = m; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK; return; }
+      if (m < n) { this.gear = m; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK; this._lastDir = -1; this._shiftAge = 0; return; }
     }
     // Вниз без газа (накат, торможение) — как у АКПП AMG: только когда мотор
     // уже у самого низа (ниже 1300), и сразу через ступени — на самую низкую
@@ -1137,12 +1157,12 @@ export class Car {
         let m = n;
         while (m > 1 && k * g[m - 2] < 2500) m--;
         if (m === n) m = n - 1;
-        this.gear = m; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK; this._blipT = 0.25;
+        this.gear = m; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK; this._blipT = 0.25; this._lastDir = -1; this._shiftAge = 0;
       }
       return;
     }
     if (n > 1 && k * g[n - 2] < dm.down) {
-      this.gear = n - 1; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK;
+      this.gear = n - 1; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK; this._lastDir = -1; this._shiftAge = 0;
     }
   }
 

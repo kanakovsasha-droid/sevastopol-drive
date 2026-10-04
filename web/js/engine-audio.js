@@ -220,16 +220,15 @@ export class E63Sound {
   }
 
   // Записи приехали: строим второй голос мотора и плавно отдаём ему звук.
-  // bufs: { v8_idle, v8_load, pop_1…, bang_1…, tyre_squeal }, meta —
+  // bufs: { v8_idle, v8_cruise, starter, pop_1…, bang_1…, tyre_squeal }, meta —
   // sounds.json (обороты записи каждой петли).
   //
   // Схема как у GTA: высота у каждой петли — строго rpm / обороты её
   // записи, и переходов между петлями по порогам оборотов нет. Основа на
   // всех оборотах — ровный ход GT500 (~2740 об/мин, 6 с почти без дрейфа),
-  // у самого низа к ней примешаны холостые (841), под газом — разгон в пол
-  // (выпрямлен до ровных 3653). Все петли в любой момент звучат на одной и
-  // той же высоте, так что их смесь — это тембр, а не ступенька тона. Прежний набор из шести петель переходил между ними по оборотам, и
-  // каждая петля внутри «плыла» по высоте — отсюда были фантомные переключения.
+  // у самого низа к ней примешаны холостые (841), под газом — она же через
+  // перегруз. Петли в любой момент звучат на одной высоте, так что их смесь —
+  // это тембр, а не ступенька тона.
   useSamples(bufs, meta) {
     const ctx = this.ctx, t0 = ctx.currentTime;
     const g = (v = 0) => { const n = ctx.createGain(); n.gain.value = v; return n; };
@@ -243,13 +242,26 @@ export class E63Sound {
     const fireCut = flt('peaking', 60, 5, 0), fireCut2 = flt('peaking', 120, 7, 0), fireCut3 = flt('peaking', 180, 8, 0);
     const bus = g(0);
     lp.connect(lp2).connect(fireCut).connect(fireCut2).connect(fireCut3).connect(shelf).connect(bus).connect(this.master);
-    const loops = ['v8_idle', 'v8_cruise', 'v8_load'].filter(n => bufs[n] && meta.loops[n]).map(n => {
+    // Две петли: холостые и ровный ход. «Под газом» — не третья запись, а
+    // тот же ровный ход через перегруз и полку на верха, параллельно чистому
+    // (один источник — фазы совпадают, гребёнки нет). Прежняя третья петля
+    // (перегазовка/разгон) плыла по тембру за круг: бас и верха на 7 дБ, и на
+    // скорости раз в круг слышалась «ещё одна передача». А две разные записи
+    // на одной высоте складывались то в фазе, то в противофазе.
+    const shaper = ctx.createWaveShaper(); shaper.curve = this._curve(2.6); shaper.oversample = '2x';
+    const loops = ['v8_idle', 'v8_cruise'].filter(n => bufs[n] && meta.loops[n]).map(n => {
       const src = ctx.createBufferSource(); src.buffer = bufs[n]; src.loop = true;
       const gg = g(0); src.connect(gg).connect(lp);
       const off = Math.random() * bufs[n].duration;
       src.start(t0, off);
+      const L = { name: n, rpm: meta.loops[n].rpm, src, g: gg, t0, off, len: bufs[n].duration };
+      if (n === 'v8_cruise') {
+        const pre = g(0.9), bright = flt('highshelf', 1100, 0.7, 5), dg = g(0);
+        src.connect(pre).connect(shaper).connect(bright).connect(dg).connect(lp);
+        L.drive = dg;
+      }
       // t0 и off — чтобы стенд мог посчитать, где сейчас шов петли
-      return { name: n, rpm: meta.loops[n].rpm, src, g: gg, t0, off, len: bufs[n].duration };
+      return L;
     });
     let squeal = null;
     if (bufs.tyre_squeal) {
@@ -271,7 +283,7 @@ export class E63Sound {
     // глухая на любых. Треск — редкие искры шума 1–3 кГц, тихо. Оба идут
     // через ту же полку и шину, что и мотор: громкость шины на сбросе — и их.
     let burble = null;
-    const bsrc = bufs.v8_cruise || bufs.v8_load;
+    const bsrc = bufs.v8_cruise;
     if (bsrc) {
       const src = ctx.createBufferSource(); src.buffer = bsrc; src.loop = true; src.playbackRate.value = 0.9;
       const lpB = flt('lowpass', 260, 1.2), hpB = flt('highpass', 38, 0.7), gB = g(0);
@@ -534,10 +546,13 @@ export class E63Sound {
       // Смесь тембров (высота у всех петель одна и та же — rs / обороты
       // записи): холостые — по логарифму оборотов 950→1700, выше — ровный
       // ход, а под газом к нему примешан разгон в пол (по сглаженному газу,
-      // не по оборотам — порогов по оборотам нет вовсе).
+      // не по оборотам — порогов по оборотам нет вовсе). В пол — звучит
+      // только петля «под газом»: две разные записи на одной высоте
+      // складываются то в фазе, то в противофазе, и громкость «плавала» на
+      // 2–3 дБ раз в круг петли — на 200+ это слышалось как переключение.
       const k = Math.min(1, Math.max(0, Math.log(rs / 950) / Math.log(1700 / 950)));
       const on = Math.sin(k * Math.PI / 2), ld = Math.min(1, st.loadS);
-      const W = { v8_idle: Math.cos(k * Math.PI / 2), v8_cruise: on * Math.cos(ld * Math.PI / 2 * 0.7), v8_load: on * Math.sin(ld * Math.PI / 2) };
+      const W = { v8_idle: Math.cos(k * Math.PI / 2), v8_cruise: on * (1 - 0.35 * ld) };
       // Холостые живые: обороты чуть «плавают» случайно (±2.5%, как в самой
       // записи холостых — там 53.7…58.7 Гц; новая цель
       // каждые 0.12–0.42 с, сглажено). Ровно стоящая высота давала на
@@ -549,6 +564,7 @@ export class E63Sound {
       for (const l of S.loops) {
         const w = W[l.name] || 0;
         P(l.g.gain, w, 0.05);
+        if (l.drive) P(l.drive.gain, on * 0.75 * ld, 0.05);   // «под газом» — перегруз
         P(l.src.playbackRate, rsw / l.rpm, 0.02);
       }
       const rr = Math.min(1, Math.max(0, (rs - 800) / 6200));

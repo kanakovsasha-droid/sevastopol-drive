@@ -53,13 +53,10 @@ const V8 = [
   // ровный ход ~2750 об/мин 6 с подряд — основа на всех оборотах: обороты в
   // записи почти не меняются, поэтому тембр по петле ровный и шов не слышен
   ['v8_cruise', 205511, 26.6, 32.6, [176, 190], 1, 0.06, true],
-  // «злой» слой под газом — перегазовка, удержанная на ~3650 об/мин 3.5 с.
-  // Раньше брали разгон в пол на второй (205508, 207→284 Гц): выпрямленный
-  // по высоте, он сохранял тембр разгона — к концу петли звук «темнел» на
-  // треть (центроид 640→440 Гц) и на шве прыгал обратно. На высоких оборотах
-  // петля проходила круг раз в секунду, и каждый круг звучал как ещё одно
-  // переключение. Здесь обороты в записи ровные — тембр по петле тоже.
-  ['v8_load', 205504, 18.3, 21.5, [232, 252], 1, 0.06, true],
+  // Отдельной петли «под газом» нет: и выпрямленный разгон (205508), и
+  // «перегазовка» (205504, 18–21 с) плыли по тембру за круг — бас и верха на
+  // 7 дБ, на скорости это звучало как лишнее переключение раз в круг. Газ
+  // теперь — тот же ровный ход через перегруз в engine-audio.js.
 ];
 const LOOPS = [
   ['tyre_squeal', 71739, 5.0, 6.6],
@@ -135,6 +132,30 @@ function flattenEnv(y, win = 0.09, pw = 0.9) {
   return y;
 }
 
+// Тот же выравниватель, но по трём полосам порознь (до 250, 250–700, выше
+// 700 Гц): у записи «перегазовки» общий уровень ровный, а бас и верха за круг
+// петли плывут на 7 дБ во встречных направлениях — в игре (там верха срезаны,
+// а бас подчёркнут) это слышалось как волна громкости раз в круг, на скорости
+// — как ещё одно переключение. Полосы — фильтры Баттерворта вперёд-назад: без
+// сдвига фазы, и сумма полос равна исходному сигналу.
+function biquad(x, type, f0, Q = Math.SQRT1_2) {
+  const w = 2 * Math.PI * f0 / SR, al = Math.sin(w) / (2 * Q), c = Math.cos(w), a0 = 1 + al;
+  const lp = type === 'lp';
+  const b0 = (lp ? (1 - c) / 2 : (1 + c) / 2) / a0, b1 = (lp ? 1 - c : -(1 + c)) / a0, b2 = b0, a1 = -2 * c / a0, a2 = (1 - al) / a0;
+  const run = src => { const y = new Float32Array(src.length); let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < src.length; i++) { const v = b0 * src[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = src[i]; y2 = y1; y1 = v; y[i] = v; } return y; };
+  // по кругу: петля бесшовная, хвост фильтра переносим через шов (три прохода — берём средний)
+  const L = x.length, ext = new Float32Array(L * 3); ext.set(x, 0); ext.set(x, L); ext.set(x, 2 * L);
+  return run(run(ext).reverse()).reverse().subarray(L, 2 * L);
+}
+function flattenBands(y, win, pw) {
+  const low = biquad(y, 'lp', 250), rest = biquad(y, 'hp', 250);
+  const mid = biquad(rest, 'lp', 700), high = biquad(rest, 'hp', 700);
+  const out = new Float32Array(y.length);
+  for (const band of [low, mid, high]) { const b = Float32Array.from(band); flattenEnv(b, win, pw); for (let i = 0; i < y.length; i++) out[i] += b[i]; }
+  return out;
+}
+
 // Частота одной гармоники по времени: в каждом окне — пик в ±5% от прошлого
 // значения (первое окно — в полосе band). Точность ~0.1 Гц: шаг поиска 0.05.
 function follow(x, band, hop = 0.01, win = 2048, fixed = false) {
@@ -201,7 +222,8 @@ for (const [name, id, a, b, band, order, sm, fixed] of V8) {
   const X = Math.round(SR * 0.1);
   const n = Math.floor((y.length - X) / cyc) * cyc;
   y = seamless(y.subarray(0, Math.round(n) + X), X);
-  flattenEnv(y, name === 'v8_load' ? 0.045 : 0.09, name === 'v8_load' ? 0.9 : 0.6);
+  if (name === 'v8_idle') flattenEnv(y, 0.09, 0.6);
+  else y = flattenBands(y, 0.09, 0.9);
   const k = 0.18 / rms(y);
   for (let i = 0; i < y.length; i++) y[i] *= k;
   writeFileSync(`${OUT}/${name}.wav`, wav(y));
