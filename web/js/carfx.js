@@ -166,14 +166,10 @@ export class CarFX {
     this.packs = ['open'];
     try { this.packs = [...await findModPacks(), 'open']; } catch { /* нет — значит нет */ }
     const want = new URLSearchParams(location.search).get('snd');
-    // По умолчанию — открытый набор (основа звука и на сайте), а хлопки на
-    // сбросе — из w212-tuning, если он лежит локально. Ключ хранилища новый:
-    // прежний выбор (пакет мода целиком) больше не навязываем.
+    // По умолчанию — открытый набор (основа звука и на сайте) со своими
+    // хлопками CC0 — локально звучит так же, как на сайте.
     let saved = null;
     try { saved = localStorage.getItem('sev.snd2'); } catch { /* нет хранилища */ }
-    if (this.packs.includes('w212-tuning')) {
-      try { this.audio.usePops((await loadModPack(ctx, 'w212-tuning')).bufs); } catch { /* без них — открытые хлопки */ }
-    }
     const pick = [want, saved, 'open'].find(p => p && this.packs.includes(p)) || 'open';
     await this.usePack(pick);
   }
