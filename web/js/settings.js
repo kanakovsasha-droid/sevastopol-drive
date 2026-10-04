@@ -5,8 +5,9 @@
 // Всё хранится в localStorage (env.js — sev.env, gamepad.js — sev.pad):
 // после перезагрузки тот же вечер, та же погода, та же раскладка.
 
-import { WEATHER, SEASONS, sunDirection } from './env.js?v=6faf90df';
-import { ACTIONS } from './gamepad.js?v=6faf90df';
+import { WEATHER, SEASONS, sunDirection } from './env.js?v=d8230200';
+import { ACTIONS } from './gamepad.js?v=d8230200';
+import { VIEWS, FOLLOW } from './carcam.js?v=d8230200';
 
 const CSS = `
 #settings{position:fixed;inset:0;z-index:22;display:none;align-items:center;justify-content:center;
@@ -52,15 +53,15 @@ const SPEEDS = [
 ];
 
 export class Settings {
-  constructor({ env, pad, toast }) {
-    this.env = env; this.pad = pad; this.toast = toast || (() => {});
+  constructor({ env, pad, cam, toast }) {
+    this.env = env; this.pad = pad; this.cam = cam; this.toast = toast || (() => {});
     const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
     const el = document.createElement('div');
     el.id = 'settings';
     el.innerHTML = `<div id="setbox" class="panel">
       <h2>Настройки <small>T · Esc</small></h2>
-      <div class="tabs"><button data-tab="time">Время и погода</button><button data-tab="season">Сезон</button><button data-tab="ctl">Управление</button></div>
-      <section data-s="time"></section><section data-s="season"></section><section data-s="ctl"></section>
+      <div class="tabs"><button data-tab="time">Время и погода</button><button data-tab="season">Сезон</button><button data-tab="cam">Камера</button><button data-tab="ctl">Управление</button></div>
+      <section data-s="time"></section><section data-s="season"></section><section data-s="cam"></section><section data-s="ctl"></section>
     </div>`;
     document.body.appendChild(el);
     this.el = el;
@@ -120,6 +121,35 @@ export class Settings {
     if (this.tab === 'time') this._time();
     if (this.tab === 'season') this._season();
     if (this.tab === 'ctl') this._ctl();
+    if (this.tab === 'cam') this._cam();
+  }
+
+  _cam() {
+    const s = this.box.querySelector('[data-s=cam]'), cam = this.cam, c = cam.cfg;
+    const range = (k, name, min, max, step) =>
+      `<label><span>${name}</span><input type="range" min="${min}" max="${max}" step="${step}" data-k="${k}" value="${c[k]}"></label>`;
+    const check = (k, name) => `<label><span>${name}</span><input type="checkbox" data-k="${k}" ${c[k] ? 'checked' : ''}></label>`;
+    s.innerHTML = `
+      <h3>Вид — C (на геймпаде ${this.pad.btnName('cam')})</h3>
+      <div class="row">${VIEWS.map((v, i) => `<button data-view="${i}" class="${cam.view === i ? 'sel' : ''}">${v.name}</button>`).join('')}</div>
+      <h3>Камера сама уходит за машину</h3>
+      <div class="row">${Object.entries(FOLLOW).map(([k, n]) => `<button data-follow="${k}" class="${c.follow === k ? 'sel' : ''}">${n}</button>`).join('')}</div>
+      <div class="sub">GTA — после паузы мыши на ходу · Forza — всегда, обзор только пока держишь · V — за корму сразу</div>
+      ${range('delay', 'Пауза перед возвратом (GTA), с', 0.3, 4, 0.1)}
+      ${range('stiff', 'Как быстро догоняет', 1, 8, 0.25)}
+      <h3>Снаружи</h3>
+      ${range('fov', 'Угол обзора', 45, 90, 1)}
+      ${range('dist', 'Расстояние', 0.6, 1.8, 0.05)}
+      ${range('height', 'Высота', -0.8, 2, 0.1)}
+      ${check('speedFov', 'Шире на скорости')}
+      <h3>От первого лица</h3>
+      ${range('fpFov', 'Угол обзора', 50, 100, 1)}
+      ${check('lean', 'Из салона смотреть в поворот')}
+      ${check('shake', 'Тряска при ударе')}`;
+    s.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => { cam.setView(+b.dataset.view); this.render(); }));
+    s.querySelectorAll('[data-follow]').forEach(b => b.addEventListener('click', () => { c.follow = b.dataset.follow; cam.save(); this.render(); }));
+    s.querySelectorAll('input[type=range]').forEach(i => i.addEventListener('input', () => { c[i.dataset.k] = +i.value; cam.save(); }));
+    s.querySelectorAll('input[type=checkbox]').forEach(i => i.addEventListener('change', () => { c[i.dataset.k] = i.checked; cam.save(); }));
   }
 
   // Время, когда солнце на высоте elev (по дате сезона): от полудня в сторону dir.
@@ -211,7 +241,7 @@ export class Settings {
       <div class="row" style="margin-top:10px"><button data-reset="1">Вернуть раскладку по умолчанию</button></div>
       <h3>Клавиатура</h3>
       <div class="sub">WASD — ехать · Space — ручник · E — выйти · C — камера · R — на дорогу · F — полёт · Tab — карта · M — места ·
-        O — гараж · G — автомат/ручная, Shift/Q — передачи · T — настройки · [ ] — время · ? — все клавиши</div>`;
+        O — гараж · G — автомат/ручная, Shift/Q — передачи · 1–4 / Y — режим езды · L — свет · Z — завести/заглушить · V — камера за корму · Esc — пауза · T — настройки · [ ] — время · ? — все клавиши</div>`;
     this._padStatus();
     for (const k of ['scheme', 'layout']) s.querySelectorAll(`[data-${k}]`).forEach(b => b.addEventListener('click', () => {
       c[k] = b.dataset[k]; p.save();
@@ -238,7 +268,7 @@ export class Settings {
     row.innerHTML = [
       [b('gas') + b('brake'), 'газ / тормоз'], ['<span class="kc">стик</span>', 'руль'], [b('hand'), 'ручник'],
       [b('exit'), 'выйти'], [b('cam'), 'камера'], [b('reset'), 'на дорогу'], [b('down') + b('up'), 'передачи'],
-      [b('map'), 'карта'], [b('menu'), 'настройки'],
+      [b('map'), 'карта'], [b('menu'), 'пауза'],
     ].map(([k, t]) => `<span class="g sh">${k}${t}</span>`).join('');
   }
 }

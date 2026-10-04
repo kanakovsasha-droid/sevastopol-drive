@@ -1,5 +1,5 @@
-import { drawMini } from './minimap.js?v=6faf90df';
-import { CarFX } from './carfx.js?v=6faf90df';
+import { drawMini } from './minimap.js?v=d8230200';
+import { CarFX } from './carfx.js?v=d8230200';
 
 // Интерфейс поверх игры — вариант A «Циферблат» (утверждён владельцем):
 //   • справа снизу круглый прибор: обороты дугой со шкалой 0–8 и красной
@@ -334,7 +334,7 @@ export class Hud {
     const gear = String(t.gear ?? '');
     const hot = t.onLimiter || rpm >= red;
     // перерисовываем, только если стрелка сдвинулась хотя бы на треть градуса
-    const sig = `${Math.round(rpm / 10)}|${kmh}|${gear}|${t.drive}|${t.manual ? 1 : 0}|${hot ? 1 : 0}`;
+    const sig = `${Math.round(rpm / 10)}|${kmh}|${gear}|${t.drive}|${t.manual ? 1 : 0}|${hot ? 1 : 0}|${t.dm || ''}`;
     if (sig === this._drawn) return;
     this._drawn = sig;
     const st = this._staticLayer('car', rpmMax, red);
@@ -364,6 +364,14 @@ export class Hud {
     g.fillStyle = t.manual && !hot ? '#14171a' : '#fff';
     g.font = `800 ${gear.length > 1 ? 21 : 27}px ${FONT}`;
     g.fillText(gear, c, c + 75);
+    // режим езды (drivemodes.js) — справа от передачи, своим цветом
+    if (t.dm) {
+      g.fillStyle = t.dmColor || '#fff';
+      g.font = `800 17px ${FONT}`;
+      g.textAlign = 'left';
+      g.fillText(t.dm, bx + 44, c + 72);
+      g.textAlign = 'center';
+    }
     this._driveIcon(g, c - 8, c - 66, t.drive);
   }
 

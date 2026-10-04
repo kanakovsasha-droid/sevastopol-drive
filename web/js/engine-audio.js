@@ -357,12 +357,16 @@ export class E63Sound {
     st.armed = false;
     if (Math.max(rpm, st.liftRpm || 0) < 4500 || t - B.last < 1.5 || Math.random() > 0.7) return;
     B.last = t;
-    const n = 3 + Math.floor(Math.random() * 6);
-    let at = t + 0.07 + Math.random() * 0.12;
+    this._burbles(B, t + 0.07 + Math.random() * 0.12, 3 + Math.floor(Math.random() * 6), 1);
+  }
+
+  // Серия «бульков» с момента at: n штук, сила k (1 — сброс с высоких).
+  _burbles(B, at, n, k) {
+    const t = this.ctx.currentTime;
     const g = B.g.gain, c = B.crack.gain;
     g.cancelScheduledValues(t); c.cancelScheduledValues(t);
     for (let i = 0; i < n; i++) {
-      const a = (0.35 + 0.65 * Math.random()) * (1 - 0.45 * i / n);
+      const a = k * (0.35 + 0.65 * Math.random()) * (1 - 0.45 * i / n);
       const hold = 0.02 + Math.random() * 0.05;
       B.lp.frequency.setTargetAtTime(160 + Math.random() * 200, at - 0.004, 0.003);
       B.src.playbackRate.setTargetAtTime(0.75 + Math.random() * 0.35, at - 0.004, 0.003);
@@ -375,7 +379,7 @@ export class E63Sound {
         c.setTargetAtTime(0, ct + 0.004 + Math.random() * 0.01, 0.008);
       }
       this.shots++;
-      this.log && this.log.push([at, 'сброс: бульк']);
+      this.log && this.log.push([at, 'бульк']);
       at += 0.06 + Math.random() * Math.random() * 0.15;
     }
     B.until = at + 0.2;
@@ -426,12 +430,22 @@ export class E63Sound {
     // тяги (70 мс) и под газом — один щелчок выхлопа при подхвате.
     if (shifting) {
       st.shift = s.shiftCount || 0;
+      const B = this.smp && this.smp.burble;
       if (thr > 0.3) {
         st.dipUntil = t + 0.07;
-        this._pop(false, t + 0.06, 0.4 * thr, 0.9);
+        // у открытого V8 — один глухой «бульк» на подхвате, не щелчок
+        if (B) this._burbles(B, t + 0.06, 1, 0.5 * thr);
+        else this._pop(false, t + 0.06, 0.4 * thr, 0.9);
         this.log && this.log.push([t, 'переключение']);
+      } else if (B && thr < 0.1 && s.gear > 0 && s.gear < (st.gear || 99) && rpm > 1200) {
+        // дауншифт без газа (физика сама поднимает обороты за ~0.15 с) —
+        // перегазовка: короткий «газ» по тембру и пара бульков следом
+        st.blipUntil = t + 0.3;
+        this._burbles(B, t + 0.12, 2 + Math.floor(Math.random() * 3), 0.6);
+        this.log && this.log.push([t, 'дауншифт: перегазовка']);
       }
     }
+    st.gear = s.gear;
     const dip = t < (st.dipUntil || 0) ? 0.35 : 1;
     // записи: доля их голоса нарастает за полсекунды после загрузки
     const S = this.smp;
@@ -466,8 +480,10 @@ export class E63Sound {
       // звучит настоящее переключение). Рывок ВВЕРХ без газа — дауншифт
       // накатом или подскок колёс на кочке — догоняем плавно (0.35 с): на
       // сбросе тон должен только плавно падать, без ступенек.
+      // Обороты физики уже без рывков от колёс (инерция маховика); подъём без
+      // газа и вне перегазовки звук ещё дополнительно сглаживает (0.12 с).
       const up = rpm > st.rpmS, coast = st.loadS < 0.15 && thr < 0.1;
-      const tau = up && coast ? 0.35 : 0.025;
+      const tau = up && coast && !(t < (st.blipUntil || 0)) ? 0.12 : 0.025;
       st.rpmS += (rpm - st.rpmS) * Math.min(1, dtA / tau);
       const rs = st.rpmS;
       // Смесь тембров (высота у всех петель одна и та же — rs / обороты
@@ -491,13 +507,15 @@ export class E63Sound {
         P(l.src.playbackRate, rsw / l.rpm, 0.02);
       }
       const rr = Math.min(1, Math.max(0, (rs - 800) / 6200));
+      // перегазовка: на 0.3 с звук «под газом» (громче, открытее)
+      const lS = t < (st.blipUntil || 0) ? Math.max(st.loadS, 0.55) : st.loadS;
       // Газ — громче и открытее, сброс — тише и глуше. Газ сглаженный (0.25 с):
       // клавиша W щёлкает 0↔1, и громкость не должна прыгать за ней.
-      const vol = 1.45 * (0.5 + 0.3 * rr) * (0.55 + 0.45 * st.loadS) * (cut ? 0.4 : 1) * dip * S.mix;
+      const vol = 1.45 * (0.5 + 0.3 * rr) * (0.55 + 0.45 * lS) * (cut ? 0.4 : 1) * dip * S.mix;
       P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.05);
       // Тембр: срез растёт с оборотами медленно, на отсечке не выше 2.6 кГц.
       // Верха записи выше — шипение и механика, им в «басовитом» звуке не место.
-      const cutHz = Math.min(2600, 650 + rs * 0.2 + 700 * st.loadS);
+      const cutHz = Math.min(2600, 650 + rs * 0.2 + 700 * lS);
       P(S.lp.frequency, cutHz, 0.06);
       P(S.lp2.frequency, cutHz * 1.25, 0.06);
       // холостые: гасим линию вспышек и её 2-ю и 3-ю гармоники (к 1400 — ноль)

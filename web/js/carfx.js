@@ -1,8 +1,8 @@
-import { E63Sound } from './engine-audio.js?v=6faf90df';
-import { RoadSurface } from './roadsurf.js?v=6faf90df';
-import { TireSmoke } from './smoke.js?v=6faf90df';
-import { Garage } from './garage.js?v=6faf90df';
-import { CARS } from './vehicle.js?v=6faf90df';
+import { E63Sound } from './engine-audio.js?v=d8230200';
+import { RoadSurface } from './roadsurf.js?v=d8230200';
+import { TireSmoke } from './smoke.js?v=d8230200';
+import { Garage } from './garage.js?v=d8230200';
+import { CARS } from './vehicle.js?v=d8230200';
 
 // Всё, что машина делает «вокруг» физики: коробка и привод с клавиатуры,
 // звук мотора и шин, дым из-под колёс.
@@ -274,8 +274,8 @@ export class CarFX {
       if (driving) for (let i = 0; i < 4; i++) if (car._fz[i] > 0) skid = Math.max(skid, car.slipVel[i]);
       // вышли из машины — мотор остаётся на холостых
       this.audio.set({
-        rpm: driving ? car.rpm : 900, throttle: driving ? car.throttle : 0, limiter: driving ? car.limiter : 0,
-        shiftCount: car.shiftCount, boost: driving ? car.boost : 0, skid, burnout: driving && car.burnout,
+        rpm: driving ? (car.rpmSound ?? car.rpm) : 900, throttle: driving ? car.throttle : 0, limiter: driving ? car.limiter : 0,
+        shiftCount: car.shiftCount, gear: car.gear, boost: driving ? car.boost : 0, skid, burnout: driving && car.burnout,
         inside: driving && this.inside(), dist,
       }, this.ctx.currentTime);
     }
