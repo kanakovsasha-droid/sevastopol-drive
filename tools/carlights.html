@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Стенд: свет машины</title>
+<!-- Стенд для проверки света машины (web/js/carlights.js) без города:
+     машина на тёмной площадке, камера и режим — из адреса.
+       ?cam=front34|rear34|hl|tl|front|rear|side  ракурс
+       &mode=off|parking|low|high|auto           режим света (как клавиша L)
+       &night=0..1   ночь (0 — день)   &brake=1   торможение   &rev=1  задний ход
+       &engine=0     мотор заглушен
+       &glb=w212     другая модель из data/models/
+       &mark=1       покрасить в пурпур все детали, которые светят (что выбрал carlights.js)
+       &only=<имя материала>  подсветить один материал, остальное — серым
+     В консоли: CL — объект CarLights, CAR — модель. -->
+<style>html,body{margin:0;background:#000;overflow:hidden}#t{position:fixed;left:8px;top:6px;color:#9cf;font:12px monospace;white-space:pre}</style>
+<script type="importmap">{ "imports": { "three": "../web/lib/three.module.js" } }</script>
+</head>
+<body>
+<div id="t"></div>
+<script type="module">
+import * as THREE from 'three';
+import { loadCarModel, placeCarMesh } from '../web/js/vehicle.js';
+import { CarLights } from '../web/js/carlights.js';
+
+const P = new URLSearchParams(location.search);
+const night = +(P.get('night') ?? 1);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.0 + 0.55 * night;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const sky = new THREE.Color(0x9cc4e8).lerp(new THREE.Color(0x05070c), night);
+scene.background = sky;
+const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x4a4238, 1.6 * (1 - night) + 0.05 * night);
+const sun = new THREE.DirectionalLight(0xfff2e0, 3.0 * (1 - night) + 0.04 * night);
+sun.position.set(-30, 40, 20); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10 });
+scene.add(hemi, sun);
+// асфальт и стена позади машины — видно, куда ложится свет фар
+const asphalt = new THREE.MeshStandardMaterial({ color: 0x3a3b3d, roughness: 0.9 });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), asphalt);
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(40, 8), new THREE.MeshStandardMaterial({ color: 0x8a8580, roughness: 0.95 }));
+wall.position.set(0, 4, 22); wall.rotation.y = Math.PI; scene.add(wall);
+for (let i = -6; i <= 6; i++) {          // разметка, чтобы было видно пятно
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 3), new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.8 }));
+  m.rotation.x = -Math.PI / 2; m.position.set(-1.9, 0.005, i * 6 + 4); scene.add(m);
+}
+
+const camera = new THREE.PerspectiveCamera(+(P.get('fov') || 40), innerWidth / innerHeight, 0.05, 500);
+const CAMS = {
+  front34: [[4.6, 1.5, 6.4], [0, 0.6, 1.2]],
+  rear34:  [[-4.4, 1.6, -6.2], [0, 0.6, -1.4]],
+  front:   [[0, 1.0, 7.5], [0, 0.6, 0]],
+  rear:    [[0, 1.2, -7.5], [0, 0.6, 0]],
+  side:    [[7.5, 1.4, 0], [0, 0.6, 0]],
+  hl:      [[1.05, 0.85, 2.75], [0.62, 0.68, 1.98]],     // правая (по ходу — левая) фара крупно
+  tl:      [[-1.05, 1.0, -3.05], [-0.62, 0.8, -2.3]],   // задний фонарь крупно
+  road:    [[-2.5, 2.4, -4.5], [0, 0, 10]],             // из-за машины на дорогу
+  top:     [[0, 9, 0.01], [0, 0, 0]],
+};
+const [cp, ct] = P.get('cam') && P.get('cam').includes(',')
+  ? [P.get('cam').split(',').slice(0, 3).map(Number), P.get('cam').split(',').slice(3, 6).map(Number)]
+  : CAMS[P.get('cam') || 'front34'];
+camera.position.set(...cp); camera.lookAt(...ct);
+
+const car = {
+  pos: new THREE.Vector3(), yaw: 0, pitch: 0, roll: 0,
+  wheelDrop: [0, 0, 0, 0], wheelAngle: [0, 0, 0, 0], steerVis: 0,
+  engine: P.get('engine') === '0' ? 'off' : 'on',
+  _brake: P.get('brake') === '1' ? 1 : 0, vLong: P.get('brake') === '1' ? 5 : 0,
+  gear: P.get('rev') === '1' ? -1 : 1,
+};
+const t = document.getElementById('t');
+try { localStorage.setItem('sev.lights', P.get('mode') || 'low'); } catch {}
+const lights = new CarLights(scene);
+window.CL = lights;
+const said = () => console.log('LOG lamps: ' + lights.lamps.map(e => e.m.name + '=' + e.role).join(' '));
+
+const mesh = await loadCarModel('../data/models/' + (P.get('glb') || 'e63') + '.glb', renderer);
+mesh.traverse(o => {
+  if (!o.isMesh) return;
+  for (const m of Array.isArray(o.material) ? o.material : [o.material])
+    if (m.transmission > 0) { m.transmission = 0; m.transparent = true; m.depthWrite = false; }   // как cheapGlass в main.js
+});
+window.CAR = mesh;
+scene.add(mesh);
+placeCarMesh(mesh, car);
+const RAW = !!P.get('raw');            // модель как в файле, без carlights.js
+if (!RAW) for (let i = 0; i < 120; i++) lights.update(1 / 30, mesh, car, night, 1 - night);
+
+said();
+if (P.get('mark')) {
+  const lit = new Set(lights.lamps.map(e => e.m));
+  mesh.traverse(o => {
+    if (!o.isMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!lit.has(m)) continue;
+      m.emissive.set(0xff00ff); m.emissiveIntensity = 2; m.emissiveMap = null; m.map = null; m.color.set(0xff00ff);
+      m.transparent = false; m.opacity = 1; m.needsUpdate = true;
+    }
+  });
+}
+// Подсветить один материал (регулярка по имени), остальное — серым: какие
+// детали кузова на самом деле у материала. window.solo(re) — то же из консоли.
+const orig = new Map();
+mesh.traverse(o => { if (o.isMesh) orig.set(o, o.material); });
+const grey = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.75 });
+const greyGlass = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.2, transparent: true, opacity: 0.12, depthWrite: false });
+const pink = new THREE.MeshStandardMaterial({ color: 0xff00ff, emissive: 0xff00ff, emissiveIntensity: 1.2, roughness: 0.7, side: THREE.DoubleSide });
+let frozen = !!P.get('mark');
+window.XRAY = !!P.get('xray');      // остальное — полупрозрачным: видно и то, что внутри фонаря
+window.solo = src => {
+  frozen = !!src;
+  const re = src ? new RegExp(src) : null;
+  for (const [o, m] of orig) {
+    const ms = Array.isArray(m) ? m : [m];
+    o.material = !re ? m : re.test(ms[0].name) ? pink : (ms[0].transparent || window.XRAY) ? greyGlass : grey;
+  }
+  t.textContent = src || '';
+};
+if (P.get('only')) window.solo(P.get('only'));
+t.textContent = `mode ${lights.mode} → ${lights.mode_}  on ${lights.on.toFixed(2)} high ${lights.high.toFixed(2)} park ${lights.park.toFixed(2)} brake ${lights.brake.toFixed(2)}  night ${night}`;
+
+renderer.setAnimationLoop(() => {
+  if (!frozen && !RAW) lights.update(1 / 60, mesh, car, night, 1 - night);
+  renderer.render(scene, camera);
+});
+// Лист-раскладка: каждый материал по очереди пурпурным, кадры сеткой с подписью.
+window.sheet = (names, cams, cols = 4, w = 360, h = 240) => {
+  const c = document.createElement('canvas');
+  c.width = cols * w * cams.length; c.height = Math.ceil(names.length / cols) * h;
+  const g = c.getContext('2d'); g.font = '13px monospace';
+  names.forEach((n, i) => {
+    window.solo('^' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+    cams.forEach((k, j) => {
+      const [p, q] = CAMS[k]; camera.position.set(...p); camera.lookAt(...q);
+      renderer.render(scene, camera);
+      const x = ((i % cols) * cams.length + j) * w, y = Math.floor(i / cols) * h;
+      g.drawImage(renderer.domElement, x, y, w, h);
+      g.fillStyle = '#ff0'; g.fillText(n, x + 4, y + 14);
+    });
+  });
+  window.solo(null);
+  return c.toDataURL('image/png');
+};
+window.READY = true;
+</script>
+</body>
+</html>

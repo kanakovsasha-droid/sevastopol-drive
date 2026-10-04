@@ -106,6 +106,99 @@ for o in out:
     o.name = 'wheel_' + ('F' if front else 'R') + ('L' if left else 'R')
     print('УЗЕЛ', o.name, [round(v, 3) for v in c], 'R', round(corner[k][1] * S, 3))
 
+# ---- фары и фонари — своими материалами с понятными именами (их ищет
+# web/js/carlights.js по списку). У автора стекло фары — тот же «Glass», что
+# у окон; в одном материале с полосками ДХО лежит и линза ближнего; третий
+# стоп-сигнал — в одном материале с полосками задних фонарей; отражатель
+# заднего хода — в одном материале с блоком дальнего в фаре. Делим грани по
+# месту в кузове (координаты уже игровые: x, высота = z Blender, вперёд = −y
+# Blender) и проверяем, что разделилось ровно то, что ждали, — иначе падаем.
+import bmesh
+from collections import defaultdict
+LAMPS = {                     # имя у автора → новое имя (переименование целиком)
+    'Mesheslights01311_diff': 'lamp_drl',        # полоски ДХО (без линз — их ниже)
+    'Mesheslights0151Mat':    'lamp_drl_guide',  # боковины тех же световодов
+    'Mesheslights01011_diff': 'lamp_tail',       # светодиодные полосы задних фонарей
+    'Cube0181Mtl_37':         'lamp_tail_inner', # красный рассеиватель под стеклом
+    'Red_Glass':              'lamp_tail_glass', # наружное стекло заднего фонаря
+    'glass_18':               'lamp_reverse_glass', # прозрачная нижняя секция фонаря
+}
+for old, new in LAMPS.items():
+    m = bpy.data.materials.get(old); assert m, 'нет материала ' + old
+    m.name = new
+b = out[0]
+bm = bmesh.new(); bm.from_mesh(b.data)
+slot = {s.material.name: i for i, s in enumerate(b.material_slots) if s.material}
+def add_mat(src, name):
+    m = bpy.data.materials[src].copy(); m.name = name
+    b.data.materials.append(m)
+    return len(b.data.materials) - 1
+def gz(c): return -c.y               # «вперёд» игры
+# острова по совпадающим вершинам: у автора сетка не сварена (швы нормалей)
+def islands(mi):
+    fs = [f for f in bm.faces if f.material_index == mi]
+    par = {}
+    def find(a):
+        while par.setdefault(a, a) != a: par[a] = par[par[a]]; a = par[a]
+        return a
+    key = lambda v: (round(v.co.x, 4), round(v.co.y, 4), round(v.co.z, 4))
+    for f in fs:
+        ks = [key(v) for v in f.verts]
+        for k in ks[1:]: par[find(k)] = find(ks[0])
+    g = defaultdict(list)
+    for f in fs: g[find(key(f.verts[0]))].append(f)
+    return list(g.values())
+def ext(fs):
+    vs = [v.co for f in fs for v in f.verts]
+    return [max(v[i] for v in vs) - min(v[i] for v in vs) for i in range(3)], \
+           [sum(v[i] for v in vs) / len(vs) for i in range(3)]
+moved = defaultdict(int)
+# 1) стекло фары: грани «Glass» впереди передней оси (окна все за ней)
+i_glass = add_mat('Glass', 'lamp_glass_front')
+for f in bm.faces:
+    if f.material_index == slot['Glass'] and gz(f.calc_center_median()) > 1.5:
+        f.material_index = i_glass; moved['lamp_glass_front'] += 1
+# 2) линза ближнего — плоский круг ~7 см среди полосок ДХО
+i_lens = add_mat('lamp_drl', 'lamp_lens')
+for isl in islands(slot['lamp_drl']):
+    (dx, dy, dz), c = ext(isl)
+    if dx < 0.09 and dz < 0.09 and dy < 0.02 and len(isl) > 50:
+        for f in isl: f.material_index = i_lens
+        moved['lamp_lens'] += len(isl)
+# 3) третий стоп-сигнал — над крышкой багажника, выше 0.95 м
+i_stop3 = add_mat('lamp_tail', 'lamp_stop3')
+for f in bm.faces:
+    if f.material_index == slot['lamp_tail'] and f.calc_center_median().z > 0.95:
+        f.material_index = i_stop3; moved['lamp_stop3'] += 1
+# 4) «Mesheslights01411»: сзади — отражатель заднего хода, спереди — блок дальнего
+i_rev = add_mat('Mesheslights01411_diff', 'lamp_reverse')
+for f in bm.faces:
+    if f.material_index == slot['Mesheslights01411_diff']:
+        if gz(f.calc_center_median()) < -1.5: f.material_index = i_rev; moved['lamp_reverse'] += 1
+        else: moved['lamp_high'] += 1
+bpy.data.materials['Mesheslights01411_diff'].name = 'lamp_high'
+bm.to_mesh(b.data); bm.free(); b.data.update()
+print('ФОНАРИ', dict(moved))
+# ждём: стекло фар — весь объект автора (456 граней), две линзы по ~120,
+# третий стоп 16, отражатели заднего хода 2×70, блоки дальнего 2×(343+201)
+assert moved['lamp_lens'] in range(220, 250) and moved['lamp_stop3'] == 16 \
+    and moved['lamp_reverse'] == 140 and moved['lamp_high'] == 1088 \
+    and moved['lamp_glass_front'] == 456, moved
+# у стекла фары — почти бесцветное: в общем «Glass» оно зелёное, как окна,
+# и фара под ним казалась мутной
+pb = bpy.data.materials['lamp_glass_front'].node_tree.nodes.get('Principled BSDF')
+if pb:
+    pb.inputs['Base Color'].default_value = (0.92, 0.95, 0.97, 1.0)
+    pb.inputs['Alpha'].default_value = 0.22
+# у блока дальнего светодиоды нарисованы в текстуре — она же и картинка
+# свечения (emissiveTexture), иначе ровная заливка их стирает. Силу свечения
+# в игре задаёт carlights.js; задать карту там — пересборка шейдера в кадре.
+nt = bpy.data.materials['lamp_high'].node_tree
+pb = nt.nodes['Principled BSDF']
+tex = pb.inputs['Base Color'].links[0].from_node
+nt.links.new(tex.outputs['Color'], pb.inputs['Emission Color'])
+pb.inputs['Emission Strength'].default_value = 1.0
+
 for im in bpy.data.images:
     if max(im.size) > MAX_TEX:
         f = MAX_TEX / max(im.size); im.scale(max(1, int(im.size[0] * f)), max(1, int(im.size[1] * f)))
