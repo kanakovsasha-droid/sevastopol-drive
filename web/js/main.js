@@ -1038,7 +1038,11 @@ function trimCarShadows(root) {
     let wheel = false;
     for (let p = o; p; p = p.parent) if ((root.userData.wheels || []).includes(p)) wheel = true;
     const big = wheel || box.getSize(v).length() > 1.2;
-    if (!big || ms.every(m => m.transparent)) { o.castShadow = false; off++; } else kept++;
+    // Хром — молдинги, рамки окон, решётка, значки: полоски тоньше текселя
+    // карты теней (0.24 м), в тени их не видно, а у E63 это 31 тысяча
+    // треугольников в каждом кадре карты теней.
+    const chrome = ms.every(m => /chrome/i.test(m.name || ''));
+    if (!big || (chrome && !wheel) || ms.every(m => m.transparent)) { o.castShadow = false; off++; } else kept++;
   });
   root.userData.shadowCasters = kept;
 }
