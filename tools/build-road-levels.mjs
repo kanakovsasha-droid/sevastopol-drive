@@ -135,6 +135,16 @@ const nodeId = new Map(), NX = [], NZ = [], NC = [];
 const node = (x, z, osm) => {
   let key = null;
   if (osm) { const jid = junctionOf(x, z); key = jid ? 'J' + jid : 'P' + Math.round(x * 2) + ',' + Math.round(z * 2); }
+  else {
+    // Вставная точка (шаг 8 м) внутри пятна перекрёстка — тоже его вершина.
+    // Иначе между двумя узлами OSM, сведёнными в одну вершину перекрёстка,
+    // оставалась свободная точка: перелом её не держал (тройка «узел — точка —
+    // тот же узел» отбрасывается), и в перекрёстке выходила яма на полметра
+    // (Пластунская × 2-я Линия Бомборы, 614, 2091: перелом 14%).
+    // В положение вершины такие точки не идут — его задают узлы OSM.
+    const jid = junctionOf(x, z);
+    if (jid && nodeId.has('J' + jid)) return nodeId.get('J' + jid);
+  }
   if (key && nodeId.has(key)) { const id = nodeId.get(key); NX[id] += x; NZ[id] += z; NC[id]++; return id; }
   const id = NX.length; NX.push(x); NZ.push(z); NC.push(1);
   if (key) nodeId.set(key, id);
@@ -147,6 +157,8 @@ for (const r of use) {
   let s = 0, prev = null;
   for (let k = 0; k < p.length / 2; k++) {
     const x = p[k * 2], z = p[k * 2 + 1];
+    // узел конца звена — раньше вставных точек: те ищут вершину перекрёстка
+    const end = node(x, z, true);
     if (k > 0) {
       const px = p[k * 2 - 2], pz = p[k * 2 - 1], L = Math.hypot(x - px, z - pz);
       const m = Math.max(1, Math.ceil(L / STEP));
@@ -156,7 +168,7 @@ for (const r of use) {
       }
       s += L;
     }
-    ids.push(node(x, z, true)); ss.push(s);
+    ids.push(end); ss.push(s);
   }
   const base = r.c <= 1 && r.w >= 10 ? 0.06 : 0.09;
   // Вес ребра в сглаживании — по значимости улицы: в узле главная улица
@@ -217,7 +229,7 @@ for (let it = 0; it < 70; it++) {
 for (const e of edges) {
   if (e[4]) continue;
   const slope = Math.abs(GS[e[0]] - GS[e[1]]) / e[2];
-  e[3] = Math.min(0.25, Math.max(e[3], slope * 1.15 + 0.01));
+  e[3] = Math.min(0.20, Math.max(e[3], slope * 1.15 + 0.01));
 }
 
 // ---------------------------------------------------------------- решатель
@@ -233,13 +245,24 @@ const KMAX = 0.025;
 const nodeImp = new Float32Array(N);
 for (const e of edges) { if (e[5] > nodeImp[e[0]]) nodeImp[e[0]] = e[5]; if (e[5] > nodeImp[e[1]]) nodeImp[e[1]] = e[5]; }
 const mob = (v, imp) => imp >= nodeImp[v] - 1e-6 ? 1 : 0.08;
+// Цепочку сжимаем: подряд идущие одинаковые вершины (несколько точек улицы
+// внутри пятна перекрёстка — одна вершина) становятся одной, со своими
+// краями по длине. Иначе тройка «подход — перекрёсток — перекрёсток»
+// отбрасывалась, и перелом на въезде в перекрёсток ничем не держался (до 15%).
 const triples = [];
-for (const c of chains) for (let k = 1; k < c.ids.length - 1; k++) {
-  const a = c.ids[k - 1], b = c.ids[k], d = c.ids[k + 1];
-  if (a === b || b === d || a === d) continue;
-  const l1 = c.ss[k] - c.ss[k - 1], l2 = c.ss[k + 1] - c.ss[k];
-  if (l1 < 0.5 || l2 < 0.5) continue;
-  triples.push([a, b, d, l1, l2, (c.r.c <= 1 ? 4 : c.r.c === 2 ? 1.5 : 0.5) * Math.max(0.5, c.r.w / 9)]);
+for (const c of chains) {
+  const v = [];                              // [вершина, s начала, s конца]
+  for (let k = 0; k < c.ids.length; k++) {
+    const last = v[v.length - 1];
+    if (last && last[0] === c.ids[k]) last[2] = c.ss[k]; else v.push([c.ids[k], c.ss[k], c.ss[k]]);
+  }
+  for (let k = 1; k < v.length - 1; k++) {
+    const [a, , a1] = v[k - 1], [b, b0, b1] = v[k], [d, d0] = v[k + 1];
+    if (a === d) continue;
+    const l1 = b0 - a1, l2 = d0 - b1;
+    if (l1 < 0.5 || l2 < 0.5) continue;
+    triples.push([a, b, d, l1, l2, (c.r.c <= 1 ? 4 : c.r.c === 2 ? 1.5 : 0.5) * Math.max(0.5, c.r.w / 9)]);
+  }
 }
 const bend = () => {
   for (const [a, b, d, l1, l2, imp] of triples) {
