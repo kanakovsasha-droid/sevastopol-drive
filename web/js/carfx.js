@@ -119,6 +119,7 @@ export class CarFX {
       if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
       if (e.code === 'KeyK') this.toggleSound();
       if (e.code === 'KeyJ' && !e.repeat) this.nextPack();
+      if (e.code === 'KeyL' && e.shiftKey && e.altKey && !e.repeat) this.recordSound();
       if (!this.driving() || e.repeat) return;     // зажатая клавиша не листает передачи
       const c = this.getCar();
       if (e.code === 'KeyB') c.toggleDrive();
@@ -209,6 +210,43 @@ export class CarFX {
     if (!this.packs || this.packs.length < 2) return;
     const i = this.packs.indexOf(this.pack);
     this.usePack(this.packs[(i + 1) % this.packs.length]);
+  }
+
+  // Отладка: Shift+Alt+L — записать 10 с того, что реально уходит в колонки,
+  // и сохранить файлом. Нужна, когда на машине игрока слышно то, чего нет ни в
+  // офлайн-рендере, ни в замере на машине разработчика.
+  recordSound(sec = 10) {
+    if (!this.ctx || !this.audio || this._rec) return;
+    // Без сжатия: отводим выход в ScriptProcessor и копим отсчёты как есть —
+    // MediaRecorder в части браузеров отдаёт пустой файл, а кодек ещё и
+    // добавил бы своих артефактов к тому, что мы ищем.
+    const ctx = this.ctx, sr = ctx.sampleRate, need = Math.floor(sr * sec);
+    const sp = ctx.createScriptProcessor(4096, 1, 1), parts = [];
+    let got = 0;
+    this._rec = sp;
+    sp.onaudioprocess = e => {
+      if (got >= need) return;
+      parts.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      got += e.inputBuffer.length;
+      if (got >= need) {
+        this.audio.out.disconnect(sp); sp.disconnect(); this._rec = null;
+        const n = Math.min(got, need), ab = new ArrayBuffer(44 + n * 2), dv = new DataView(ab);
+        const w = (o, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
+        w(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); dv.setUint32(16, 16, true);
+        dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true);
+        dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, 'data'); dv.setUint32(40, n * 2, true);
+        let k = 0;
+        for (const part of parts) for (let i = 0; i < part.length && k < n; i++, k++) dv.setInt16(44 + k * 2, Math.max(-1, Math.min(1, part[i])) * 32767, true);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([ab], { type: 'audio/wav' }));
+        a.download = `sevastopol-zvuk-${this.pack || 'open'}-${Math.round(sr / 1000)}k.wav`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      }
+    };
+    this.audio.out.connect(sp);
+    sp.connect(ctx.destination);          // процессор работает, только если подключён; пишет он тишину
+    console.log(`пишу звук ${sec} с…`);
   }
 
   toggleSound() {

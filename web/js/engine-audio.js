@@ -205,7 +205,7 @@ export class E63Sound {
   }
 
   // Записи приехали: строим второй голос мотора и плавно отдаём ему звук.
-  // bufs: { eng_idle: AudioBuffer, …, pop_1…, bang_1…, tyre_squeal }, meta —
+  // bufs: { eng_idle_v2: AudioBuffer, …, pop_1…, bang_1…, tyre_squeal }, meta —
   // sounds.json (обороты каждой петли).
   useSamples(bufs, meta) {
     const ctx = this.ctx, t0 = ctx.currentTime;
@@ -226,10 +226,20 @@ export class E63Sound {
     const loops = Object.entries(meta.loops).filter(([n]) => n.startsWith('eng_') && bufs[n])
       .map(([n, m]) => {
         const src = ctx.createBufferSource(); src.buffer = bufs[n]; src.loop = true;
-        const gg = g(0); src.connect(gg).connect(lp);
+        const gg = g(0);
+        // Режекторы на свист записи (sounds.json → notch, частоты в самом
+        // файле): частота идёт за playbackRate, так что свист не вернётся ни
+        // на каких оборотах. В файле он уже вырезан — это вторая страховка.
+        const notches = (m.notch || []).map(f0 => {
+          const nf = ctx.createBiquadFilter(); nf.type = 'notch'; nf.frequency.value = f0; nf.Q.value = 30;
+          return { f0, nf };
+        });
+        let head = src;
+        for (const q of notches) head = head.connect(q.nf);
+        head.connect(gg).connect(lp);
         // петли запускаем вразбег — иначе одинаковые фазы складываются в «эхо»
         src.start(t0, Math.random() * bufs[n].duration);
-        return { name: n, rpm: m.rpm, src, g: gg };
+        return { name: n, rpm: m.rpm, src, g: gg, notches };
       }).sort((a, b) => a.rpm - b.rpm);
     let squeal = null;
     if (bufs.tyre_squeal) {
@@ -407,7 +417,9 @@ export class E63Sound {
       for (const lp of L) {
         const w = lp === a ? Math.cos(k * Math.PI / 2) : lp === b ? Math.sin(k * Math.PI / 2) : 0;
         P(lp.g.gain, w, 0.03);
-        P(lp.src.playbackRate, Math.min(2.2, Math.max(0.45, rpm / lp.rpm)), 0.012);
+        const rate = Math.min(2.2, Math.max(0.45, rpm / lp.rpm));
+        P(lp.src.playbackRate, rate, 0.012);
+        if (lp.notches) for (const q of lp.notches) P(q.nf.frequency, q.f0 * rate, 0.012);
       }
       // Газ — громче и открытее, сброс — тише и глуше. Берём сглаженный газ
       // (0.25 с): на ровном ходу клавиша W щёлкает 0↔1, и громкость с фильтром

@@ -34,7 +34,9 @@ export const SOURCES = {
 // крупным планом), чтобы тембр не прыгал при переходе от петли к петле.
 // Обороты петли считаются по частоте вспышек (4 на оборот у V8).
 const LOOPS = [
-  ['eng_idle', 332636, 1.50, 3.25],
+  // _v2: новое имя файла — прежний eng_idle со свистом мог застрять в кеше
+  // браузера (Safari) навсегда; новое имя кеш не подхватит
+  ['eng_idle_v2', 332636, 1.50, 3.25],
   ['eng_low', 332636, 45.5, 49.0],
   ['eng_mid', 332636, 78.5, 84.5],
   ['eng_high', 332636, 9.0, 11.0],
@@ -47,7 +49,11 @@ const LOOPS = [
 // 396 и 592 Гц). Владелец послушал и попросил убрать — режем узкими режекторами,
 // соседний спектр не трогаем. В остальных петлях узких тонов, кроме гармоник
 // самого мотора, нет (проверено спектром).
-const NOTCH = { eng_idle: [431, 646] };
+const NOTCH = { eng_idle_v2: [431, 646] };
+// Петлю холостых записываем сразу на высоте 900 об/мин: в игре она тогда
+// играет с playbackRate ≈ 1 и ресемплер браузера (у Safari свой) не трогает
+// её на холостых вовсе.
+const RETUNE = { eng_idle_v2: 900 };
 
 // Разовые: хлопки и выстрелы в выхлопе [имя, источник, начало, длительность]
 const SHOTS = [
@@ -121,6 +127,18 @@ function notch(x, f0, Q = 25) {
 for (const [name, id, a, b] of LOOPS) {
   let x = decode(fetchSrc(id), a, b - a);
   for (const f of NOTCH[name] || []) x = notch(x, f);
+  let shift = 1;                               // во сколько раз опущен тон
+  if (RETUNE[name]) {
+    shift = RETUNE[name] / (pitch(x) * 15);
+    // читаем медленнее в shift раз — кубическая интерполяция (Catmull-Rom)
+    const n = Math.floor(x.length / shift) - 2, y = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const t = i * shift, j = Math.floor(t), u = t - j;
+      const p0 = x[Math.max(0, j - 1)], p1 = x[j], p2 = x[j + 1], p3 = x[Math.min(x.length - 1, j + 2)];
+      y[i] = p1 + 0.5 * u * (p2 - p0 + u * (2 * p0 - 5 * p1 + 4 * p2 - p3 + u * (3 * (p1 - p2) + p3 - p0)));
+    }
+    x = y;
+  }
   // бесшовная петля: последние X отсчётов наложены на первые
   const X = Math.floor(SR * 0.12), L = x.length - X;
   const y = new Float32Array(L);
@@ -149,6 +167,9 @@ for (const [name, id, a, b] of LOOPS) {
   writeFileSync(`${OUT}/${name}.wav`, wav(y));
   const f = name.startsWith('eng') ? pitch(y) : 0;
   manifest.loops[name] = { src: id, hz: f, rpm: Math.round(f * 15), sec: +(L / SR).toFixed(2) };
+  // где в ЭТОМ файле стоял вырезанный свист — движок держит там же режекторы
+  // и при воспроизведении (на случай, если сборка браузера что-то вернёт)
+  if (NOTCH[name]) manifest.loops[name].notch = NOTCH[name].map(f0 => +(f0 * shift).toFixed(1));
   console.log(name, `${(L / SR).toFixed(2)} с`, f ? `${f} Гц ≈ ${Math.round(f * 15)} об/мин` : '');
 }
 for (const [name, id, a, d] of SHOTS) {
