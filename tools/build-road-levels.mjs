@@ -214,7 +214,33 @@ for (const e of edges) {
 // ---------------------------------------------------------------- решатель
 const Hh = Float32Array.from(G0);
 const WD = 0.035;
+// Тройки подряд идущих вершин улицы: ограничение ПЕРЕЛОМА уклона. Одного
+// предела уклона мало — на крутом склоне, где данные тянут сильнее, профиль
+// ломался с −1% на +11% за 16 м (Троллейбусный спуск). Перелом не больше
+// 2.5 пункта на ребро в 8 м: на 60 км/ч это меньше 0.1 g.
+const KMAX = 0.025;
+const triples = [];
+for (const c of chains) for (let k = 1; k < c.ids.length - 1; k++) {
+  const a = c.ids[k - 1], b = c.ids[k], d = c.ids[k + 1];
+  if (a === b || b === d || a === d) continue;
+  const l1 = c.ss[k] - c.ss[k - 1], l2 = c.ss[k + 1] - c.ss[k];
+  if (l1 < 0.5 || l2 < 0.5) continue;
+  triples.push([a, b, d, l1, l2]);
+}
+const bend = () => {
+  for (const [a, b, d, l1, l2] of triples) {
+    // перелом уклона на средней вершине
+    const k = (Hh[d] - Hh[b]) / l2 - (Hh[b] - Hh[a]) / l1, lim = KMAX * 2 * Math.min(l1, l2) / STEP;
+    if (Math.abs(k) <= lim) continue;
+    const ex = (Math.abs(k) - lim) * Math.sign(k);
+    // сдвиг b на δ меняет перелом на −δ(1/l1 + 1/l2), a и d — на δ/l1 и δ/l2
+    const kb = 1 / l1 + 1 / l2, den = kb * kb + 1 / (l1 * l1) + 1 / (l2 * l2);
+    const t = ex / den;
+    Hh[b] += t * kb; Hh[a] -= t / l1; Hh[d] -= t / l2;
+  }
+};
 const project = () => {
+  bend();
   for (let pass = 0; pass < 3; pass++)
     for (const [a, b, len, g] of edges) {
       const d = Hh[a] - Hh[b], lim = g * len;
@@ -234,7 +260,7 @@ for (let it = 0; it < 900; it++) {
   for (let i = 0; i < N; i++) Hh[i] = Hh[i] * 0.3 + T[i] * 0.7;
   if (it % 3 === 0) project();
 }
-for (let k = 0; k < 40; k++) project();
+for (let k = 0; k < 120; k++) project();
 // итог: отклонение от земли и уклоны
 {
   let maxDev = 0, over = 0;
@@ -242,6 +268,8 @@ for (let k = 0; k < 40; k++) project();
   let gmax = 0, bad = 0, ex = [];
   for (const [a, b, len, g, kind] of edges) { const gr = Math.abs(Hh[a] - Hh[b]) / len; gmax = Math.max(gmax, gr); if (gr > g + 0.01) { bad++; if (ex.length < 6) ex.push([NX[a].toFixed(0), NZ[a].toFixed(0), (gr * 100).toFixed(0) + '%', (g * 100).toFixed(0) + '%', len.toFixed(1), kind].join(' ')); } }
   console.log('рёбер круче своего предела', bad, ex.join(' | '));
+  let kb = 0, kmx = 0; for (const [a, b, d, l1, l2] of triples) { const k = Math.abs((Hh[d] - Hh[b]) / l2 - (Hh[b] - Hh[a]) / l1); kmx = Math.max(kmx, k); if (k > KMAX * 2 * Math.min(l1, l2) / STEP + 0.005) kb++; }
+  console.log('переломов сверх предела', kb, 'из', triples.length, 'худший', (kmx * 100).toFixed(1) + '%');
   console.log(`отклонение от земли: макс ${maxDev.toFixed(2)} м, больше 2 м — ${over} из ${N}; уклон макс ${(gmax * 100).toFixed(1)}%`);
 }
 
@@ -252,6 +280,46 @@ for (const c of chains) {
   const s = [], h = [];
   for (let k = 0; k < c.ids.length; k++) { s.push(Math.round(c.ss[k] * 10) / 10); h.push(Math.round(Hh[c.ids[k]] * 100) / 100); }
   out.roads[c.r.id] = { s, h };
+}
+// ПЛОСКОСТИ ПЕРЕКРЁСТКОВ. Полотна узла накладываются друг на друга, и
+// поверхность коридора в узле — склейка плато разных улиц: не плоскость.
+// Треугольник поперёк улицы шириной 10 м ложился хордой на 9–12 см выше
+// соседних полотен — колесо ловило ступеньку. Каждому перекрёстку даём
+// плоскость по отметкам подходящих к нему улиц (наименьшие квадраты в круге
+// r + 8 м), рантайм кладёт её в коридор.
+out.junctions = [];
+{
+  const G = 20, g = new Map();
+  for (let i = 0; i < N; i++) { const k = Math.floor(NX[i] / G) * 100003 + Math.floor(NZ[i] / G); let l = g.get(k); if (!l) g.set(k, l = []); l.push(i); }
+  for (const j of juncs.values()) {
+    if (j.x < BOX.x0 - MARGIN / 2 || j.x > BOX.x1 + MARGIN / 2 || j.z < BOX.z0 - MARGIN / 2 || j.z > BOX.z1 + MARGIN / 2) continue;
+    if ((j.mw || 0) < 5) continue;
+    const R = Math.min(30, j.r) + 8;
+    let n = 0, sx = 0, sz = 0, sh = 0, sxx = 0, szz = 0, sxz = 0, sxh = 0, szh = 0;
+    for (let a = Math.floor((j.x - R) / G); a <= Math.floor((j.x + R) / G); a++)
+      for (let b = Math.floor((j.z - R) / G); b <= Math.floor((j.z + R) / G); b++)
+        for (const i of g.get(a * 100003 + b) || []) {
+          const x = NX[i] - j.x, z = NZ[i] - j.z;
+          if (x * x + z * z > R * R) continue;
+          n++; sx += x; sz += z; sh += Hh[i]; sxx += x * x; szz += z * z; sxz += x * z; sxh += x * Hh[i]; szh += z * Hh[i];
+        }
+    if (n < 3) continue;
+    // нормальные уравнения 3×3
+    const A = [[n, sx, sz], [sx, sxx, sxz], [sz, sxz, szz]], B = [sh, sxh, szh];
+    const det = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    const D0 = det(A);
+    let a0 = sh / n, bx = 0, bz = 0;
+    if (Math.abs(D0) > 1e-6) {
+      const col = (k) => A.map((r, ri) => r.map((v, ci) => ci === k ? B[ri] : v));
+      a0 = det(col(0)) / D0; bx = det(col(1)) / D0; bz = det(col(2)) / D0;
+    }
+    // плоскость не круче 12%
+    const gl = Math.hypot(bx, bz);
+    if (gl > 0.12) { bx *= 0.12 / gl; bz *= 0.12 / gl; }
+    out.junctions.push([Math.round(j.x * 10) / 10, Math.round(j.z * 10) / 10, Math.round(Math.min(30, j.r) * 10) / 10,
+      Math.round(a0 * 100) / 100, Math.round(bx * 1e4) / 1e4, Math.round(bz * 1e4) / 1e4, j.poly || null]);
+  }
+  console.log('плоскостей перекрёстков', out.junctions.length);
 }
 writeFileSync(ROOT + 'data/road-levels.json', JSON.stringify(out));
 console.log('записано data/road-levels.json', (JSON.stringify(out).length / 1e6).toFixed(2), 'МБ');

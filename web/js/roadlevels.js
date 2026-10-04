@@ -57,3 +57,43 @@ export function levelAt(id, pts, x, z) {
   const m1 = (h2 - h0) / 2, m2 = (h3 - h1) / 2, t2 = t * t, t3 = t2 * t;
   return (2 * t3 - 3 * t2 + 1) * h1 + (t3 - 2 * t2 + t) * m1 + (-2 * t3 + 3 * t2) * h2 + (t3 - t2) * m2;
 }
+
+// ---------------------------------------------------------------- перекрёстки
+// Плоскость каждого перекрёстка центра (см. tools/build-road-levels.mjs):
+// в пятне узла (и 2 м вокруг) коридор лежит ровно на ней, дальше на 8 м
+// плавно переходит в профили улиц. Возвращает { h, w } или null.
+const JG = 40, jgrid = new Map();
+if (L && L.junctions) for (const j of L.junctions) {
+  const R = j[2] + 12;
+  for (let i = Math.floor((j[0] - R) / JG); i <= Math.floor((j[0] + R) / JG); i++)
+    for (let k = Math.floor((j[1] - R) / JG); k <= Math.floor((j[1] + R) / JG); k++) {
+      const key = i * 100003 + k; let a = jgrid.get(key); if (!a) jgrid.set(key, a = []); a.push(j);
+    }
+}
+// вынос точки за выпуклое пятно (в данных обход положительный); без пятна — круг
+const outOf = (j, x, z) => {
+  const p = j[6];
+  if (!p) return Math.hypot(x - j[0], z - j[1]) - j[2];
+  const n = p.length / 2;
+  let far = -1e9;
+  for (let i = 0; i < n; i++) {
+    const k = (i + 1) % n, ax = p[i * 2], az = p[i * 2 + 1], ex = p[k * 2] - ax, ez = p[k * 2 + 1] - az;
+    const d = ((x - ax) * ez - (z - az) * ex) / (Math.hypot(ex, ez) || 1);
+    if (d > far) far = d;
+  }
+  return far;
+};
+export function junctionPlaneAt(x, z) {
+  const a = jgrid.get(Math.floor(x / JG) * 100003 + Math.floor(z / JG));
+  if (!a) return null;
+  let best = null, bw = 0;
+  for (const j of a) {
+    const d = outOf(j, x, z);
+    if (d > 10) continue;
+    const t = d <= 2 ? 1 : 1 - (d - 2) / 8;
+    const w = t * t * (3 - 2 * t);
+    if (w > bw) { bw = w; best = j; }
+  }
+  if (!best) return null;
+  return { h: best[3] + best[4] * (x - best[0]) + best[5] * (z - best[1]), w: bw };
+}

@@ -3,7 +3,7 @@ import { SEA_FLOOR } from './terrain.js?v=b077ef04';
 import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=b077ef04';
 import { buildCoverage } from './coverage.js?v=b077ef04';
 import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=b077ef04';
-import { ROAD_LEVELS, levelWeight, levelAt } from './roadlevels.js?v=b077ef04';
+import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt } from './roadlevels.js?v=b077ef04';
 import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=b077ef04';
 import { resolveAreas, sportSkipIds } from './sport.js?v=b077ef04';
 import { planParking, roadSegIndex } from './parking.js?v=b077ef04';
@@ -696,6 +696,24 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
     }
     if ((work += n) > 900) { work = 0; yield; }
   }
+
+  // Перекрёстки центра — на своей плоскости (roadlevels.js): поверхность
+  // узла, склеенная из плато разных улиц, плоскостью не была, и полотна
+  // узла ложились хордами на разной высоте — ступеньки под колесом.
+  if (ROAD_LEVELS) for (let j = 0; j < H; j++)
+    for (let k = 0; k < W; k++) {
+      const idx = j * W + k;
+      if (wgt[idx] <= 0) continue;
+      const x = x0 + k * res, z = z0 + j * res;
+      const lw = levelWeight(x, z);
+      if (lw <= 0) continue;
+      const jp = junctionPlaneAt(x, z);
+      if (!jp) continue;
+      const w = jp.w * lw;
+      tgt[idx] += (jp.h - tgt[idx]) * w;
+      if (cap[idx] < tgt[idx]) cap[idx] = tgt[idx];
+      if (w > 0.999) lvl[idx] = 2;
+    }
 
   // Дальше работаем только по занятым ячейкам: в окне квадрата их около
   // десятой части, а проходов по полю шесть десятков.
@@ -1601,7 +1619,9 @@ function densify(pts, step = 6) {
     const ax = pts[i * 2], az = pts[i * 2 + 1];
     const dx = pts[i * 2 + 2] - ax, dz = pts[i * 2 + 3] - az;
     const len = Math.hypot(dx, dz);
-    const k = Math.max(1, Math.ceil(len / step));
+    // шаг может зависеть от места: функция от концов пролёта
+    const st = typeof step === 'function' ? step(ax, az, ax + dx, az + dz) : step;
+    const k = Math.max(1, Math.ceil(len / st));
     for (let j = 0; j < k; j++) out.push(ax + dx * j / k, az + dz * j / k);
   }
   out.push(pts[(n - 1) * 2], pts[(n - 1) * 2 + 1]);
@@ -1785,6 +1805,11 @@ export function* buildRoads(world, terrain, chunk = 500) {
     for (let i = 0; i < mt.n - 1; i++)
       drawSp[i] = (skipJ && midSkip(pts, i, 5.5)) || (skipFn && skipFn(i)) ? 0 : 1;
     const needV = i => (i > 0 && drawSp[i - 1]) || (i < mt.n - 1 && drawSp[i]);
+    // Колонок вершин поперёк: у проезжей части от 8.5 м — три (и ось). Полотно
+    // шириной 10 м одним четырёхугольником ложилось хордой на 4–12 см мимо
+    // поверхности на перекрёстке (там она седловая), и колесо, переезжая с
+    // полотна на полотно, ловило ступеньку; ось вдвое уменьшает пролёт.
+    const CC = cls <= 3 && uW >= 8.5 ? 3 : 2;
     const aArr = typeof offA === 'number' ? null : offA;
     const bArr = typeof offB === 'number' ? null : offB;
     for (let i = 0; i < mt.n; i++) {
@@ -1792,9 +1817,10 @@ export function* buildRoads(world, terrain, chunk = 500) {
       // стыке двух полотен яркость прыгала ступенькой — тот самый «шов».
       // Фактуру асфальта шейдер считает по мировым координатам, одну на всех.
       const t = cls <= 3 ? 1 : 0.94 + 0.12 * (((i * 2654435761) >>> 8) & 255) / 255;
-      for (let s = 0; s < 2; s++) {
-        if (jn) { ch.JI.push(ch.base + i * 2 + s); ch.JV.push(jn[i]); }
-        const off = s === 0 ? (aArr ? aArr[i] : offA) : (bArr ? bArr[i] : offB);
+      const oA = aArr ? aArr[i] : offA, oB = bArr ? bArr[i] : offB;
+      for (let s = 0; s < CC; s++) {
+        if (jn) { ch.JI.push(ch.base + i * CC + s); ch.JV.push(jn[i]); }
+        const off = oA + (oB - oA) * s / (CC - 1);
         const x = pts[i * 2] + mt.NX[i] * off * mt.S[i];
         const z = pts[i * 2 + 1] + mt.NZ[i] * off * mt.S[i];
         ch.P.push(x, needV(i) ? hFn(x, z) + lift : 0, z);
@@ -1803,7 +1829,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
         // ужатого полотна кромка уже не на ±полуширине, и постоянные ∓1
         // утащили бы осевую линию в геометрический центр обрезка. Пишем
         // настоящую долю — разметка остаётся привязанной к оси улицы.
-        ch.R.push(aArr ? off / (uW * 0.5) : (s === 0 ? -1 : 1), mt.D[i], uW, lanes);
+        ch.R.push(aArr ? off / (uW * 0.5) : -1 + 2 * s / (CC - 1), mt.D[i], uW, lanes);
         // Дробные 0.4 в классе — «до перекрёстка меньше 14 м». По ПДД пунктир
         // 1.5 перед перекрёстком сменяется сплошной 1.1: перестраиваться там
         // нельзя. Все пороги классов стоят на .5, поэтому добавка безопасна.
@@ -1829,7 +1855,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
     const up = new Float32Array(mt.n);
     for (let i = 0; i < mt.n - 1; i++) {
       if (!drawSp[i]) continue;
-      const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+      const a = i * CC, b = a + CC - 1, c = a + CC, d = c + CC - 1;
       let need = 0;
       // Пять проб: середины четырёх сторон и центр. Углы не щупаем — они и
       // так стоят ровно на земле. u — вдоль пролёта, v — поперёк полотна.
@@ -1859,29 +1885,30 @@ export function* buildRoads(world, terrain, chunk = 500) {
     // 40 см углы одного пролёта давали на перекрёстке вспученный асфальт
     // (Большая Морская у −410, 517: 45 см на 10 м, отрыв колёс на 80 км/ч),
     // а соседняя улица в том же узле лежала ниже — ступень. Теперь:
-    //   * на проезжей части у перекрёстка поправки нет вовсе: все полотна
+    //   * на проезжей части у перекрёстка и 12 м подхода поправки нет: все полотна
     //     узла лежат на одной поверхности коридора, без ступеней между ними;
     //   * в остальном подъём раскатывается пандусом не круче 3 см на вершину
     //     (шаг 6 м) — изгиб профиля вместо горба.
     if (cls <= 3) for (let i = 0; i < mt.n; i++)
-      if (up[i] && junctionDist(px(i * 2), pz(i * 2)) < 3) up[i] = 0;
+      if (up[i] && junctionDist(px(i * CC), pz(i * CC)) < 12) up[i] = 0;
     // Пешеходная дорожка на проезжей части не поднимается вовсе: поднятая
     // поправкой, она вылезала поверх асфальта светлой полосой поперёк улицы
     // (пл. Лазарева у «Мир Бургера»).
     if (cls === 4 && FLD) for (let i = 0; i < mt.n; i++)
-      if (up[i] && (FLD.at(px(i * 2), pz(i * 2)) < 0.6 || FLD.at(px(i * 2 + 1), pz(i * 2 + 1)) < 0.6)) up[i] = 0;
-    for (let pass = 0; pass < 2; pass++) {
+      if (up[i] && (FLD.at(px(i * CC), pz(i * CC)) < 0.6 || FLD.at(px(i * CC + CC - 1), pz(i * CC + CC - 1)) < 0.6)) up[i] = 0;
+    // пандус — только у проезжей части: дорожке и тротуару он поднимал
+    // над газоном десяток вершин вокруг одной приподнятой
+    for (let pass = 0; pass < (cls <= 3 ? 2 : 0); pass++) {
       for (let i = 1; i < mt.n; i++) if (up[i - 1] - 0.03 > up[i]) up[i] = up[i - 1] - 0.03;
       for (let i = mt.n - 2; i >= 0; i--) if (up[i + 1] - 0.03 > up[i]) up[i] = up[i + 1] - 0.03;
     }
     if (cls <= 3) for (let i = 0; i < mt.n; i++)
-      if (up[i] && junctionDist(px(i * 2), pz(i * 2)) < 3) up[i] = 0;
+      if (up[i] && junctionDist(px(i * CC), pz(i * CC)) < 12) up[i] = 0;
     for (let i = 0; i < mt.n; i++) {
       if (!up[i]) continue;
-      ch.P[lo + (i * 2) * 3] += up[i];
-      ch.P[lo + (i * 2 + 1) * 3] += up[i];
+      for (let q = 0; q < CC; q++) ch.P[lo + (i * CC + q) * 3] += up[i];
       // запоминаем, где полотно приподнято: зебра должна лечь ВЫШЕ него
-      if (cls <= 3) for (const v of [i * 2, i * 2 + 1]) {
+      if (cls <= 3) for (const v of [i * CC, i * CC + CC - 1]) {
         const k = Math.floor(px(v) / UPC) * 100003 + Math.floor(pz(v) / UPC);
         if (!(upGrid.get(k) >= up[i])) upGrid.set(k, up[i]);
       }
@@ -1891,11 +1918,13 @@ export function* buildRoads(world, terrain, chunk = 500) {
     // а нормаль митры смотрит против оси. Обратный порядок кладёт полосу лицом в землю.
     for (let i = 0; i < mt.n - 1; i++) {
       if (!drawSp[i]) continue;
-      const a = start + i * 2, b = a + 1, c = a + 2, d = a + 3;
-      ch.I.push(a, b, c, b, d, c);
-      if (cls <= 3) { markTri(ch, a, b, c); markTri(ch, b, d, c); }
+      for (let q = 0; q < CC - 1; q++) {
+        const a = start + i * CC + q, b = a + 1, c = a + CC, d = c + 1;
+        ch.I.push(a, b, c, b, d, c);
+        if (cls <= 3) { markTri(ch, a, b, c); markTri(ch, b, d, c); }
+      }
     }
-    ch.base += mt.n * 2;
+    ch.base += mt.n * CC;
   };
 
   // Вертикальная грань бордюра вдоль одного смещения.
@@ -2235,7 +2264,11 @@ export function* buildRoads(world, terrain, chunk = 500) {
     const e0 = extendEnds(o.r.pts, Math.min(hw, 5));
     if (cA) { e0[0] = o.r.pts[0]; e0[1] = o.r.pts[1]; }
     if (cB) { const k = o.r.pts.length; e0[k - 2] = o.r.pts[k - 2]; e0[k - 1] = o.r.pts[k - 1]; }
-    const ext = densify(e0);
+    // У перекрёстка вершины полотна чаще — через 3 м. Полотна узла
+    // накладываются друг на друга, и хорды шестиметровых пролётов разных улиц
+    // по выпуклой поверхности расходились на 5–12 см: колесо, переезжая с
+    // одного на другое, получало ступеньку (пл. Лазарева у «Мир Бургера»).
+    const ext = densify(e0, (ax, az, bx, bz) => junctionDist((ax + bx) / 2, (az + bz) / 2) < 14 ? 3 : 6);
     // Митры считаем здесь и переиспользуем при отрисовке: сосед должен мерить
     // по ТОМУ ЖЕ полотну, которое потом ляжет на землю.
     const mt0 = miters(ext);
@@ -2552,8 +2585,8 @@ export function* buildRoads(world, terrain, chunk = 500) {
     const hw = r.w / 2;
     const lane = laneOf.get(ri);
     // Дорожка идёт по земле, а у земли треугольники в 9 м: на шаге 6 м хорда
-    // дорожки на склоне то висела над перегибом, то уходила под него. 3 м.
-    const ext = lane ? lane.ext : densify(extendEnds(r.pts, Math.min(hw, 5)), r.c === 4 ? 3 : 6);
+    // дорожки на склоне то висела над перегибом, то уходила под него. 4 м.
+    const ext = lane ? lane.ext : densify(extendEnds(r.pts, Math.min(hw, 5)), r.c === 4 ? 4 : 6);
     // широкая улица лежит чуть выше узкой: там, где полотна всё же перекрылись,
     // это снимает мерцание вместо случайной борьбы за глубину
     // Пешеходная дорожка — НИЖЕ асфальта и тротуара: где она в данных
