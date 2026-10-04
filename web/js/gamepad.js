@@ -16,6 +16,7 @@
 //   R3 — камера за корму · L3 — автомат / ручная
 //   Options / Menu — пауза · Share / View — карта
 //   крестовина: ↑ — места, ↓ — гараж, ← — свет, → — зажигание · тачпад — режим езды
+//   PS / Xbox — ESP (коротко по кругу, держать — OFF)
 // Китайские клоны «под PlayStation» почти все отдаются браузеру как
 // стандартный пад (mapping === 'standard'). Если нет — любую кнопку и ось
 // можно переназначить в настройках (T → Управление).
@@ -52,6 +53,9 @@ export const ACTIONS = [
   { id: 'lights',  name: 'Свет: фары, габариты', def: { b: 14 }, key: 'KeyL' },
   { id: 'engine',  name: 'Завести / заглушить', def: { b: 15 }, key: 'KeyZ' },
   { id: 'drive',   name: 'Режим езды',          def: { b: 17 }, key: 'KeyY' },
+  // ESP: коротко — по кругу, держать — OFF (assists.js); по умолчанию кнопка
+  // PS / Xbox — свободная; если её забирает система, переназначь
+  { id: 'esp',     name: 'ESP (держать — OFF)', def: { b: 16 }, key: 'KeyU', hold: true },
 ];
 const BY_ID = Object.fromEntries(ACTIONS.map(a => [a.id, a]));
 
@@ -362,8 +366,11 @@ export class Gamepad {
     const slip = clamp(((t.slip || 0) - 2.5) / 9, 0, 1);
     const hit = clamp(car.crash || 0, 0, 1);
     const lim = t.onLimiter ? 0.25 : 0;
+    // ABS: пульсация педали — короткие толчки слабым мотором через раз
+    this._absPh = t.absAct ? !this._absPh : false;
+    const abs = t.absAct && this._absPh ? 0.55 : 0;
     const strong = Math.max(hit, slip * 0.35);
-    const weak = Math.max(slip * 0.7, lim, hit * 0.6);
+    const weak = Math.max(slip * 0.7, lim, hit * 0.6, abs);
     if (strong < 0.02 && weak < 0.02) return;
     act.playEffect('dual-rumble', { duration: 130, strongMagnitude: strong, weakMagnitude: weak }).catch(() => {});
   }

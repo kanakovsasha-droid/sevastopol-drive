@@ -24,6 +24,7 @@ import { CarLights } from './carlights.js?v=2b23307a';
 import { Settings } from './settings.js?v=2b23307a';
 import { Pause } from './pause.js?v=2b23307a';
 import { DriveModes } from './drivemodes.js?v=2b23307a';
+import { Assists } from './assists.js?v=2b23307a';
 import { buildModelPlinths } from './plinth.js?v=2b23307a';
 import { CarCam } from './carcam.js?v=2b23307a';
 import { Precip } from './precip.js?v=2b23307a';
@@ -127,6 +128,7 @@ let pointerLocked = false;
 let pad = null;                                // геймпад (gamepad.js)
 let pause = null;                              // меню паузы (pause.js)
 let driveModes = null;                         // Eco / Comfort / Sport / Sport+ (drivemodes.js)
+let assists = null;                            // ABS, ASR, ESP, Race Start (assists.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -264,6 +266,9 @@ async function boot() {
     });
     // режимы езды: 1–4 или Y (drivemodes.js)
     driveModes = new DriveModes({ car: () => car, audio: () => carFx, toast: t => hud.toast(t) });
+    // ABS, ASR, ESP (U, держать — OFF), Race Start; настройки — T → «Машина»
+    assists = new Assists({ car: () => car, toast: t => hud.toast(t) });
+    settings.assists = assists;
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam: carCam, get mode() { return mode; } };
@@ -1633,6 +1638,7 @@ function loop(now) {
       input.gas ||= p.gas; input.brake ||= p.brake;
     }
     driveModes?.apply();                         // после смены машины в гараже — тот же режим
+    assists?.apply();                            // режим ESP (по режиму езды) и выбор игрока — в машину
     // на снегу заметно скользко, на мокром — чуть
     car.weatherGrip = 1 - 0.5 * ENV.uWet.value.x - 0.15 * ENV.uWet.value.y;
     car.update(dt, input);
