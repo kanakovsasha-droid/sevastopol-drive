@@ -5,9 +5,9 @@
 // Всё хранится в localStorage (env.js — sev.env, gamepad.js — sev.pad):
 // после перезагрузки тот же вечер, та же погода, та же раскладка.
 
-import { WEATHER, SEASONS, sunDirection } from './env.js?v=6faf90df';
-import { ACTIONS } from './gamepad.js?v=6faf90df';
-import { VIEWS, FOLLOW } from './carcam.js';
+import { WEATHER, SEASONS, sunDirection } from './env.js?v=6d78c889';
+import { ACTIONS } from './gamepad.js?v=6d78c889';
+import { VIEWS, FOLLOW } from './carcam.js?v=6d78c889';
 
 const CSS = `
 #settings{position:fixed;inset:0;z-index:22;display:none;align-items:center;justify-content:center;
