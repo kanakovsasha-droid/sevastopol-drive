@@ -23,6 +23,7 @@ import { Gamepad } from './gamepad.js?v=d8230200';
 import { Environment, ENV } from './env.js?v=d8230200';
 import { CarLights } from './carlights.js?v=d8230200';
 import { Settings } from './settings.js?v=d8230200';
+import { loadFootprints, monumentTest } from './footprints.js?v=d8230200';
 import { Pause } from './pause.js?v=d8230200';
 import { DriveModes } from './drivemodes.js?v=d8230200';
 import { buildModelPlinths } from './plinth.js?v=d8230200';
@@ -155,6 +156,7 @@ async function boot() {
     // по нему построится первый квадрат земли и первый профиль дороги.
     await loadSport(V);
     await loadStreet(V);
+    await loadFootprints(V);              // пятна памятников — деревья их обходят
     installFlats(terrain);
     for (const id of sportSkipIds()) skipIds.add(id);
     // Для меню «куда поехать» и подписей на карте нужен ПОЛНЫЙ список — он
@@ -717,6 +719,9 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
 
   at('деревья');
+  // на граните памятников не сажаем (footprints.js): у них нет контура в OSM
+  const onMonument = monumentTest(defs);
+  if (onMonument) { const np = w.__noPlant || (() => false); w.__noPlant = (x, z) => np(x, z) || onMonument(x, z); }
   const props = buildStreetProps(w, terrain, roads, d.allBuildings);
   g.add(props);
   for (const [k, v] of Object.entries(props.userData.counts || {})) counts[k] = (counts[k] || 0) + v;
