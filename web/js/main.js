@@ -22,6 +22,7 @@ import { Gamepad } from './gamepad.js?v=46b82387';
 import { Environment } from './env.js?v=46b82387';
 import { CarLights } from './carlights.js?v=46b82387';
 import { Settings } from './settings.js?v=46b82387';
+import { buildModelPlinths } from './plinth.js?v=b077ef04';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -680,6 +681,8 @@ function* buildChunk(d, key) {
   at('памятные');
   const lm = buildLandmarks(w, terrain, defs, roads);
   g.add(lm);
+  // цоколь до земли под готовыми моделями зданий (plinth.js)
+  g.add(buildModelPlinths(defs, d.allBuildings || w.buildings, terrain));
   lap('памятные');
   yield; pt = performance.now();
   // Дом, отданный памятному зданию, не должен рисоваться ещё и рядовым.
