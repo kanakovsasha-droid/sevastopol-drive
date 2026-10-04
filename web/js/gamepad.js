@@ -13,9 +13,10 @@
 //   левый стик — руль, правый — обзор
 //   ✕ / A — ручник · R1 / RB и L1 / LB — передача вверх и вниз
 //   △ / Y — выйти и сесть · ○ / B — вид камеры · □ / X — вернуть на дорогу
-//   R3 — камера за корму · L3 — автомат / ручная
+//   R3 — режим езды · L3 — автомат / ручная
 //   Options / Menu — пауза · Share / View — карта
-//   крестовина: ↑ — места, ↓ — гараж, ← — свет, → — зажигание · тачпад — режим езды
+//   крестовина: ↑ — места, ↓ — гараж, ← — свет, → — зажигание · тачпад — камера за корму
+//   PS / Xbox — ESP (коротко по кругу, держать — OFF)
 // Китайские клоны «под PlayStation» почти все отдаются браузеру как
 // стандартный пад (mapping === 'standard'). Если нет — любую кнопку и ось
 // можно переназначить в настройках (T → Управление).
@@ -43,7 +44,7 @@ export const ACTIONS = [
   { id: 'exit',    name: 'Выйти / сесть',       def: { b: 3 }, key: 'KeyE' },
   { id: 'cam',     name: 'Вид камеры',          def: { b: 1 }, key: 'KeyC' },
   { id: 'reset',   name: 'Вернуть на дорогу',   def: { b: 2 }, key: 'KeyR' },
-  { id: 'behind',  name: 'Камера за корму',     def: { b: 11 }, key: 'KeyV' },
+  { id: 'behind',  name: 'Камера за корму',     def: { b: 17 }, key: 'KeyV' },
   { id: 'gearbox', name: 'Автомат / ручная',    def: { b: 10 }, key: 'KeyG' },
   { id: 'menu',    name: 'Пауза',               def: { b: 9 }, key: 'Escape' },
   { id: 'map',     name: 'Карта',               def: { b: 8 }, key: 'Tab' },
@@ -51,7 +52,11 @@ export const ACTIONS = [
   { id: 'garage',  name: 'Гараж',               def: { b: 13 }, key: 'KeyO' },
   { id: 'lights',  name: 'Свет: фары, габариты', def: { b: 14 }, key: 'KeyL' },
   { id: 'engine',  name: 'Завести / заглушить', def: { b: 15 }, key: 'KeyZ' },
-  { id: 'drive',   name: 'Режим езды',          def: { b: 17 }, key: 'KeyY' },
+  // кнопка 17 (тачпад PS) у Xbox и многих клонов отсутствует — режим езды на R3
+  { id: 'drive',   name: 'Режим езды',          def: { b: 11 }, key: 'KeyY' },
+  // ESP: коротко — по кругу, держать — OFF (assists.js); по умолчанию кнопка
+  // PS / Xbox — свободная; если её забирает система, переназначь
+  { id: 'esp',     name: 'ESP (держать — OFF)', def: { b: 16 }, key: 'KeyU', hold: true },
 ];
 const BY_ID = Object.fromEntries(ACTIONS.map(a => [a.id, a]));
 
@@ -87,6 +92,8 @@ export class Gamepad {
     this.rumbleT = 0;
     // настройки
     const s = JSON.parse(ls.get(KEY) || '{}');
+    // старые сохранения: режим езды был на тачпаде (17), которого нет у Xbox
+    if (s.bind?.drive?.b === 17 && s.bind?.behind?.b === 11) { s.bind.drive = { b: 11 }; s.bind.behind = { b: 17 }; }
     this.cfg = {
       scheme: s.scheme || 'auto',            // auto | keyboard | gamepad
       layout: s.layout || 'auto',            // auto | ps | xbox — подписи кнопок
@@ -362,8 +369,11 @@ export class Gamepad {
     const slip = clamp(((t.slip || 0) - 2.5) / 9, 0, 1);
     const hit = clamp(car.crash || 0, 0, 1);
     const lim = t.onLimiter ? 0.25 : 0;
+    // ABS: пульсация педали — короткие толчки слабым мотором через раз
+    this._absPh = t.absAct ? !this._absPh : false;
+    const abs = t.absAct && this._absPh ? 0.55 : 0;
     const strong = Math.max(hit, slip * 0.35);
-    const weak = Math.max(slip * 0.7, lim, hit * 0.6);
+    const weak = Math.max(slip * 0.7, lim, hit * 0.6, abs);
     if (strong < 0.02 && weak < 0.02) return;
     act.playEffect('dual-rumble', { duration: 130, strongMagnitude: strong, weakMagnitude: weak }).catch(() => {});
   }

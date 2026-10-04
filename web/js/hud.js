@@ -1,5 +1,5 @@
-import { drawMini } from './minimap.js?v=2b23307a';
-import { CarFX } from './carfx.js?v=2b23307a';
+import { drawMini } from './minimap.js?v=2df4b869';
+import { CarFX } from './carfx.js?v=2df4b869';
 
 // Интерфейс поверх игры — вариант A «Циферблат» (утверждён владельцем):
 //   • справа снизу круглый прибор: обороты дугой со шкалой 0–8 и красной
@@ -334,7 +334,9 @@ export class Hud {
     const gear = String(t.gear ?? '');
     const hot = t.onLimiter || rpm >= red;
     // перерисовываем, только если стрелка сдвинулась хотя бы на треть градуса
-    const sig = `${Math.round(rpm / 10)}|${kmh}|${gear}|${t.drive}|${t.manual ? 1 : 0}|${hot ? 1 : 0}|${t.dm || ''}`;
+    // помощники: значок мигает, пока ESP/ASR вмешиваются (4 раза в секунду)
+    const blink = t.espAct ? (performance.now() / 125 | 0) & 1 : 0;
+    const sig = `${Math.round(rpm / 10)}|${kmh}|${gear}|${t.drive}|${t.manual ? 1 : 0}|${hot ? 1 : 0}|${t.dm || ''}|${t.esp || ''}|${t.espAct ? 1 + blink : 0}|${t.absAct ? 1 : 0}|${t.absOff ? 1 : 0}|${t.launch || ''}`;
     if (sig === this._drawn) return;
     this._drawn = sig;
     const st = this._staticLayer('car', rpmMax, red);
@@ -372,7 +374,43 @@ export class Hud {
       g.fillText(t.dm, bx + 44, c + 72);
       g.textAlign = 'center';
     }
-    this._driveIcon(g, c - 8, c - 66, t.drive);
+    if (t.launch !== 'armed') this._driveIcon(g, c - 8, c - 66, t.drive);     // на его месте — RACE START
+    this._assistIcons(g, c, bx, t, blink);
+  }
+
+  // Значки помощников, как на приборах Mercedes (жёлтые):
+  //   ESP OFF / ESP SPORT — слева от передачи, пока режим не обычный;
+  //   треугольник с изогнутыми следами — мигает, когда ESP или ASR вмешиваются;
+  //   ABS — горит при срабатывании (выключенная — тускло, постоянно);
+  //   RACE START — над скоростью, пока лаунч ждёт старта.
+  _assistIcons(g, c, bx, t, blink) {
+    const AMB = '#ffb300';
+    g.save();
+    if (t.esp === 'off' || t.esp === 'sport') {
+      g.fillStyle = AMB; g.textAlign = 'right'; g.font = `800 14px ${FONT}`;
+      g.fillText('ESP', bx - 8, c + 63);
+      g.fillText(t.esp === 'off' ? 'OFF' : 'SPORT', bx - 8, c + 78);
+    }
+    if (t.espAct && !blink) {
+      const x = c + 30, y = c - 64;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + 10, y + 17); g.lineTo(x - 10, y + 17); g.closePath();
+      g.fillStyle = AMB; g.fill();
+      g.strokeStyle = '#14171a'; g.lineWidth = 1.3;
+      g.beginPath(); g.moveTo(x - 3, y + 15); g.quadraticCurveTo(x - 5, y + 9, x - 1, y + 6); g.moveTo(x + 3, y + 15); g.quadraticCurveTo(x + 1, y + 9, x + 5, y + 6); g.stroke();
+    }
+    if (t.absAct || t.absOff) {
+      g.globalAlpha = t.absAct ? 1 : 0.55;
+      g.strokeStyle = AMB; g.fillStyle = AMB; g.lineWidth = 1.5;
+      const x = c - 56, y = c - 48;
+      g.beginPath(); g.arc(x, y, 9.5, 0, Math.PI * 2); g.stroke();
+      g.font = `800 9px ${FONT}`; g.textAlign = 'center'; g.fillText('ABS', x, y + 3.2);
+      g.globalAlpha = 1;
+    }
+    if (t.launch === 'armed') {
+      g.fillStyle = AMB; g.textAlign = 'center'; g.font = `800 15px ${FONT}`;
+      g.fillText('RACE START', c, c - 49);
+    }
+    g.restore();
   }
 
   // шасси сверху: ведущие колёса залиты, ведомые — контуром

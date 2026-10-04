@@ -340,8 +340,24 @@ export class Environment {
   // quiet — не перерисовывать настройки (ползунок тянут прямо сейчас)
   setHour(h, quiet = false) { this.cfg.hour = ((h % 24) + 24) % 24; this.cfg.real = false; this.save(); if (!quiet) this._emit(); }
   addHours(dh) { this.setHour(this.cfg.hour + dh); }
-  setWeather(k) { if (WEATHER[k]) { this.cfg.weather = k; this.save(); this._emit(); } }
-  setSeason(k) { if (SEASONS[k]) { this.cfg.season = k; this._season(); this.save(); this._emit(); } }
+  // ясно / облачно / туман — снег сходит сразу; дождь его быстро смывает (update)
+  setWeather(k) {
+    if (!WEATHER[k]) return;
+    this.cfg.weather = k;
+    if (!WEATHER[k].precip) ENV.uWet.value.x = 0;
+    this.save(); this._emit();
+  }
+  // Лето, весна и осень — снег сходит сразу, а снегопад сменяется ясной
+  // погодой: иначе снег, накопленный раньше, таял минут пять и «не убирался».
+  setSeason(k) {
+    if (!SEASONS[k]) return;
+    this.cfg.season = k;
+    if (k !== 'winter' && k !== 'auto') {
+      ENV.uWet.value.x = 0;
+      if (WEATHER[this.cfg.weather].precip === 'snow') this.cfg.weather = 'clear';
+    }
+    this._season(); this.save(); this._emit();
+  }
   set(k, v) { this.cfg[k] = v; if (k === 'snow') this._season(); this.save(); this._emit(); }
   get clock() {
     const h = Math.floor(this.cfg.hour), m = Math.floor((this.cfg.hour - h) * 60);

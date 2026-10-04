@@ -5,9 +5,9 @@
 // Всё хранится в localStorage (env.js — sev.env, gamepad.js — sev.pad):
 // после перезагрузки тот же вечер, та же погода, та же раскладка.
 
-import { WEATHER, SEASONS, sunDirection } from './env.js?v=2b23307a';
-import { ACTIONS } from './gamepad.js?v=2b23307a';
-import { VIEWS, FOLLOW } from './carcam.js?v=2b23307a';
+import { WEATHER, SEASONS, sunDirection } from './env.js?v=2df4b869';
+import { ACTIONS } from './gamepad.js?v=2df4b869';
+import { VIEWS, FOLLOW } from './carcam.js?v=2df4b869';
 
 const CSS = `
 #settings{position:fixed;inset:0;z-index:22;display:none;align-items:center;justify-content:center;
@@ -60,8 +60,8 @@ export class Settings {
     el.id = 'settings';
     el.innerHTML = `<div id="setbox" class="panel">
       <h2>Настройки <small>T · Esc</small></h2>
-      <div class="tabs"><button data-tab="time">Время и погода</button><button data-tab="season">Сезон</button><button data-tab="cam">Камера</button><button data-tab="ctl">Управление</button></div>
-      <section data-s="time"></section><section data-s="season"></section><section data-s="cam"></section><section data-s="ctl"></section>
+      <div class="tabs"><button data-tab="time">Время и погода</button><button data-tab="season">Сезон</button><button data-tab="cam">Камера</button><button data-tab="ctl">Управление</button><button data-tab="car">Машина</button></div>
+      <section data-s="time"></section><section data-s="season"></section><section data-s="cam"></section><section data-s="ctl"></section><section data-s="car"></section>
     </div>`;
     document.body.appendChild(el);
     this.el = el;
@@ -83,7 +83,7 @@ export class Settings {
     // в подсказку клавиш — T и [ ] (без правки index.html)
     const more = document.querySelector('#keys .row.more') || document.querySelector('#keys .row:last-of-type');
     if (more && !more.querySelector('.kc-t')) more.insertAdjacentHTML('beforeend',
-      '<span class="g sh"><span class="kc kc-t">T</span>настройки</span><span class="g sh"><span class="kc">[</span><span class="kc">]</span>время</span>');
+      '<span class="g sh"><span class="kc kc-t">T</span>настройки</span><span class="g sh"><span class="kc">[</span><span class="kc">]</span>время</span><span class="g sh"><span class="kc">U</span>ESP</span>');
 
     addEventListener('keydown', e => {
       if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && e.code !== 'Escape') return;
@@ -122,6 +122,26 @@ export class Settings {
     if (this.tab === 'season') this._season();
     if (this.tab === 'ctl') this._ctl();
     if (this.tab === 'cam') this._cam();
+    if (this.tab === 'car') this._car();
+  }
+
+  // Электронные помощники (assists.js): ESP, ABS, ASR, Race Start
+  _car() {
+    const s = this.box.querySelector('[data-s=car]'), a = this.assists;
+    if (!a) { s.innerHTML = '<div class="sub">Машина ещё не загрузилась.</div>'; return; }
+    const c = a.cfg;
+    const check = (k, name, sub) => `<label><span>${name}${sub ? `<br><small class="sub">${sub}</small>` : ''}</span><input type="checkbox" data-k="${k}" ${c[k] ? 'checked' : ''}></label>`;
+    s.innerHTML = `
+      <h3>ESP — U (держать — OFF), на геймпаде ${this.pad.btnName('esp')}</h3>
+      <div class="row">${[['on', 'ESP ON'], ['sport', 'ESP SPORT'], ['off', 'ESP OFF']].map(([v, n]) => `<button data-esp="${v}" class="${c.esp === v ? 'sel' : ''}">${n}</button>`).join('')}</div>
+      <div class="sub">ON — строго ловит занос и срезает газ · SPORT — даёт кузову уйти боком до ~16° · OFF — всё выключено, дрифт.
+        Режим езды задаёт ESP по умолчанию: Eco и Comfort — ON, Sport и Sport+ — SPORT.</div>
+      <h3>Системы</h3>
+      ${check('abs', 'ABS', 'выключена — при торможении в пол колёса блокируются, руль не слушается')}
+      ${check('asr', 'ASR — антипробуксовка', 'в ESP OFF выключена всегда')}
+      ${check('launch', 'Race Start — лаунч-контроль', 'на месте, в D, ESP SPORT или OFF: тормоз и газ в пол — обороты встают на 3300; отпусти тормоз')}`;
+    s.querySelectorAll('[data-esp]').forEach(b => b.addEventListener('click', () => { a.setEsp(b.dataset.esp); this.render(); }));
+    s.querySelectorAll('input[type=checkbox]').forEach(i => i.addEventListener('change', () => a.set(i.dataset.k, i.checked)));
   }
 
   _cam() {
@@ -241,7 +261,7 @@ export class Settings {
       <div class="row" style="margin-top:10px"><button data-reset="1">Вернуть раскладку по умолчанию</button></div>
       <h3>Клавиатура</h3>
       <div class="sub">WASD — ехать · Space — ручник · E — выйти · C — камера · R — на дорогу · F — полёт · Tab — карта · M — места ·
-        O — гараж · G — автомат/ручная, Shift/Q — передачи · 1–4 / Y — режим езды · L — свет · Z — завести/заглушить · V — камера за корму · Esc — пауза · T — настройки · [ ] — время · ? — все клавиши</div>`;
+        O — гараж · G — автомат/ручная, Shift/Q — передачи · 1–4 / Y — режим езды · U — ESP (держать — OFF) · L — свет · Z — завести/заглушить · V — камера за корму · Esc — пауза · T — настройки · [ ] — время · ? — все клавиши</div>`;
     this._padStatus();
     for (const k of ['scheme', 'layout']) s.querySelectorAll(`[data-${k}]`).forEach(b => b.addEventListener('click', () => {
       c[k] = b.dataset[k]; p.save();
@@ -268,7 +288,7 @@ export class Settings {
     row.innerHTML = [
       [b('gas') + b('brake'), 'газ / тормоз'], ['<span class="kc">стик</span>', 'руль'], [b('hand'), 'ручник'],
       [b('exit'), 'выйти'], [b('cam'), 'камера'], [b('reset'), 'на дорогу'], [b('down') + b('up'), 'передачи'],
-      [b('map'), 'карта'], [b('menu'), 'пауза'],
+      [b('map'), 'карта'], [b('menu'), 'пауза'], [b('esp'), 'ESP'],
     ].map(([k, t]) => `<span class="g sh">${k}${t}</span>`).join('');
   }
 }
