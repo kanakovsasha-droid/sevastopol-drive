@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=1977b5d5';
-import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=1977b5d5';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=27cd4371';
+import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=27cd4371';
 import { atlasCarModel } from './caratlas.js';
 
 // Физика машины. Третий заход.
@@ -606,8 +606,11 @@ export class Car {
     } else if (thr < 0) {
       if (vLong > 1.0) brakeT = -thr; else { gasT = -thr; wantRev = true; }
     }
-    this._lift = gasT < this._gas - 0.02;              // газ отпускают — для коробки
-    this._press = gasT > this._gas + 0.02;             // газ ещё дожимают — тоже
+    // порог 0.12: дрожь курка геймпада (±0.02–0.05) не считается «дожимают /
+    // отпускают», иначе коробка на паде всегда крутила до 6850, как в Sport+
+    this._lift = gasT < this._gas - 0.12;              // газ отпускают — для коробки
+    this._press = gasT > 0.9 && gasT > this._gas + 0.12; // газ дожимают в пол — тоже (в Eco педаль
+    //   растёт медленно, и частичный газ иначе тоже считался «дожимают»)
     // режим езды (drivemodes.js): кривая педали и скорость её нажатия
     const dm = this.dm || DM0;
     if (gasT > 0 && dm.gas !== 1) gasT = Math.pow(gasT, dm.gas);
