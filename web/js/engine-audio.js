@@ -1,7 +1,8 @@
 // Звук E63 S. Основной голос мотора — записи настоящего V8 (data/audio,
-// собираются tools/build-audio.mjs из Freesound, CC0): набор петель на разных
-// оборотах, кроссфейд между двумя ближайшими и подстройка высоты под обороты
-// физики. Хлопки и выстрелы — записями со случайным выбором, визг шин —
+// собираются tools/build-audio.mjs из Freesound, CC0): Ford Mustang GT500 —
+// петля «под нагрузкой» на все обороты и петля холостых у самого низа. Высота
+// у обеих — строго обороты / обороты записи, без переходов между петлями по
+// порогам. Хлопки и выстрелы — записями со случайным выбором, визг шин —
 // записью по скольжению. Синтез ниже — запасной голос на те секунды, пока
 // записи грузятся (и если не загрузились): владельцу он показался писклявым.
 //
@@ -79,33 +80,6 @@ function popBuffer(ctx, big) {
     const crack = (lp * 0.8 + spark) * Math.exp(-t / (big ? 0.06 : 0.035));
     d[i] = thump * 0.9 + crack * 0.55;
   }
-  return buf;
-}
-
-// Огибающая вспышек V8 для 900 об/мин: 60 вспышек в секунду, порядок
-// 1-5-4-8-6-3-7-2, ряды по-разному громкие, у каждого цилиндра своё смещение,
-// и каждая вспышка ещё случайна на ±35%. Нулевое среднее: это добавка к
-// громкости, а не сама громкость. 6 секунд — повтор на слух не ловится.
-function burbleEnvelope(ctx, pulses = false) {
-  const sr = ctx.sampleRate, sec = 6, n = sr * sec, buf = ctx.createBuffer(1, n, sr), d = buf.getChannelData(0);
-  const order = [1, 5, 4, 8, 6, 3, 7, 2], bankA = new Set([1, 2, 3, 4]);
-  const bias = [0.12, -0.08, 0.05, -0.15, 0.1, -0.05, 0.14, -0.1];
-  const per = sr / 60;                                      // отсчётов на вспышку
-  let rnd = 12345;
-  const rand = () => { rnd = (rnd * 1103515245 + 12345) & 0x7fffffff; return rnd / 0x7fffffff; };
-  for (let k = 0; k * per < n; k++) {
-    const cyl = order[k % 8];
-    const a = (bankA.has(cyl) ? 0.18 : -0.18) + bias[cyl - 1] + (rand() - 0.5) * 0.7;
-    const s0 = Math.floor(k * per), s1 = Math.min(n, Math.floor((k + 1) * per));
-    if (pulses) {
-      // импульс выхлопа: резкий фронт, затухание; сила — от 0.3 до 1
-      const amp = Math.max(0.3, Math.min(1, 0.65 + a));
-      for (let i = s0; i < s1; i++) { const u = (i - s0) / (s1 - s0); d[i] = amp * Math.min(1, u * 4) * Math.exp(-u * 2.5); }
-    } else for (let i = s0; i < s1; i++) d[i] = a * Math.sin(Math.PI * (i - s0) / (s1 - s0));
-  }
-  if (pulses) return buf;
-  let m = 0; for (let i = 0; i < n; i++) m += d[i]; m /= n;
-  for (let i = 0; i < n; i++) d[i] -= m;
   return buf;
 }
 
@@ -232,71 +206,35 @@ export class E63Sound {
   }
 
   // Записи приехали: строим второй голос мотора и плавно отдаём ему звук.
-  // bufs: { eng_idle_v2: AudioBuffer, …, pop_1…, bang_1…, tyre_squeal }, meta —
-  // sounds.json (обороты каждой петли).
+  // bufs: { v8_idle, v8_load, pop_1…, bang_1…, tyre_squeal }, meta —
+  // sounds.json (обороты записи каждой петли).
+  //
+  // Схема как у GTA: высота у каждой петли — строго rpm / обороты её
+  // записи, и переходов между петлями по порогам оборотов нет. Основа на
+  // всех оборотах — ровный ход GT500 (~2740 об/мин, 6 с почти без дрейфа),
+  // у самого низа к ней примешаны холостые (841), под газом — разгон в пол
+  // (выпрямлен до ровных 3653). Все петли в любой момент звучат на одной и
+  // той же высоте, так что их смесь — это тембр, а не ступенька тона. Прежний набор из шести петель переходил между ними по оборотам, и
+  // каждая петля внутри «плыла» по высоте — отсюда были фантомные переключения.
   useSamples(bufs, meta) {
     const ctx = this.ctx, t0 = ctx.currentTime;
     const g = (v = 0) => { const n = ctx.createGain(); n.gain.value = v; return n; };
-    // общий путь петель: сброс газа — темнее (фильтр), низ — подчёркнут полкой
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 9000; lp.Q.value = 0.6;
-    const shelf = ctx.createBiquadFilter(); shelf.type = 'lowshelf'; shelf.frequency.value = 180; shelf.gain.value = 8;
+    const flt = (type, f, q = 0.7, gain = 0) => { const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = f; n.Q.value = q; n.gain.value = gain; return n; };
+    // общий путь: два ФНЧ подряд (сброс газа — темнее), полка на низ («бас AMG»)
+    const lp = flt('lowpass', 2000, 0.6), lp2 = flt('lowpass', 2500, 0.5);
+    const shelf = flt('lowshelf', 160, 0.7, 6);
+    // На холостых линия вспышек (rpm/15 ≈ 60 Гц) и её 2-я и 3-я гармоники в
+    // записи выступают на 16–32 дБ — на слух это ровный гул. Приглушаем их
+    // широкими «колоколами» только у холостых: бубнёж полупорядков остаётся.
+    const fireCut = flt('peaking', 60, 5, 0), fireCut2 = flt('peaking', 120, 7, 0), fireCut3 = flt('peaking', 180, 8, 0);
     const bus = g(0);
-    // V8-«рокот»: громкость петель качается на полупорядке вспышек (rpm/30) —
-    // у кроссплейн-V8 ряды вспыхивают неравномерно, отсюда бас-рябь. Без неё
-    // разогнанная петля на высоких звучала гладко, как V12.
-    const ripple = g(1), rippleOsc = ctx.createOscillator(), rippleDepth = g(0);
-    rippleOsc.frequency.value = 30; rippleOsc.connect(rippleDepth).connect(ripple.gain); rippleOsc.start(t0);
-    // и второй ФНЧ подряд: один срез 12 дБ/окт оставлял на отсечке 4–16 кГц
-    // пятую часть энергии — тот самый визг
-    const lp2 = ctx.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 9000; lp2.Q.value = 0.5;
-    lp.connect(lp2).connect(ripple).connect(shelf).connect(bus).connect(this.master);
-    // «Бульканье» V8 на холостых. Запись холостых в игре звучала почти чистым
-    // синусом 60 Гц (частота вспышек на 900): в живой записи владельца линия
-    // 60.1 Гц выступала над соседним спектром на 25 дБ — «однотонный вой».
-    // Настоящий кроссплейн-V8 на холостых не тональный: вспышки неровные по
-    // цилиндрам и рядам. Громкость петель модулируем огибающей вспышек со
-    // случайной силой каждой — линия 60 Гц размазывается в шум вокруг неё,
-    // а неравенство рядов даёт качание на частоте цикла (rpm/120).
-    const burble = g(1), burbleDepth = g(0);
-    const burbleSrc = ctx.createBufferSource(); burbleSrc.buffer = burbleEnvelope(ctx); burbleSrc.loop = true;
-    burbleSrc.connect(burbleDepth).connect(burble.gain); burbleSrc.start(t0);
-    // сама линия вспышек на холостых приглушена (полка −14 дБ на rpm/15) —
-    // модуляция её только размазывает, а гасит — вот это
-    const fireCut = ctx.createBiquadFilter(); fireCut.type = 'peaking'; fireCut.frequency.value = 60; fireCut.Q.value = 3; fireCut.gain.value = 0;
-    burble.connect(fireCut).connect(lp);
-    // Выхлопные импульсы: низкий бурый шум, «нарезанный» вспышками со
-    // случайной силой — ритм 60 Гц есть, чистого тона нет. Так и звучит выхлоп.
-    const pulseLP = ctx.createBiquadFilter(); pulseLP.type = 'lowpass'; pulseLP.frequency.value = 170; pulseLP.Q.value = 0.6;
-    const pulseAM = g(0), pulse = g(0), pulseNz = ctx.createBufferSource();
-    pulseNz.buffer = this.noise3.buffer; pulseNz.loop = true; pulseNz.loopStart = 0.5;
-    const pulseEnv = ctx.createBufferSource(); pulseEnv.buffer = burbleEnvelope(ctx, true); pulseEnv.loop = true;
-    pulseNz.connect(pulseLP).connect(pulseAM).connect(pulse).connect(this.master);
-    pulseEnv.connect(pulseAM.gain);
-    pulseNz.start(t0); pulseEnv.start(t0);
-    // механика и выхлоп широкой полосой 200–1000 Гц, той же огибающей —
-    // чтобы холостые не были одной нотой
-    const mechBP = ctx.createBiquadFilter(); mechBP.type = 'bandpass'; mechBP.frequency.value = 420; mechBP.Q.value = 0.5;
-    const mech = g(0), mechSrc = ctx.createBufferSource();
-    mechSrc.buffer = this.noise.buffer; mechSrc.loop = true; mechSrc.loopStart = 0.3;
-    mechSrc.connect(mechBP).connect(mech).connect(burble); mechSrc.start(t0);
-    const loops = Object.entries(meta.loops).filter(([n]) => n.startsWith('eng_') && bufs[n])
-      .map(([n, m]) => {
-        const src = ctx.createBufferSource(); src.buffer = bufs[n]; src.loop = true;
-        const gg = g(0);
-        // Режекторы на свист записи (sounds.json → notch, частоты в самом
-        // файле): частота идёт за playbackRate, так что свист не вернётся ни
-        // на каких оборотах. В файле он уже вырезан — это вторая страховка.
-        const notches = (m.notch || []).map(f0 => {
-          const nf = ctx.createBiquadFilter(); nf.type = 'notch'; nf.frequency.value = f0; nf.Q.value = 30;
-          return { f0, nf };
-        });
-        let head = src;
-        for (const q of notches) head = head.connect(q.nf);
-        head.connect(gg).connect(burble);
-        // петли запускаем вразбег — иначе одинаковые фазы складываются в «эхо»
-        src.start(t0, Math.random() * bufs[n].duration);
-        return { name: n, rpm: m.rpm, src, g: gg, notches };
-      }).sort((a, b) => a.rpm - b.rpm);
+    lp.connect(lp2).connect(fireCut).connect(fireCut2).connect(fireCut3).connect(shelf).connect(bus).connect(this.master);
+    const loops = ['v8_idle', 'v8_cruise', 'v8_load'].filter(n => bufs[n] && meta.loops[n]).map(n => {
+      const src = ctx.createBufferSource(); src.buffer = bufs[n]; src.loop = true;
+      const gg = g(0); src.connect(gg).connect(lp);
+      src.start(t0, Math.random() * bufs[n].duration);
+      return { name: n, rpm: meta.loops[n].rpm, src, g: gg };
+    });
     let squeal = null;
     if (bufs.tyre_squeal) {
       const src = ctx.createBufferSource(); src.buffer = bufs.tyre_squeal; src.loop = true;
@@ -306,13 +244,31 @@ export class E63Sound {
     const pick = pre => Object.keys(bufs).filter(k => k.startsWith(pre)).map(k => bufs[k]);
     this._dropSamples(t0);
     // Низ — из самой записи: та же смесь петель через ФНЧ 150 Гц отдельным
-    // голосом. Синус на полупорядке вспышек, который подпирал низ раньше,
-    // биением с такой же гармоникой петли давал на холостых медленный «вой».
-    const lowLP = ctx.createBiquadFilter(); lowLP.type = 'lowpass'; lowLP.frequency.value = 150; lowLP.Q.value = 0.7;
-    const low = g(0);
-    lp.connect(lowLP).connect(low).connect(this.master);
-    this.smp = { loops, lp, lp2, bus, squeal, low, ripple, rippleOsc, rippleDepth, burbleSrc, burbleDepth, mech, fireCut, pulse, pulseEnv,
+    // голосом, подпирает бас на средних и высоких оборотах.
+    const lowLP = flt('lowpass', 150, 0.7), low = g(0);
+    fireCut3.connect(lowLP).connect(low).connect(this.master);
+    // Отстрелы на сбросе — по-AMG: не хлопки-петарды, а глухое бульканье и
+    // треск в выхлопе. «Бульк» — короткий всплеск низкого рокота того же
+    // мотора (петля ровного хода, её густой низ 40–250 Гц) через ФНЧ
+    // 160–360 Гц: звук из той же записи, поэтому он в одном миксе с мотором.
+    // Высота всплеска от оборотов не зависит — вспышка в выхлопе низкая и
+    // глухая на любых. Треск — редкие искры шума 1–3 кГц, тихо. Оба идут
+    // через ту же полку и шину, что и мотор: громкость шины на сбросе — и их.
+    let burble = null;
+    const bsrc = bufs.v8_cruise || bufs.v8_load;
+    if (bsrc) {
+      const src = ctx.createBufferSource(); src.buffer = bsrc; src.loop = true; src.playbackRate.value = 0.9;
+      const lpB = flt('lowpass', 260, 1.2), hpB = flt('highpass', 38, 0.7), gB = g(0);
+      src.connect(lpB).connect(hpB).connect(gB).connect(shelf);
+      src.start(t0, Math.random() * bsrc.duration);
+      const nz = ctx.createBufferSource(); nz.buffer = this.noise.buffer; nz.loop = true; nz.loopStart = 1.1;
+      const bpC = flt('bandpass', 1700, 0.9), lpC = flt('lowpass', 3200, 0.6), gC = g(0);
+      nz.connect(bpC).connect(lpC).connect(gC).connect(shelf); nz.start(t0);
+      burble = { src, lp: lpB, g: gB, crack: gC, crackBP: bpC, until: 0, last: -9 };
+    }
+    this.smp = { kind: 'v8', loops, lp, lp2, fireCut, fireCut2, fireCut3, bus, squeal, low, burble,
       pops: pick('pop_'), bangs: pick('bang_'), mix: 0, t0 };
+    this.st.rpmS = this.st.rpm || 900;
   }
 
   // Звуковой пакет из мода (только локальная игра, см. carfx.js) — ровно как
@@ -363,13 +319,11 @@ export class E63Sound {
     if (S.squeal) { S.squeal.g.gain.setTargetAtTime(0, t, 0.05); S.squeal.src.stop(t + 0.4); }
   }
 
-  // Хлопки и треск на сбросе — из пакета мода (w212-tuning), а голос мотора
-  // остаётся открытый: так понравилось владельцу. Только локально.
-  usePops(bufs) { this.extPops = bufs && bufs.decel ? { decel: bufs.decel, bonus: bufs.bonus || bufs.decel } : null; }
-
   _pop(big, t, gain, rate) {
-    const S0 = this.smp;
-    const S = S0 && S0.kind === 'mod' ? S0 : (this.extPops ? { kind: 'mod', ...this.extPops } : S0);
+    // У открытого звука хлопки — только свои записи (CC0), как и на сайте.
+    // Сброс оборотов из мода w212 сюда больше не подмешиваем: это запись
+    // падающего тона на своей высоте — поверх петли она звучала ступенькой.
+    const S = this.smp;
     if (S && S.kind === 'mod') {
       // сброс газа — запись сброса оборотов с треском; дальше — короткие
       // куски «бонуса» в случайных местах
@@ -381,6 +335,50 @@ export class E63Sound {
     if (list && list.length) {
       this._shot(list[Math.floor(Math.random() * list.length)], t, gain * (big ? 0.9 : 1.1), rate);
     } else this._shot(big ? this.popBig : this.popSmall, t, gain, rate);
+  }
+
+  // Отстрелы открытого V8 на сбросе газа. Не на каждый сброс: только с
+  // высоких оборотов (от 4500), с вероятностью ~70% и не чаще раза в 1.5 с.
+  // Серия — случайные 3–8 «бульков» с разными паузами (60–210 мс), силой и
+  // глухостью; к концу серии в среднем слабее. Треск — у части бульков.
+  // Газ вернули — серия обрывается.
+  _overrun(B, t, thr, rpm) {
+    const st = this.st;
+    if (thr > 0.2 && B.until > t) {
+      B.until = 0;
+      for (const p of [B.g.gain, B.crack.gain]) { p.cancelScheduledValues(t); p.setTargetAtTime(0, t, 0.02); }
+    }
+    // обороты в момент, когда газ только начали отпускать: газ сглажен и
+    // уходит в ноль за доли секунды, а в нейтрали обороты за это время уже
+    // падают на тысячи
+    if (thr > 0.5) st.liftRpm = 0;
+    else if (st.armed && !st.liftRpm) st.liftRpm = rpm;
+    if (!(st.armed && thr < 0.15)) return;
+    st.armed = false;
+    if (Math.max(rpm, st.liftRpm || 0) < 4500 || t - B.last < 1.5 || Math.random() > 0.7) return;
+    B.last = t;
+    const n = 3 + Math.floor(Math.random() * 6);
+    let at = t + 0.07 + Math.random() * 0.12;
+    const g = B.g.gain, c = B.crack.gain;
+    g.cancelScheduledValues(t); c.cancelScheduledValues(t);
+    for (let i = 0; i < n; i++) {
+      const a = (0.35 + 0.65 * Math.random()) * (1 - 0.45 * i / n);
+      const hold = 0.02 + Math.random() * 0.05;
+      B.lp.frequency.setTargetAtTime(160 + Math.random() * 200, at - 0.004, 0.003);
+      B.src.playbackRate.setTargetAtTime(0.75 + Math.random() * 0.35, at - 0.004, 0.003);
+      g.setTargetAtTime(3.2 * a, at, 0.004);
+      g.setTargetAtTime(0, at + hold, 0.03 + Math.random() * 0.03);
+      if (Math.random() < 0.55) {
+        const ct = at + Math.random() * 0.02;
+        B.crackBP.frequency.setTargetAtTime(1100 + Math.random() * 1600, ct - 0.003, 0.002);
+        c.setTargetAtTime(0.7 * a * (0.5 + Math.random()), ct, 0.0015);
+        c.setTargetAtTime(0, ct + 0.004 + Math.random() * 0.01, 0.008);
+      }
+      this.shots++;
+      this.log && this.log.push([at, 'сброс: бульк']);
+      at += 0.06 + Math.random() * Math.random() * 0.15;
+    }
+    B.until = at + 0.2;
   }
 
   _shot(buf, t, gain, rate = 1, offset = 0, dur = 0) {
@@ -464,52 +462,54 @@ export class E63Sound {
       // не выше 3 кГц (петля мода на 7000 разогнана втрое — без этого визг)
       P(S.lp.frequency, load > 0.15 ? Math.min(3000, 900 + rpm * 0.3 + 600 * load) : 700 + 1200 * load / 0.15, 0.05);
     } else if (S) {
-      // две ближайшие по оборотам петли, равномощный переход по логарифму
-      // оборотов; высота — отношение оборотов к оборотам записи
-      const L = S.loops;
-      let i = 0;
-      while (i < L.length - 2 && rpm > L[i + 1].rpm) i++;
-      const a = L[i], b = L[i + 1] || a;
-      const k = b === a ? 0 : Math.min(1, Math.max(0, Math.log(rpm / a.rpm) / Math.log(b.rpm / a.rpm)));
-      for (const lp of L) {
-        const w = lp === a ? Math.cos(k * Math.PI / 2) : lp === b ? Math.sin(k * Math.PI / 2) : 0;
-        P(lp.g.gain, w, 0.03);
-        const rate = Math.min(2.2, Math.max(0.45, rpm / lp.rpm));
-        P(lp.src.playbackRate, rate, 0.012);
-        if (lp.notches) for (const q of lp.notches) P(q.nf.frequency, q.f0 * rate, 0.012);
+      // Обороты для звука. Вниз и вверх под газом — за физикой сразу (так и
+      // звучит настоящее переключение). Рывок ВВЕРХ без газа — дауншифт
+      // накатом или подскок колёс на кочке — догоняем плавно (0.35 с): на
+      // сбросе тон должен только плавно падать, без ступенек.
+      const up = rpm > st.rpmS, coast = st.loadS < 0.15 && thr < 0.1;
+      const tau = up && coast ? 0.35 : 0.025;
+      st.rpmS += (rpm - st.rpmS) * Math.min(1, dtA / tau);
+      const rs = st.rpmS;
+      // Смесь тембров (высота у всех петель одна и та же — rs / обороты
+      // записи): холостые — по логарифму оборотов 950→1700, выше — ровный
+      // ход, а под газом к нему примешан разгон в пол (по сглаженному газу,
+      // не по оборотам — порогов по оборотам нет вовсе).
+      const k = Math.min(1, Math.max(0, Math.log(rs / 950) / Math.log(1700 / 950)));
+      const on = Math.sin(k * Math.PI / 2), ld = Math.min(1, st.loadS);
+      const W = { v8_idle: Math.cos(k * Math.PI / 2), v8_cruise: on * Math.cos(ld * Math.PI / 2 * 0.7), v8_load: on * Math.sin(ld * Math.PI / 2) };
+      // Холостые живые: обороты чуть «плавают» случайно (±2.5%, как в самой
+      // записи холостых — там 53.7…58.7 Гц; новая цель
+      // каждые 0.12–0.42 с, сглажено). Ровно стоящая высота давала на
+      // холостых чистые линии 60/120/180 Гц — тот самый гул. Выше 1400 — ноль.
+      const idle = 1 - Math.min(1, Math.max(0, (rs - 1000) / 400));
+      if (t > (st.wT || 0)) { st.wT = t + 0.12 + Math.random() * 0.3; st.wGoal = Math.random() * 2 - 1; }
+      st.wv = (st.wv || 0) + ((st.wGoal || 0) - (st.wv || 0)) * Math.min(1, dtA / 0.18);
+      const rsw = rs * (1 + 0.025 * idle * st.wv);
+      for (const l of S.loops) {
+        const w = W[l.name] || 0;
+        P(l.g.gain, w, 0.05);
+        P(l.src.playbackRate, rsw / l.rpm, 0.02);
       }
-      // Газ — громче и открытее, сброс — тише и глуше. Берём сглаженный газ
-      // (0.25 с): на ровном ходу клавиша W щёлкает 0↔1, и громкость с фильтром
-      // прыгали за ней — на слух это были «провалы», похожие на переключения.
-      const vol = 1.5 * (0.45 + 0.35 * r) * (0.55 + 0.45 * st.loadS) * (cut ? 0.4 : 1) * dip * S.mix;
+      const rr = Math.min(1, Math.max(0, (rs - 800) / 6200));
+      // Газ — громче и открытее, сброс — тише и глуше. Газ сглаженный (0.25 с):
+      // клавиша W щёлкает 0↔1, и громкость не должна прыгать за ней.
+      const vol = 1.45 * (0.5 + 0.3 * rr) * (0.55 + 0.45 * st.loadS) * (cut ? 0.4 : 1) * dip * S.mix;
       P(S.bus.gain, vol, cut || dip < 1 ? 0.008 : 0.05);
-      // Тембр: срез растёт с оборотами МЕДЛЕННО — на отсечке не выше 2.5 кГц
-      // (газ добавляет «открытости» до +600 Гц, на сбросе глуше).
-      const cutHz = Math.min(2500, 700 + rpm * 0.22 + 600 * st.loadS);
+      // Тембр: срез растёт с оборотами медленно, на отсечке не выше 2.6 кГц.
+      // Верха записи выше — шипение и механика, им в «басовитом» звуке не место.
+      const cutHz = Math.min(2600, 650 + rs * 0.2 + 700 * st.loadS);
       P(S.lp.frequency, cutHz, 0.06);
-      if (S.lp2) P(S.lp2.frequency, cutHz * 1.25, 0.06);
-      if (S.ripple) {
-        P(S.rippleOsc.frequency, rpm / 30, 0.012);
-        const d = 0.12 + 0.22 * r;                        // глубже на высоких
-        P(S.rippleDepth.gain, d, 0.05);
-        P(S.ripple.gain, 1 - d, 0.05);
-      }
-      // низ: отдельным голосом на всех оборотах, на высоких — чуть меньше
-      // На холостых — втрое слабее: этот голос и поднимал чистую 60 Гц
-      const lowIdle = 0.45 + 0.55 * Math.min(1, Math.max(0, (rpm - 900) / 1300));
-      P(S.low.gain, 1.4 * lowIdle * (1 - 0.2 * r) * (0.75 + 0.25 * st.loadS) * dip * S.mix, 0.06);
-      if (S.burbleSrc) {
-        P(S.burbleSrc.playbackRate, rpm / 900, 0.012);          // огибающая записана для 900
-        // только у холостых: к 1600 об/мин всё «бульканье» уходит, иначе на
-        // ровном ходу его качание громкости звучало как переключения
-        const idle = 1 - Math.min(1, Math.max(0, (rpm - 950) / 650));
-        P(S.burbleDepth.gain, (0.18 + 0.5 * idle) * (1 - 0.4 * st.loadS), 0.06);
-        P(S.mech.gain, (0.1 + 0.05 * st.loadS) * (0.4 + 0.6 * idle) * S.mix, 0.06);
-        P(S.fireCut.frequency, rpm / 15, 0.012);
-        P(S.fireCut.gain, -18 * idle, 0.06);
-        P(S.pulseEnv.playbackRate, rpm / 900, 0.012);
-        P(S.pulse.gain, 4.5 * idle * (0.7 + 0.3 * st.loadS) * dip * S.mix, 0.06);
-      }
+      P(S.lp2.frequency, cutHz * 1.25, 0.06);
+      // холостые: гасим линию вспышек и её 2-ю и 3-ю гармоники (к 1400 — ноль)
+      P(S.fireCut.frequency, rs / 15, 0.02);
+      P(S.fireCut2.frequency, rs / 7.5, 0.02);
+      P(S.fireCut3.frequency, rs / 5, 0.02);
+      P(S.fireCut.gain, -14 * idle, 0.08);
+      P(S.fireCut2.gain, -20 * idle, 0.08);
+      P(S.fireCut3.gain, -18 * idle, 0.08);
+      // низ: на холостых слабее (там и так всё — низ), на средних — полный
+      const lowW = 0.35 + 0.65 * Math.min(1, Math.max(0, (rs - 1000) / 1500));
+      P(S.low.gain, 1.2 * lowW * (1 - 0.25 * rr) * (0.7 + 0.3 * st.loadS) * dip * S.mix, 0.06);
     }
 
     // блоу-офф: сброс газа под наддувом
@@ -527,7 +527,9 @@ export class E63Sound {
     // газ сглажен физикой и падает за несколько кадров, поэтому ловим не
     // «прошлый кадр был под газом», а взведённый флаг
     if (thr > 0.5) st.armed = true;
-    if (st.armed && thr < 0.15) {
+    if (S && S.kind === 'v8') {
+      if (S.burble) this._overrun(S.burble, t, thr, st.rpmS);
+    } else if (st.armed && thr < 0.15) {
       st.armed = false;
       if (rpm > 3000) {
         this.log && this.log.push([t, 'сброс: хлопки']);
@@ -537,7 +539,7 @@ export class E63Sound {
       }
     }
     if (thr > 0.2) st.popUntil = 0;
-    while (thr < 0.15 && t < st.popUntil && st.nextPop < t + 0.05) {
+    while (!(S && S.kind === 'v8') && thr < 0.15 && t < st.popUntil && st.nextPop < t + 0.05) {
       const big = Math.random() < 0.18;
       const left = (st.popUntil - st.nextPop) / 1.5;
       this._pop(big, Math.max(t, st.nextPop),
