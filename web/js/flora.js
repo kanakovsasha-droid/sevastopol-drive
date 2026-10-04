@@ -657,7 +657,7 @@ function nearMaterial() {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true });
   m.customProgramCacheKey = () => 'flora-near-2';
   m.onBeforeCompile = sh => {
-    sh.uniforms.uTime = U.uTime; sh.uniforms.uWind = U.uWind; sh.uniforms.uSeason = ENV.uSeason;
+    sh.uniforms.uTime = U.uTime; sh.uniforms.uWind = U.uWind; sh.uniforms.uSeason = ENV.uSeason; sh.uniforms.uWet = ENV.uWet;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uWind;\nattribute float aLeaf;\nattribute float aDec;\nvarying float vLeaf;\nvarying float vDec;\nvarying float vSeed;\nvarying vec3 vLP;')
       .replace('#include <color_vertex>', `
@@ -695,6 +695,7 @@ function nearMaterial() {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform vec4 uSeason;
+        uniform vec4 uWet;
         varying float vLeaf;
         varying float vDec;
         varying float vSeed;
@@ -740,9 +741,10 @@ function nearMaterial() {
             if (fh(bc + 4.4) > 1.0 - 0.38 * uSeason.w && length(fract(bp) - 0.5) < 0.22) diffuseColor.rgb = vec3(0.93, 0.92, 0.86);
           }
           // снег на верхушках крон и хвое
-          if (uSeason.z > 0.01) {
+          float snz = max(uSeason.z, uWet.x);
+          if (snz > 0.01) {
             float up = dot(normalize(vNormal), normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
-            float sn = uSeason.z * smoothstep(0.35, 0.8, up) * step(0.35, fn(vLP * 4.0));
+            float sn = snz * smoothstep(0.35, 0.8, up) * step(0.35 - 0.2 * uWet.x, fn(vLP * 4.0));
             diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.94), sn * (1.0 - 0.6 * vDec * uSeason.y));
           }
         }`)

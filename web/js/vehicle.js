@@ -232,6 +232,9 @@ export class Car {
     this.inWater = false;
     // ---- телеметрия: приборы, звук, следы шин
     this.rpm = CAR.idle;
+    this.engine = 'on';  // 'on' | 'off' | 'start' — зажигание (toggleEngine)
+    this.weatherGrip = 1;  // сцепление по погоде: снег, мокрый асфальт (main.js из env.js)
+    this._crank = 0;
     this.gear = 1;       // 1..9, −1 задний
     this.slip = [0, 0, 0, 0];         // насколько шина за пиком (>1 — скользит)
     this.gLong = 0; this.gLat = 0;
@@ -331,6 +334,13 @@ export class Car {
     return true;
   }
   toggleDrive() { this.rwd = !this.rwd; return this.rwd; }
+  // Зажигание: заглушить сразу; завести — стартер ~0.6 с, подхват до ~1400
+  // и сход на холостые. Заглушенный мотор не тянет и не тормозит (накат).
+  toggleEngine() {
+    if (this.engine === 'off') { this.engine = 'start'; this._crank = 0; }
+    else this.engine = 'off';
+    return this.engine;
+  }
   // Ручная коробка: передачи только по просьбе (shiftUp / shiftDown), на
   // отсечке мотор упирается в 7000, переключение вверх — без сброса газа
   // (как подрулевыми у AMG: момент рвётся на 0.1 с). Вниз — с перегазовкой,
@@ -625,6 +635,13 @@ export class Car {
     rpm = Math.min(rpm, CAR.redline + 180);
     if (rpm > CAR.redline && this._cutT <= -0.02) this._cutT = 0.045;
     this.limiter = this._cutT > 0 ? 1 : 0;
+    if (this.engine === 'off') rpm = 0;
+    else if (this.engine === 'start') {
+      this._crank += h;
+      const t = this._crank;
+      rpm = t < 0.6 ? 230 + 70 * Math.sin(t * 60) : 230 + (1450 - 230) * Math.min(1, (t - 0.6) / 0.25);
+      if (t > 0.85) this.engine = 'on';
+    }
     this._rpmE = rpm;
     this.rpm = rpm;
     let engT = 0;
@@ -637,6 +654,7 @@ export class Car {
       if (gas < 0.05 && rpmWheels > 1300) engT -= (25 + rpmWheels * 0.009) * (1 - gas * 20);
     }
     if (this.inWater) engT *= 0.25;
+    if (this.engine !== 'on') { engT = 0; this.boost = 0; }
     this.throttle = gas;
     // наддув: набирается за полсекунды, от 1800 об/мин
     this.boost += (gas * clamp((rpm - 1800) / 1800, 0, 1) - this.boost) * Math.min(1, h / (gas > this.boost ? 0.45 : 0.12));
@@ -803,7 +821,7 @@ export class Car {
       const sx = nY * hz - nZ * hy, sy = nZ * hx - nX * hz, sz = nX * hy - nY * hx;   // влево от колеса
       const vl = vx * hx + vy * hy + vz * hz;      // вдоль колеса
       const vt = vx * sx + vy * sy + vz * sz;      // поперёк
-      const grip = (front ? 1 : CAR.rearGrip) * clamp(1 - CAR.loadSens * (fz / this._w0[i] - 1), 0.72, 1.12);
+      const grip = (front ? 1 : CAR.rearGrip) * clamp(1 - CAR.loadSens * (fz / this._w0[i] - 1), 0.72, 1.12) * this.weatherGrip;
       const muX = CAR.muLong * grip, muY = CAR.muLat * grip;
 
       const cp = this.contact[i]; cp[0] = px; cp[1] = py; cp[2] = pz;

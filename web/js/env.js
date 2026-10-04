@@ -27,7 +27,56 @@ export const ENV = {
   uNight:  { value: 0 },                              // 0 — день, 1 — ночь (свет в окнах, фонари)
   uSeason: { value: new THREE.Vector4(0, 0, 0, 0) },  // x — осенний цвет, y — облетело, z — снег, w — весна
   uTime:   { value: 0 },
+  // погода на земле: x — снег на дорогах и газонах (копится в снегопад, тает
+  // после), y — мокрый асфальт (дождь), z, w — запас
+  uWet:    { value: new THREE.Vector4(0, 0, 0, 0) },
+  // ближайшие фонари: xyz — плафон в мире, w — сила (0 — пусто)
+  uLamps:  { value: Array.from({ length: 24 }, () => new THREE.Vector4(0, -1e4, 0, 0)) },
 };
+export const LAMP_N = 24;
+
+// ---------------------------------------------------------------- свет фонарей
+// Настоящий источник света на каждый фонарь — это тысячи источников в каждом
+// шейдере. Вместо этого шейдеры асфальта, тротуаров, фасадов и газонов сами
+// прибавляют тёплое пятно от 24 ближайших плафонов (ENV.uLamps). Список
+// пересобираем раз в треть секунды по положению игрока.
+// registerLamps(mesh, heads): mesh — InstancedMesh фонарей, heads — где у
+// модели плафоны, в её осях ([[x, y, z], …]).
+const lampMeshes = new Set();
+export function registerLamps(mesh, heads) { mesh.userData.lampHeads = heads; lampMeshes.add(mesh); }
+const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _c = new THREE.Vector3();
+let lampT = 0;
+const cand = [];
+function updateLamps(dt, at, night) {
+  if ((lampT -= dt) > 0) return;
+  lampT = 0.33;
+  const L = ENV.uLamps.value;
+  if (night < 0.01) { for (const v of L) v.w = 0; return; }
+  cand.length = 0;
+  for (const mesh of lampMeshes) {
+    // выгруженный квартал: меша больше нет в сцене — забываем
+    let o = mesh; while (o.parent) o = o.parent;
+    if (!o.isScene) { lampMeshes.delete(mesh); continue; }
+    if (!mesh.boundingSphere) mesh.computeBoundingSphere();
+    _c.copy(mesh.boundingSphere.center).applyMatrix4(mesh.matrixWorld);
+    if (_c.distanceTo(at) > mesh.boundingSphere.radius + 120) continue;
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, _m);
+      _m.premultiply(mesh.matrixWorld);
+      for (const h of mesh.userData.lampHeads) {
+        _p.set(h[0], h[1], h[2]).applyMatrix4(_m);
+        const d = _p.distanceToSquared(at);
+        if (d < 120 * 120) cand.push(d, _p.x, _p.y, _p.z);
+      }
+    }
+  }
+  // 24 ближайших
+  const n = cand.length / 4, idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => cand[a * 4] - cand[b * 4]);
+  for (let k = 0; k < L.length; k++) {
+    if (k < n) { const i = idx[k] * 4; L[k].set(cand[i + 1], cand[i + 2], cand[i + 3], 4.5); }
+    else L[k].set(0, -1e4, 0, 0);
+  }
+}
 
 const LAT = 44.6 * Math.PI / 180;
 const LON = 33.52;                    // градусы, восток
@@ -71,6 +120,8 @@ export const WEATHER = {
   cloudy:   { name: 'Облачно',      cloud: 0.58, sun: 0.75, sky: 1.08, fog: 1.3, grey: 0.22 },
   overcast: { name: 'Пасмурно',     cloud: 0.96, sun: 0.16, sky: 1.25, fog: 1.9, grey: 0.72 },
   fog:      { name: 'Туман',        cloud: 0.80, sun: 0.38, sky: 1.15, fog: 6.0, grey: 0.55 },
+  rain:     { name: 'Дождь',        cloud: 0.98, sun: 0.10, sky: 1.20, fog: 2.6, grey: 0.80, precip: 'rain' },
+  snow:     { name: 'Снегопад',     cloud: 0.98, sun: 0.14, sky: 1.30, fog: 3.2, grey: 0.78, precip: 'snow' },
 };
 // День года, которым изображается сезон, если он выбран вручную.
 export const SEASONS = {
@@ -254,6 +305,12 @@ export class Environment {
     if (!WEATHER[this.cfg.weather]) this.cfg.weather = 'clear';
     if (!SEASONS[this.cfg.season]) this.cfg.season = 'auto';
     this.w = { ...WEATHER[this.cfg.weather] };   // текущая погода, плавно идёт к выбранной
+    this.precip = 0;                       // сила осадков сейчас, 0..1
+    // Снег и лужи копятся со временем. Заданные в адресе (?weather=snow) или
+    // сохранённые с прошлого раза — сразу, чтобы не ждать пару минут.
+    const wet = ENV.uWet.value, P = WEATHER[this.cfg.weather].precip;
+    wet.set(P === 'snow' ? 1 : s.snowCover ?? 0, P === 'rain' ? 1 : s.wet ?? 0, 0, 0);
+    this.precip = P ? 1 : 0;
     this.dir = new THREE.Vector3();        // на солнце
     this.moon = new THREE.Vector3();
     this.light = new THREE.Vector3();      // откуда сейчас светит направленный свет
@@ -265,7 +322,8 @@ export class Environment {
     this.update(0);
   }
 
-  save() { ls.set(KEY, JSON.stringify(this.cfg)); }
+  save() { ls.set(KEY, JSON.stringify({ ...this.cfg, snowCover: ENV.uWet.value.x, wet: ENV.uWet.value.y })); }
+  get precipKind() { return WEATHER[this.cfg.weather].precip || this._lastPrecip || null; }
   onChange(fn) { this.listeners.add(fn); }
   _emit() { for (const f of this.listeners) f(this); }
 
@@ -306,6 +364,17 @@ export class Environment {
     const W = WEATHER[c.weather], k = dt ? 1 - Math.exp(-dt * 0.8) : 1;
     for (const key of ['cloud', 'sun', 'sky', 'fog', 'grey']) this.w[key] += (W[key] - this.w[key]) * k;
     const w = this.w;
+
+    // осадки: нарастают и стихают за несколько секунд; снег на земле копится
+    // минуты две и тает минут пять, лужи — быстрее
+    const P = W.precip;
+    if (P) this._lastPrecip = P;
+    this.precip += ((P ? 1 : 0) - this.precip) * (dt ? 1 - Math.exp(-dt * 0.5) : 1);
+    const wet = ENV.uWet.value;
+    if (dt) {
+      wet.x = clamp(wet.x + (P === 'snow' ? dt / 120 : -dt / 300), 0, 1);
+      wet.y = clamp(wet.y + (P === 'rain' ? dt / 40 : -dt / 150) - (P === 'snow' ? dt / 60 : 0), 0, 1);
+    }
 
     const doy = this.doy;
     sunDirection(doy, c.hour, this.dir);
@@ -382,6 +451,7 @@ export class Environment {
     // ---- ночь для окон и фонарей: зажигаются в сумерках постепенно
     this.night = smooth(4, -7, e) * (0.75 + 0.25 * (1 - w.sun)) + w.grey * 0.12 * smooth(30, 5, e);
     ENV.uNight.value = clamp(this.night, 0, 1);
+    if (target) updateLamps(dt || 1, target, ENV.uNight.value);
     // сколько дневного света: отражения на кузове и прочее, что светит небом
     this.day = smooth(-6, 12, e) * (0.4 + 0.6 * w.sun);
   }
