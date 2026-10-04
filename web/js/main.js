@@ -18,6 +18,7 @@ import { Collider, RoadIndex } from './collision.js?v=e5a5d2b1';
 import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=e5a5d2b1';
 import { CarFX } from './carfx.js?v=e5a5d2b1';
 import { precompile } from './warm.js?v=e5a5d2b1';
+import { Gamepad } from './gamepad.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -121,6 +122,7 @@ const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
 const CAM_MODES = ['за машиной', 'ближе', 'с капота', 'сверху'];
 const keys = new Set();
 let pointerLocked = false;
+let pad = null;                                // геймпад (gamepad.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -264,6 +266,7 @@ async function boot() {
     window.G.counts = counts;
     window.G.flora = floraStats;
     window.G.loopProf = loopProf;
+    window.G.pad = pad;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
     console.log(`до старта ${window.G.boot} мс, чанков в манифесте ${chunks.cells.size}`);
@@ -1222,22 +1225,32 @@ function bindInput() {
     pointerLocked = document.pointerLockElement === renderer.domElement;
   });
   addEventListener('mousemove', e => {
-    if (!pointerLocked) return;
-    if (mode === 'fly') {
-      fly.yaw -= e.movementX * 0.0022;
-      fly.pitch = clamp(fly.pitch - mouseY(e.movementY) * 0.0022, -1.52, 1.52);
-    } else if (mode === 'walk') {
-      walk.yaw -= e.movementX * 0.0022;
-      walk.pitch = clamp(walk.pitch - mouseY(e.movementY) * 0.0022, -1.35, 1.35);
-    } else {
-      // Шаг 2-3 спецификации: смещение мыши × чувствительность → углы.
-      // X крутит вокруг мировой оси Y, Y наклоняет по дуге.
-      // Знак Y: мышь вперёд (movementY < 0) должна ПОДНИМАТЬ взгляд, то есть
-      // опускать камеру по дуге — значит pitch убывает. Отсюда плюс.
-      cam.yaw = wrapPi(cam.yaw - e.movementX * CAM_SENS);
-      cam.pitch = clamp(cam.pitch + mouseY(e.movementY) * CAM_SENS, PITCH_MIN, PITCH_MAX);
-    }
+    if (pointerLocked) lookBy(e.movementX, mouseY(e.movementY));
   });
+  // Геймпад: кнопки он сам шлёт как клавиши, оси забирает цикл (loop).
+  pad = new Gamepad({
+    mode: () => mode,
+    overlay: () => document.querySelector('#settings.on') || document.querySelector('#menu.on'),
+    toast: t => hud?.toast(t),
+  });
+}
+
+// Обзор: смещение «в пикселях мыши» — от мыши и от правого стика геймпада.
+function lookBy(dx, dy) {
+  if (mode === 'fly') {
+    fly.yaw -= dx * 0.0022;
+    fly.pitch = clamp(fly.pitch - dy * 0.0022, -1.52, 1.52);
+  } else if (mode === 'walk') {
+    walk.yaw -= dx * 0.0022;
+    walk.pitch = clamp(walk.pitch - dy * 0.0022, -1.35, 1.35);
+  } else {
+    // Шаг 2-3 спецификации: смещение мыши × чувствительность → углы.
+    // X крутит вокруг мировой оси Y, Y наклоняет по дуге.
+    // Знак Y: мышь вперёд (movementY < 0) должна ПОДНИМАТЬ взгляд, то есть
+    // опускать камеру по дуге — значит pitch убывает. Отсюда плюс.
+    cam.yaw = wrapPi(cam.yaw - dx * CAM_SENS);
+    cam.pitch = clamp(cam.pitch + dy * CAM_SENS, PITCH_MIN, PITCH_MAX);
+  }
 }
 
 // клик по карте — переехать в эту точку
@@ -1610,16 +1623,26 @@ function loop(now) {
   const wu = water?.material?.userData?.uniforms;
   if (wu) wu.uTime.value = now / 1000;
 
+  pad?.poll(dt);
   if (mode === 'car') {
-    const menuOpen = $('menu').classList.contains('on');
-    car.update(dt, {
+    const menuOpen = $('menu').classList.contains('on') || !!document.querySelector('#settings.on');
+    const input = {
       throttle: menuOpen ? 0 : (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0),
       steer: menuOpen ? 0 : (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0),
       handbrake: !menuOpen && keys.has('Space'),
       // педали порознь: газ с тормозом вместе на месте — бёрнаут
       gas: !menuOpen && (keys.has('KeyW') || keys.has('ArrowUp')),
       brake: !menuOpen && (keys.has('KeyS') || keys.has('ArrowDown')),
-    });
+    };
+    // Геймпад: курки и стик плавные. Клавиша, нажатая поверх, главнее.
+    const p = menuOpen ? null : pad?.car();
+    if (p) {
+      if (!input.throttle && p.pedals) input.throttle = p.throttle;
+      if (!input.steer) input.steer = p.steer;
+      input.gas ||= p.gas; input.brake ||= p.brake;
+    }
+    car.update(dt, input);
+    pad?.feel(dt, car);
   } else if (mode === 'fly') {
     if (!$('menu').classList.contains('on')) updateFly(dt);
   } else if (!$('menu').classList.contains('on')) {
@@ -1669,6 +1692,8 @@ function loop(now) {
   sun.position.copy(t).addScaledVector(SUN, 420);
   sky.position.copy(camera.position);
 
+  const lk = !$('menu').classList.contains('on') && !document.querySelector('#settings.on') && pad?.look(dt);
+  if (lk) lookBy(lk.dx, lk.dy);
   updateCamera(dt);
   lt('камера');
   updateHUD(dt);
