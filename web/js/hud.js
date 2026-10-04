@@ -1,5 +1,5 @@
-import { drawMini } from './minimap.js?v=6d78c889';
-import { CarFX } from './carfx.js?v=6d78c889';
+import { drawMini } from './minimap.js?v=d8230200';
+import { CarFX } from './carfx.js?v=d8230200';
 
 // Интерфейс поверх игры — вариант A «Циферблат» (утверждён владельцем):
 //   • справа снизу круглый прибор: обороты дугой со шкалой 0–8 и красной
