@@ -270,9 +270,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const a = process.argv.slice(2);
   const bi = a.indexOf('--base');
   const baseDir = bi >= 0 ? a[bi + 1] : null;
-  const cur = a.find((x, i) => !x.startsWith('--') && a[i - 1] !== '--base');
-  if (!cur) { console.log('node tools/qa-report.mjs <каталог прогона> [--base <каталог прогона до>]'); process.exit(1); }
-  const cmp = writeReport(cur, baseDir, join(cur, 'report.html'));
+  const oi = a.indexOf('--out');
+  const cur = a.find((x, i) => !x.startsWith('--') && a[i - 1] !== '--base' && a[i - 1] !== '--out');
+  if (!cur) { console.log('node tools/qa-report.mjs <каталог прогона> [--base <каталог прогона до>] [--out файл.html]'); process.exit(1); }
+  const outFile = oi >= 0 ? a[oi + 1] : join(cur, 'report.html');
+  const cmp = writeReport(cur, baseDir, outFile);
   console.log(JSON.stringify(cmp.total));
-  console.log('отчёт: ' + join(cur, 'report.html'));
+  console.log('отчёт: ' + outFile);
 }
