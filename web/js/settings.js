@@ -139,7 +139,8 @@ export class Settings {
       <h3>Системы</h3>
       ${check('abs', 'ABS', 'выключена — при торможении в пол колёса блокируются, руль не слушается')}
       ${check('asr', 'ASR — антипробуксовка', 'в ESP OFF выключена всегда')}
-      ${check('launch', 'Race Start — лаунч-контроль', 'на месте, в D, ESP SPORT или OFF: тормоз и газ в пол — обороты встают на 3300; отпусти тормоз')}`;
+      ${check('launch', 'Race Start — лаунч-контроль', 'на месте, в D: тормоз и газ в пол — обороты встают на 3300, на приборе RACE START; отпусти тормоз — старт. ESP ON на время старта сам встаёт в SPORT. Выключен — газ с тормозом просто держат машину')}
+      <div class="sub">Бёрнаут — Space (ручник) + газ на месте: задние буксуют, передние держит тормоз, на 4MATIC тоже. На ручной коробке — газ с тормозом.</div>`;
     s.querySelectorAll('[data-esp]').forEach(b => b.addEventListener('click', () => { a.setEsp(b.dataset.esp); this.render(); }));
     s.querySelectorAll('input[type=checkbox]').forEach(i => i.addEventListener('change', () => a.set(i.dataset.k, i.checked)));
   }
@@ -260,7 +261,7 @@ export class Settings {
       <table>${ACTIONS.map(a => `<tr><td>${a.name}</td><td><button data-bind="${a.id}">${p.btnName(a.id)}</button></td></tr>`).join('')}</table>
       <div class="row" style="margin-top:10px"><button data-reset="1">Вернуть раскладку по умолчанию</button></div>
       <h3>Клавиатура</h3>
-      <div class="sub">WASD — ехать · Space — ручник · E — выйти · C — камера · R — на дорогу · F — полёт · Tab — карта · M — места ·
+      <div class="sub">WASD — ехать · Space — ручник (Space + W на месте — бёрнаут) · W+S на месте — Race Start · E — выйти · C — камера · R — на дорогу · F — полёт · Tab — карта · M — места ·
         O — гараж · G — автомат/ручная, Shift/Q — передачи · 1–4 / Y — режим езды · U — ESP (держать — OFF) · L — свет · Z — завести/заглушить · V — камера за корму · Esc — пауза · T — настройки · [ ] — время · ? — все клавиши</div>`;
     this._padStatus();
     for (const k of ['scheme', 'layout']) s.querySelectorAll(`[data-${k}]`).forEach(b => b.addEventListener('click', () => {

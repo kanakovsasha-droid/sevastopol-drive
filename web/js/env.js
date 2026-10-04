@@ -23,6 +23,7 @@ import * as THREE from 'three';
 // Кипарисы, сосны, туи и ели вечнозелёные в любой сезон.
 
 // Общие uniform-ы для материалов: подключаются в onBeforeCompile.
+export const LAMP_N = 64;     // фонарей, что светят на землю (пятна в шейдерах)
 export const ENV = {
   uNight:  { value: 0 },                              // 0 — день, 1 — ночь (свет в окнах, фонари)
   uSeason: { value: new THREE.Vector4(0, 0, 0, 0) },  // x — осенний цвет, y — облетело, z — снег, w — весна
@@ -30,53 +31,172 @@ export const ENV = {
   // погода на земле: x — снег на дорогах и газонах (копится в снегопад, тает
   // после), y — мокрый асфальт (дождь), z, w — запас
   uWet:    { value: new THREE.Vector4(0, 0, 0, 0) },
-  // ближайшие фонари: xyz — плафон в мире, w — сила (0 — пусто)
-  uLamps:  { value: Array.from({ length: 24 }, () => new THREE.Vector4(0, -1e4, 0, 0)) },
+  // ближайшие фонари: xyz — плафон в мире (у лиры два плафона — один центр),
+  // w — сила (0 — пусто)
+  uLamps:  { value: Array.from({ length: LAMP_N }, () => new THREE.Vector4(0, -1e4, 0, 0)) },
+  // круг, в котором фонари светят на землю: xyz — центр (игрок), w — радиус;
+  // к краю пятна плавно гаснут, поэтому фонарь не «включается» при подъезде
+  uLampC:  { value: new THREE.Vector4(0, 0, 0, 110) },
   // поздний час: 0 — вечер (до 22:30), 1 — глубокая ночь (2:30–5:00), к утру
   // обратно; по нему в окнах гаснет свет — к трём часам горит мало
   uLate:   { value: 0 },
 };
-export const LAMP_N = 24;
 
 // ---------------------------------------------------------------- свет фонарей
-// Настоящий источник света на каждый фонарь — это тысячи источников в каждом
-// шейдере. Вместо этого шейдеры асфальта, тротуаров, фасадов и газонов сами
-// прибавляют тёплое пятно от 24 ближайших плафонов (ENV.uLamps). Список
-// пересобираем раз в треть секунды по положению игрока.
+// Ночью фонарь — это три вещи, и все три должны гореть у каждого фонаря в
+// поле зрения, а не только у тех, к которым подъехал:
+//   • плафон — стекло в модели светится само (lampGlow ниже), у всех сразу;
+//   • ореол — тёплое пятно вокруг плафона, видно и за километр, когда сам
+//     фонарь уже доли пикселя (а дальше 400 м его модель и не рисуется).
+//     Все ореолы города — один вызов отрисовки: квадраты-«спрайты» одного
+//     InstancedBufferGeometry, повёрнутые к камере в вершинном шейдере;
+//   • пятно света на земле и стенах. Настоящий источник на каждый фонарь —
+//     тысячи источников в каждом шейдере. Вместо этого шейдеры асфальта,
+//     тротуаров, фасадов и газонов сами прибавляют тёплое пятно от LAMP_N
+//     ближайших плафонов (ENV.uLamps). К краю круга ENV.uLampC пятна плавно
+//     гаснут — раньше выбирались 24 ближайших с полной силой, и пятно
+//     «включалось», когда фонарь попадал в список.
 // registerLamps(mesh, heads): mesh — InstancedMesh фонарей, heads — где у
 // модели плафоны, в её осях ([[x, y, z], …]).
 const lampMeshes = new Set();
 export function registerLamps(mesh, heads) { mesh.userData.lampHeads = heads; lampMeshes.add(mesh); }
-const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _c = new THREE.Vector3();
-let lampT = 0;
+const _m = new THREE.Matrix4(), _p = new THREE.Vector3();
+const HALO_MAX = 16384;     // ореолов разом (плафонов в круге HALO_R)
+const HALO_R = 1500;        // м: дальше ореол сходит на нет
+const POOL_MAX = 110;       // м: радиус круга, где фонари светят на землю
+const POOL_GAP = 28;        // м запаса на выбор: игрок едет между пересборками
+let lampT = 0, poolGoal = POOL_MAX;
 const cand = [];
-function updateLamps(dt, at, night) {
+let halo = null;
+
+// Плафоны меша в мире — один раз: кварталы стоят на месте. heads — каждый
+// плафон (ореол), pools — центры пятен: два плафона лиры в полутора метрах
+// друг от друга светят одним пятном двойной силы, это бережёт места в списке.
+function lampCache(mesh) {
+  if (mesh.userData.lampCache) return mesh.userData.lampCache;
+  mesh.updateWorldMatrix(true, false);
+  if (!mesh.boundingSphere) mesh.computeBoundingSphere();
+  const H = mesh.userData.lampHeads, heads = [], pools = [], loc = [];
+  for (let i = 0; i < mesh.count; i++) {
+    mesh.getMatrixAt(i, _m);
+    _m.premultiply(mesh.matrixWorld);
+    loc.length = 0;
+    let cx = 0, cy = 0, cz = 0;
+    for (const h of H) {
+      _p.set(h[0], h[1], h[2]).applyMatrix4(_m);
+      heads.push(_p.x, _p.y, _p.z); loc.push(_p.x, _p.y, _p.z);
+      cx += _p.x; cy += _p.y; cz += _p.z;
+    }
+    cx /= H.length; cy /= H.length; cz /= H.length;
+    let spread = 0;
+    for (let k = 0; k < loc.length; k += 3) spread = Math.max(spread, Math.hypot(loc[k] - cx, loc[k + 2] - cz));
+    if (spread < 2) pools.push(cx, cy, cz, H.length);
+    else for (let k = 0; k < loc.length; k += 3) pools.push(loc[k], loc[k + 1], loc[k + 2], 1);
+  }
+  const c = mesh.boundingSphere.center.clone().applyMatrix4(mesh.matrixWorld);
+  return mesh.userData.lampCache = { heads: new Float32Array(heads), pools: new Float32Array(pools), cx: c.x, cz: c.z, r: mesh.boundingSphere.radius };
+}
+
+// Ореол: квадрат к камере, тёплый гаусс. Радиус растёт с расстоянием, чтобы
+// и вдали остаться в 3–4 пикселя; вблизи — полметра вокруг стекла и слабее,
+// там светит сам плафон. Квадрат сдвинут к камере, чтобы стекло его не резало.
+// Туман — как у сцены (FogExp2), к HALO_R ореол сходит на нет.
+function makeHalo() {
+  const g = new THREE.InstancedBufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  const a = new THREE.InstancedBufferAttribute(new Float32Array(HALO_MAX * 3), 3);
+  a.setUsage(THREE.DynamicDrawUsage);
+  g.setAttribute('aLamp', a);
+  g.instanceCount = 0;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uNight: ENV.uNight, uFog: { value: 0.00031 } },
+    vertexShader: `
+      attribute vec3 aLamp;
+      uniform float uNight, uFog;
+      varying vec2 vUv;
+      varying float vA;
+      void main() {
+        vec4 c = viewMatrix * vec4(aLamp, 1.0);
+        float d = -c.z;
+        float r = max(0.6, d * 0.0045);
+        c.xyz += normalize(-c.xyz) * clamp(d * 0.3, 0.0, 0.7);
+        c.xy += position.xy * r;
+        vUv = position.xy;
+        float fog = exp(-uFog * uFog * d * d);
+        vA = uNight * fog * mix(0.35, 1.0, smoothstep(15.0, 220.0, d)) * (1.0 - smoothstep(${(HALO_R * 0.7).toFixed(1)}, ${HALO_R.toFixed(1)}, d));
+        gl_Position = projectionMatrix * c;
+      }`,
+    fragmentShader: `
+      varying vec2 vUv;
+      varying float vA;
+      void main() {
+        float q = dot(vUv, vUv);
+        if (q > 1.0 || vA < 0.003) discard;
+        float g = exp(-q * 5.0) - 0.0067;
+        gl_FragColor = vec4(vec3(1.0, 0.80, 0.55) * g * vA * 1.5, 1.0);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const m = new THREE.Mesh(g, mat);
+  m.frustumCulled = false;
+  m.renderOrder = 3;
+  m.name = 'фонари: ореолы';
+  return m;
+}
+
+function updateLamps(dt, at, night, scene) {
+  const C = ENV.uLampC.value;
+  C.x = at.x; C.y = at.y; C.z = at.z;
+  // круг пятен: сжимается сразу (иначе на краю окажутся не выбранные),
+  // растёт плавно
+  C.w = poolGoal < C.w ? poolGoal : C.w + (poolGoal - C.w) * Math.min(1, dt * 1.5);
+  if (halo) halo.visible = night > 0.01;
   if ((lampT -= dt) > 0) return;
-  lampT = 0.33;
+  lampT = 0.3;
   const L = ENV.uLamps.value;
   if (night < 0.01) { for (const v of L) v.w = 0; return; }
+  if (!halo && scene) { halo = makeHalo(); scene.add(halo); }
+  if (halo && scene?.fog) halo.material.uniforms.uFog.value = scene.fog.density;
+  const hb = halo ? halo.geometry.attributes.aLamp.array : null;
+  let nh = 0;
   cand.length = 0;
+  const sel = POOL_MAX + POOL_GAP;
   for (const mesh of lampMeshes) {
     // выгруженный квартал: меша больше нет в сцене — забываем
     let o = mesh; while (o.parent) o = o.parent;
     if (!o.isScene) { lampMeshes.delete(mesh); continue; }
-    if (!mesh.boundingSphere) mesh.computeBoundingSphere();
-    _c.copy(mesh.boundingSphere.center).applyMatrix4(mesh.matrixWorld);
-    if (_c.distanceTo(at) > mesh.boundingSphere.radius + 120) continue;
-    for (let i = 0; i < mesh.count; i++) {
-      mesh.getMatrixAt(i, _m);
-      _m.premultiply(mesh.matrixWorld);
-      for (const h of mesh.userData.lampHeads) {
-        _p.set(h[0], h[1], h[2]).applyMatrix4(_m);
-        const d = _p.distanceToSquared(at);
-        if (d < 120 * 120) cand.push(d, _p.x, _p.y, _p.z);
+    const c = lampCache(mesh);
+    const dc = Math.hypot(c.cx - at.x, c.cz - at.z) - c.r;
+    if (dc > HALO_R) continue;
+    if (hb) {
+      const h = c.heads;
+      for (let k = 0; k < h.length && nh < HALO_MAX; k += 3) {
+        const dx = h[k] - at.x, dz = h[k + 2] - at.z;
+        if (dx * dx + dz * dz > HALO_R * HALO_R) continue;
+        hb[nh * 3] = h[k]; hb[nh * 3 + 1] = h[k + 1]; hb[nh * 3 + 2] = h[k + 2];
+        nh++;
       }
     }
+    if (dc > sel) continue;
+    const p = c.pools;
+    for (let k = 0; k < p.length; k += 4) {
+      const dx = p[k] - at.x, dz = p[k + 2] - at.z, d = dx * dx + dz * dz;
+      if (d < sel * sel) cand.push(d, p[k], p[k + 1], p[k + 2], p[k + 3]);
+    }
   }
-  // 24 ближайших
-  const n = cand.length / 4, idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => cand[a * 4] - cand[b * 4]);
+  if (halo) {
+    halo.geometry.instanceCount = nh;
+    const a = halo.geometry.attributes.aLamp;
+    a.clearUpdateRanges(); a.addUpdateRange(0, nh * 3); a.needsUpdate = true;
+  }
+  // LAMP_N ближайших. Если в круге их больше — круг сжимается так, чтобы
+  // все, кто в нём светит, попали в список (с запасом на ход до пересборки).
+  const n = cand.length / 5, idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => cand[a * 5] - cand[b * 5]);
+  poolGoal = n > L.length ? Math.max(30, Math.min(POOL_MAX, Math.sqrt(cand[idx[L.length] * 5]) - POOL_GAP)) : POOL_MAX;
+  if (halo) halo.userData.stats = { ореолов: nh, 'фонарей у игрока': n, 'радиус пятен': Math.round(poolGoal) };   // для G.scene
   for (let k = 0; k < L.length; k++) {
-    if (k < n) { const i = idx[k] * 4; L[k].set(cand[i + 1], cand[i + 2], cand[i + 3], 4.5); }
+    if (k < n) { const i = idx[k] * 5; L[k].set(cand[i + 1], cand[i + 2], cand[i + 3], 4.5 * cand[i + 4]); }
     else L[k].set(0, -1e4, 0, 0);
   }
 }
@@ -476,7 +596,7 @@ export class Environment {
     // ---- ночь для окон и фонарей: зажигаются в сумерках постепенно
     this.night = smooth(4, -7, e) * (0.75 + 0.25 * (1 - w.sun)) + w.grey * 0.12 * smooth(30, 5, e);
     ENV.uNight.value = clamp(this.night, 0, 1);
-    if (target) updateLamps(dt || 1, target, ENV.uNight.value);
+    if (target) updateLamps(dt || 1, target, ENV.uNight.value, this.scene);
     {
       const h = c.hour;
       ENV.uLate.value = h >= 12 ? smooth(22.5, 26.5, h) : h < 5 ? smooth(-1.5, 2.5, h) : 1 - smooth(5, 7, h);

@@ -75,13 +75,44 @@ const out = await page.evaluate(() => {
       slipFirst2sPct: r2(sumSlip / Math.max(1, n) * 100, 1), maxSlipPct: r2(maxSlip * 100, 0) };
   }
 
-  // ---- 3. 4MATIC: газ с тормозом на месте без лаунча (ESP ON) — стоит?
-  {
-    const car = mk({ esp: 'on' }), s = rig(car);
+  // ---- 2б. Race Start при ESP ON (в игре assists.js на время старта ставит
+  // SPORT; здесь ESP остаётся ON — проверяем, что лаунч взводится и стартует)
+  for (const rwd of [false, true]) {
+    const car = mk({ esp: 'on', launch: true }, rwd), s = rig(car);
     for (let i = 0; i < 30; i++) s.step({});
     const z0 = car.pos.z; let rpm = 0, n = 0;
-    for (let i = 0; i < 180; i++) { s.step({ throttle: 1, gas: true, brake: true }); if (i > 60) { rpm += car.rpm; n++; } }
-    res.awdBrakeGasHold = { movedMm: r2(Math.abs(car.pos.z - z0) * 1000, 0), rpm: r2(rpm / n, 0), launch: car.launch };
+    for (let i = 0; i < 150; i++) { s.step({ throttle: 1, gas: true, brake: true }); if (i > 60) { rpm += car.rpm; n++; } }
+    const armed = car.launch, moved = Math.abs(car.pos.z - z0);
+    s.step({ throttle: 1, gas: true });
+    const go = car.launch, t0 = s.t; let t100 = null;
+    while (s.t < t0 + 12 && t100 === null) { s.step({ throttle: 1, gas: true }); if (s.v * KMH >= 100) t100 = s.t - t0; }
+    res[(rwd ? 'rwd' : 'awd') + 'LaunchEspOn'] = { armed, go, armRpm: r2(rpm / n, 0), movedWhileArmedMm: r2(moved * 1000, 0), t100: r2(t100) };
+  }
+
+  // ---- 3. газ с тормозом на месте без лаунча (выключен в настройках) —
+  // стоит на любом приводе, бёрнаута нет
+  for (const rwd of [false, true]) {
+    const car = mk({ esp: 'on', launch: false }, rwd), s = rig(car);
+    for (let i = 0; i < 30; i++) s.step({});
+    const z0 = car.pos.z; let rpm = 0, n = 0, sv = 0;
+    for (let i = 0; i < 180; i++) { s.step({ throttle: 1, gas: true, brake: true }); if (i > 60) { rpm += car.rpm; n++; sv += (car.slipVel[2] + car.slipVel[3]) / 2; } }
+    res[(rwd ? 'rwd' : 'awd') + 'BrakeGasHold'] = { movedMm: r2(Math.abs(car.pos.z - z0) * 1000, 0), rpm: r2(rpm / n, 0), launch: car.launch, burnout: car.burnout, rearSlipMs: r2(sv / n, 1) };
+  }
+
+  // ---- 3б. бёрнаут: ручник + газ на месте (автомат). Задние буксуют,
+  // передние держит тормоз, машина стоит; отпустил ручник — уходит.
+  for (const rwd of [false, true]) for (const esp of ['on', 'off']) {
+    const car = mk({ esp }, rwd), s = rig(car);
+    for (let i = 0; i < 30; i++) s.step({});
+    const z0 = car.pos.z; let n = 0, sv = 0, rpm = 0, fr = 0, burn = 0;
+    for (let i = 0; i < 240; i++) {
+      s.step({ throttle: 1, gas: true, handbrake: true });
+      if (i > 60) { n++; sv += (car.slipVel[2] + car.slipVel[3]) / 2; rpm = Math.max(rpm, car.rpm); fr = Math.max(fr, Math.abs(car._om[0])); burn += car.burnout ? 1 : 0; }
+    }
+    const moved = Math.abs(car.pos.z - z0);
+    const t0 = s.t; let t50 = null;
+    while (s.t < t0 + 6 && t50 === null) { s.step({ throttle: 1, gas: true }); if (s.v * KMH >= 50) t50 = s.t - t0; }
+    res[(rwd ? 'rwd' : 'awd') + 'Burnout_' + esp] = { burnoutPct: r2(100 * burn / n, 0), movedM: r2(moved, 2), rearSlipMs: r2(sv / n, 1), frontWheelRad: r2(fr, 2), rpmMax: Math.round(rpm), t0to50afterRelease: r2(t50) };
   }
 
   // ---- 4. занос газом в повороте на 50 км/ч (руль до упора, газ в пол 3 с),

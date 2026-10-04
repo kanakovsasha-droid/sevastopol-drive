@@ -1626,7 +1626,7 @@ function loop(now) {
       throttle: menuOpen ? 0 : (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0),
       steer: menuOpen ? 0 : (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0),
       handbrake: !menuOpen && keys.has('Space'),
-      // педали порознь: газ с тормозом вместе на месте — бёрнаут
+      // педали порознь: газ с тормозом на месте — Race Start, ручник с газом — бёрнаут
       gas: !menuOpen && (keys.has('KeyW') || keys.has('ArrowUp')),
       brake: !menuOpen && (keys.has('KeyS') || keys.has('ArrowDown')),
     };

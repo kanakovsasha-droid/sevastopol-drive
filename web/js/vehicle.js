@@ -561,19 +561,22 @@ export class Car {
     const speed = Math.hypot(v[0], v[1], v[2]);
 
     // ---- ввод: W — газ, S — тормоз, а с места — задний ход. Если main.js
-    // передаёт педали отдельно (gas / brake), газ с тормозом вместе на месте —
-    // бёрнаут: передние держит тормоз, задние буксуют.
+    // передаёт педали отдельно (gas / brake): в игре (есть car.assist) на
+    // автомате бёрнаут — ручник + газ на месте, газ с тормозом — только лаунч
+    // или упор; на ручной и на стенде без помощников бёрнаут — газ с тормозом.
+    // Передние держит тормоз (и на 4MATIC), задние буксуют.
     const thr = clamp(input.throttle || 0, -1, 1);
     const drive = this.mode === 'D';
     let gasT = 0, brakeT = 0, wantRev = this.gear < 0;
     const both = !!(input.gas && input.brake);
-    // Race Start (лаунч-контроль AMG): на месте, в D, ESP Sport или Off —
-    // тормоз в пол и газ в пол: мотор встаёт на LAUNCH_RPM, машина стоит.
-    // Отпустил тормоз — старт: маховик сбрасывается в трансмиссию, а
-    // проскальзывание ведущих держится у пика (ниже, в цикле колёс).
+    // Race Start (лаунч-контроль AMG): на месте, в D — тормоз в пол и газ в
+    // пол: мотор встаёт на LAUNCH_RPM, машина стоит. ESP ON на время старта
+    // сам встаёт в Sport (assists.js). Отпустил тормоз — старт: маховик
+    // сбрасывается в трансмиссию, а проскальзывание ведущих держится у пика
+    // (ниже, в цикле колёс).
     const A = this.assist, still = speed < 0.6;
     if (A && drive && !this.manual && this.engine === 'on') {
-      const can = A.launch && A.esp !== 'on';
+      const can = A.launch;
       if (both && still && can) this.launch = 'armed';
       else if (this.launch === 'armed') {
         this.launch = input.gas && !input.brake ? 'go' : null;
@@ -587,9 +590,12 @@ export class Car {
     // Тормоз держит машину: в лаунче и на полном приводе при газе с тормозом
     // на месте (раньше 4MATIC так ползла вперёд). Момент на колёса не идёт —
     // мотор упирается в гидротрансформатор, обороты — его «стоп».
-    const holdBoth = this.launch === 'armed' || (!!A && both && still && drive && !this.rwd);
+    // На автомате в игре газ с тормозом держит машину на любом приводе.
+    const autoBox = !!A && !this.manual;
+    const holdBoth = this.launch === 'armed' || (!!A && both && still && drive && (autoBox || !this.rwd));
     this.braceHold = holdBoth;
-    const burn = both && drive && speed < 4 && !holdBoth;  // стоя на заднем — сперва включится D
+    const handGas = !!input.handbrake && !input.brake && (!!input.gas || thr > 0);
+    const burn = (autoBox ? handGas : both) && drive && speed < 4 && !holdBoth;  // стоя на заднем — сперва включится D
     this.burnout = burn;
     if (burn || holdBoth) { gasT = 1; brakeT = 1; wantRev = false; }
     else if (both) brakeT = 1;
@@ -619,7 +625,7 @@ export class Car {
     // Без газа на малом ходу автомат сам придерживает машину: иначе после
     // тычка по газу она катится ещё полминуты, а встать можно только тормозом.
     const brake = Math.max(this._brake, gas < 0.02 ? 0.10 * clamp(1 - speed / 3, 0, 1) : 0);
-    const hand = !!input.handbrake;
+    const hand = !!input.handbrake && !burn;     // в бёрнауте ручник — только кнопка, задние крутятся
 
     // ---- руль. Упор зависит от скорости: до угла, который даёт steerLatG
     // бокового, плюс запас на увод шин. Иначе клавиша «до упора» на трассе

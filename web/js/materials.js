@@ -37,6 +37,7 @@ float band(float x, float c, float hw){
 const SEASON = `
 uniform float uNight;
 uniform vec4 uLamps[${LAMP_N}];
+uniform vec4 uLampC;     // круг пятен фонарей: xz — центр, w — радиус (env.js)
 varying vec3 vLampP;
 uniform float uLate;      // поздний час (env.js): к глубокой ночи свет в окнах гаснет
 uniform float uTime;      // часы игры — для мерцания телевизоров
@@ -83,7 +84,7 @@ vec3 leafLitter(vec3 c, vec2 p, float amt){
 }
 `;
 
-// Свет фонарей (env.js → ENV.uLamps): мягкий тёплый круг от ближайших
+// Свет фонарей (env.js → ENV.uLamps): мягкий тёплый круг от 64 ближайших
 // плафонов, ламбертом по нормали. Спад — гаусс по расстоянию, к ~24 м сходит
 // на нет без ступени. Раньше оранжевый свет (1, .70, .40) множился на тёмный
 // серый асфальт и давал бурые, как грязь, пятна. Теперь свет почти белый с
@@ -98,9 +99,13 @@ const LAMP_LIGHT = `
       vec3 d = L.xyz - vLampP;
       float r2 = dot(d, d);
       if (r2 > 600.0) continue;
+      // к краю круга uLampC пятно плавно гаснет: в список фонарь попадает
+      // заранее и уже без силы, «включения» при подъезде не видно
+      float fade = 1.0 - smoothstep(uLampC.w * 0.6, uLampC.w, length(L.xz - uLampC.xz));
+      if (fade <= 0.0) continue;
       vec3 ld = normalize((viewMatrix * vec4(d, 0.0)).xyz);
       float ndl = max(dot(normal, ld), 0.0);
-      lampAcc += ndl * L.w * exp(-r2 / 95.0) * (1.0 - smoothstep(320.0, 600.0, r2));
+      lampAcc += ndl * L.w * fade * exp(-r2 / 95.0) * (1.0 - smoothstep(320.0, 600.0, r2));
     }
     vec3 lampAlb = diffuseColor.rgb;
     lampAlb = max(mix(lampAlb, vec3(dot(lampAlb, vec3(0.30, 0.59, 0.11))), 0.5), vec3(0.16));
@@ -119,6 +124,7 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody, season = '' 
     shader.uniforms.uNight = ENV.uNight;
     shader.uniforms.uSeason = ENV.uSeason;
     shader.uniforms.uLamps = ENV.uLamps;
+    shader.uniforms.uLampC = ENV.uLampC;
     shader.uniforms.uWet = ENV.uWet;
     shader.uniforms.uLate = ENV.uLate;
     shader.uniforms.uTime = ENV.uTime;
