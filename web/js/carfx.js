@@ -276,8 +276,7 @@ export class CarFX {
       this.audio.set({
         rpm: driving ? car.rpm : 900, throttle: driving ? car.throttle : 0, limiter: driving ? car.limiter : 0,
         shiftCount: car.shiftCount, boost: driving ? car.boost : 0, skid, burnout: driving && car.burnout,
-        // заглушен — мотора не слышно (стартер слышен: обороты идут от 230)
-        inside: driving && this.inside(), dist: car.engine === 'off' ? 1e5 : dist,
+        inside: driving && this.inside(), dist,
       }, this.ctx.currentTime);
     }
   }
