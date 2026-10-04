@@ -309,7 +309,7 @@ export class Car {
     this._hold = false;
     this._gas = 0; this._brake = 0; this._shiftT = 0; this._shiftLock = 0;
     this._acc = 0; this._flipT = 0; this._yawOut = 0; this._fresh = true; this._ceil = Infinity;
-    this._rpmE = CAR.idle; this._dump = false; this._cutT = 0;
+    this._rpmE = CAR.idle; this._dump = false; this._cutT = 0; this._blipT = 0; this._rpmW = 0;
     this._prev = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, d: [0, 0, 0, 0] };
     this._cur = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, d: [0, 0, 0, 0] };
     this._tmp = new THREE.Vector3();
@@ -417,7 +417,7 @@ export class Car {
     this._anchor = [null, null, null, null]; this._hold = false;
     this._gas = 0; this._brake = 0; this._shiftT = 0; this._shiftLock = 0;
     this._acc = 0; this._flipT = 0; this._fresh = true;
-    this.gear = 1; this.rpm = CAR.idle; this._rpmE = CAR.idle; this._dump = false; this._cutT = 0;
+    this.gear = 1; this.rpm = this.rpmSound = CAR.idle; this._rpmE = CAR.idle; this._rpmW = 0; this._dump = false; this._cutT = 0;
     if (this.mode === 'R') this.mode = 'D';
     this.vLong = 0; this.vLat = 0; this.yawRate = 0;
     this.steer = 0; this.steerVis = 0; this.crash = 0; this.airborne = false;
@@ -428,7 +428,7 @@ export class Car {
       const k = speed / CAR.wheelRadius * CAR.final * 9.5493;
       this.gear = 1;
       while (this.gear < CAR.gears.length && k * CAR.gears[this.gear - 1] > 5200) this.gear++;
-      this._rpmE = this.rpm = k * CAR.gears[this.gear - 1];
+      this._rpmE = this.rpm = this._rpmW = this.rpmSound = k * CAR.gears[this.gear - 1];
       this.vLong = speed;
     }
     this._pose(this._cur); this._copyPose(this._prev, this._cur);
@@ -503,7 +503,7 @@ export class Car {
     this._publish(clamp(this._acc / STEP, 0, 1));
     this.steerVis += (this.steer - this.steerVis) * Math.min(1, dt * 18);
     const T = this.telemetry;
-    T.speedKmh = Math.abs(this.vLong) * 3.6; T.rpm = this.rpm;
+    T.speedKmh = Math.abs(this.vLong) * 3.6; T.rpm = this.rpmSound ?? this.rpm;   // тахометр — как звук, без рывков от колёс
     // передача для прибора: число вперёд, 'R' задняя, 'P' / 'N' — режим коробки
     T.gear = this.mode !== 'D' ? this.mode : this.gear < 0 ? 'R' : this.gear;
     T.gearMode = this.mode !== 'D' ? this.mode : this.gear < 0 ? 'R' : this.manual ? 'M' : 'D';
@@ -594,7 +594,7 @@ export class Car {
     // Обороты мотора — своё состояние. На нейтрали и в паркинге мотор крутится
     // сам по себе: газ разгоняет маховик до отсечки. В D он сцеплен с колёсами
     // через гидротрансформатор: на низшей передаче не падает ниже «стопа».
-    let rpm = this._rpmE, dumpT = 0;
+    let rpm = this._rpmE, dumpT = 0, sndTarget = -1;
     this._cutT -= h;
     const cut = this._cutT > 0 ? 0 : 1;                  // отсечка: момент пропадает рывками
     if (!drive) {
@@ -603,7 +603,21 @@ export class Car {
       this._dump = false;
     } else {
       const low = this.gear === 1 || this.gear < 0;
-      const target = Math.max(rpmWheels, CAR.idle + (low ? gas * (CAR.stall - CAR.idle) : 0));
+      // Без газа мотор идёт за скоростью МАШИНЫ, а не колёс: на кочке колесо
+      // на миг разгружается и подпрыгивает по скорости, на торможении в пол
+      // колёса то стопорятся, то отпускаются — раньше обороты повторяли эти
+      // всплески (+800 об/мин за сотую), и на слух это были переключения,
+      // которых нет. Гидротрансформатор такие рывки и не передал бы.
+      const rpmCar = Math.abs(vLong) / CAR.wheelRadius * Math.abs(ratio) * 9.5493;
+      const floor = CAR.idle + (low ? gas * (CAR.stall - CAR.idle) : 0);
+      const target = Math.max(gas > 0.02 ? rpmWheels : rpmCar, floor);
+      // Для звука под газом колёса берём через сглаживание 0.15 с: долгая
+      // пробуксовка (бёрнаут, старт) доходит, а всплеск на кочке — нет. Сам
+      // мотор (момент) идёт за колёсами как раньше — на этом держится ловля
+      // заноса заднеприводной машины.
+      this._rpmW += (rpmWheels - this._rpmW) * Math.min(1, h / 0.15);
+      sndTarget = gas > 0.02 ? Math.max(rpmCar, this._rpmW, floor) : -1;
+      this._blipT -= h;
       if (rpm > target + 60 && this._dump) {
         // сброс маховика в трансмиссию: мотор тормозится колёсами, колёса
         // получают его момент — старт «с оборотов» с пробуксовкой
@@ -612,7 +626,10 @@ export class Car {
         rpm += (target - rpm) * Math.min(1, h / tau);
       } else {
         this._dump = false;
-        rpm += (target - rpm) * Math.min(1, h * 14);
+        // вверх: под газом — 0.07 с; перегазовка на дауншифте — 0.05 с (за
+        // ~0.15 с обороты на месте); без газа — медленно, 0.3 с. Вниз — 0.07 с.
+        const tau = target < rpm ? 0.07 : gas > 0.02 ? 0.07 : this._blipT > 0 ? 0.05 : 0.3;
+        rpm += (target - rpm) * Math.min(1, h / tau);
       }
     }
     // колёса на буксе могут убежать выше отсечки — мотор за ними не идёт
@@ -621,6 +638,13 @@ export class Car {
     this.limiter = this._cutT > 0 ? 1 : 0;
     this._rpmE = rpm;
     this.rpm = rpm;
+    // Обороты для звука и тахометра: без газа — те же (они уже гладкие), под
+    // газом — не выше сглаженных колёс, с той же инерцией маховика.
+    if (sndTarget < 0 || this._dump) this.rpmSound = rpm;
+    else {
+      const ts = Math.min(rpm, sndTarget);
+      this.rpmSound = (this.rpmSound ?? rpm) + (ts - (this.rpmSound ?? rpm)) * Math.min(1, h / 0.07);
+    }
     let engT = 0;
     if (drive && this._shiftT <= 0) {
       engT = torqueAt(rpm) * gas * cut + dumpT;
@@ -1038,9 +1062,7 @@ export class Car {
     // «переключение, которого не просили». Вниз под газом — когда низшая
     // передача дала бы меньше 2200: между порогами вверх и вниз зазор в
     // полторы тысячи оборотов и больше, на ровном ходу коробка не «охотится».
-    // Вниз накатом (газа нет) — только у самого низа, когда низшая дала бы
-    // меньше 1600: торможение не «листает» передачи каждые 0.8 с на высоких
-    // оборотах, а подскоки оборотов остаются маленькими и у холостых.
+    // Вниз без газа — см. ниже, через ступени.
     // пороги — от отсечки этой машины (7000 у M177, 6400 у M157)
     // Пока газ отпускают (педаль ещё не дошла до нуля), порог «вверх» тоже не
     // снижаем: иначе он падал вместе с газом ниже оборотов — тот же апшифт.
@@ -1058,7 +1080,20 @@ export class Car {
       while (m > 1 && k * g[m - 2] < CAR.redline - 1200) m--;
       if (m < n) { this.gear = m; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK; return; }
     }
-    if (n > 1 && k * g[n - 2] < (gas < 0.05 ? 1600 : 2200)) {
+    // Вниз без газа (накат, торможение) — как у АКПП AMG: только когда мотор
+    // уже у самого низа (ниже 1300), и сразу через ступени — на самую низкую
+    // передачу, где обороты не выше 2500 (7→5→3, а не 7→6→5→4 каждые 0.8 с).
+    // Дауншифт с перегазовкой: обороты поднимаются за ~0.15 с (_blipT).
+    if (gas < 0.05) {
+      if (n > 1 && rpm < 1300) {
+        let m = n;
+        while (m > 1 && k * g[m - 2] < 2500) m--;
+        if (m === n) m = n - 1;
+        this.gear = m; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK; this._blipT = 0.25;
+      }
+      return;
+    }
+    if (n > 1 && k * g[n - 2] < 2200) {
       this.gear = n - 1; this._shiftT = CAR.shiftTime * 0.7; this._shiftLock = LOCK;
     }
   }
