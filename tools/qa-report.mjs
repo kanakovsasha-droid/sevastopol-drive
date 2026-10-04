@@ -118,11 +118,13 @@ export function compare(cur, base) {
       const d = s.views?.[view]?.diff;
       if (d) img[view] = d;
     }
+    for (const [view, d] of Object.entries(img)) {
+      if (d.pct > IMG_MINOR_PCT) rows.push({ path: 'img.' + view, label: `кадр ${view === 'top' ? 'сверху' : 'с высоты машины'}: изменилось пикселей, %`, dec: 2, a: 0, b: d.pct, v: d.pct > IMG_CHANGED_PCT ? 'changed' : 'minor' });
+    }
     const imgChanged = Object.values(img).some(d => d.pct > IMG_CHANGED_PCT);
     const imgMinor = !imgChanged && Object.values(img).some(d => d.pct > IMG_MINOR_PCT);
     const p = { img, imgChanged, imgMinor };
     add(id, s.name, s.group, rows, p);
-    if (imgChanged) places[places.length - 1].changed++;
   }
   for (const [id, pr] of Object.entries(cur.profiles || {})) {
     const bp = base?.profiles?.[id];
@@ -162,7 +164,7 @@ export function compare(cur, base) {
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = (v, dec) => v === undefined || v === null ? '—' : typeof v === 'boolean' ? (v ? 'да' : 'нет') : typeof v === 'number' ? (+v.toFixed(dec ?? 2)).toString() : esc(v);
-const VCLS = { worse: 'bad', better: 'good', changed: 'chg', same: 'same', none: 'none' };
+const VCLS = { worse: 'bad', better: 'good', changed: 'chg', same: 'same', none: 'none', minor: 'minor' };
 
 export function buildHtml({ cur, base, cmp, reportDir, curDir, baseDir }) {
   const rel = (dir, file) => relative(reportDir, join(dir, file)).split('\\').join('/');
@@ -185,7 +187,7 @@ export function buildHtml({ cur, base, cmp, reportDir, curDir, baseDir }) {
   for (const p of cmp.places) {
     const rs = p.rows;
     if (!rs.length) continue;
-    const cls = p.worse ? 'bad' : p.better ? 'good' : p.changed ? 'chg' : 'same';
+    const cls = p.worse ? 'bad' : p.better ? 'good' : p.changed ? 'chg' : p.imgMinor ? 'minor' : 'same';
     rowsHtml += `<tbody class="pl ${cls}" data-v="${cls}" id="pl-${esc(p.id)}"><tr class="plh"><th colspan="4">${esc(p.name)} <small>${esc(p.group)} · ${esc(p.id)}</small></th></tr>`;
     for (const r of rs) {
       const d = typeof r.a === 'number' && typeof r.b === 'number' ? r.b - r.a : null;
@@ -232,7 +234,7 @@ h1{font-size:22px;margin:0 0 6px}h2{font-size:17px;margin:28px 0 8px;border-bott
 .meta{color:var(--mut);font-size:12.5px}.meta div{margin:2px 0}
 .ctl{margin:12px 0;display:flex;gap:16px;flex-wrap:wrap;align-items:center}.ctl label{cursor:pointer}
 table{border-collapse:collapse;width:100%;max-width:900px}td,th{padding:3px 8px;border-bottom:1px solid var(--line);text-align:left}td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-tr.bad td{color:var(--bad);font-weight:600}tr.good td{color:var(--good);font-weight:600}tr.chg td{color:var(--chg)}tr.same td,tr.none td{color:var(--mut)}
+tr.bad td{color:var(--bad);font-weight:600}tr.good td{color:var(--good);font-weight:600}tr.chg td{color:var(--chg)}tr.same td,tr.none td,tr.minor td{color:var(--mut)}
 tr.plh th{background:var(--card);padding:6px 8px}tbody.pl.bad tr.plh th{border-left:4px solid var(--bad)}tbody.pl.good tr.plh th{border-left:4px solid var(--good)}tbody.pl.chg tr.plh th{border-left:4px solid var(--chg)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:12px 0}.card.bad{border-left:5px solid var(--bad)}.card.chg{border-left:5px solid var(--chg)}.card.good{border-left:5px solid var(--good)}.card.minor{border-left:5px solid var(--mut)}
 .vrow{display:flex;gap:8px;align-items:flex-start;margin:6px 0}.vl{width:70px;flex:none;color:var(--mut);font-size:12px;padding-top:4px}
@@ -240,12 +242,12 @@ figure{margin:0;flex:1 1 0;min-width:0}figure img{width:100%;display:block;borde
 figure.df img{outline:2px solid var(--bad)}figure.nodiff{display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:12px;border:1px dashed var(--line);border-radius:4px;min-height:60px}
 .errs{padding-left:18px}.errs li{margin:2px 0}.hide-same tbody.pl[data-v=same],.hide-same .card[data-v=same]{display:none}.hide-same tr.same,.hide-same tr.none{display:none}
 @media (max-width:760px){.vrow{flex-wrap:wrap}.vl{width:100%}figure{flex:1 1 100%}}
-</style></head><body class="${base ? 'hide-same' : ''}">
+</style></head><body class="${base && !t.same ? 'hide-same' : ''}">
 <h1>Проверка «Севастополя»</h1>
 <div class="sum">${head}</div>
 ${worsePlaces.length ? `<p>Хуже: ${worsePlaces.map(p => `<a class="bad" href="#pl-${esc(p.id)}">${esc(p.name)}</a>`).join(', ')}</p>` : ''}
 <div class="meta">${metaLine(m, 'после')}${metaLine(bm, 'до')}<div><span class="k">мест</span> ${Object.keys(cur.spots).length} · <span class="k">профилей</span> ${Object.keys(cur.profiles || {}).length} · <span class="k">прогонов машины</span> ${Object.keys(cur.physics || {}).length}</div></div>
-<div class="ctl">${base ? '<label><input type="checkbox" id="onlychg" checked> показывать только то, что изменилось</label>' : ''}</div>
+<div class="ctl">${base ? `<label><input type="checkbox" id="onlychg"${t.same ? '' : ' checked'}> показывать только то, что изменилось</label>` : ''}</div>
 <h2>Ошибки консоли и сети</h2>${errs}
 <h2>Метрики</h2><table>${rowsHtml}</table>
 <h2>Кадры</h2>${cards}
