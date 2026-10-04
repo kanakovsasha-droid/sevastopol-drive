@@ -754,11 +754,12 @@ function* buildChunk(d, key) {
                               defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear })),
                               d.allBuildings || w.buildings);
   castShadows(furn);
+  farSmall(furn, 450);
   g.add(furn);
   lap('мебель');
   yield; pt = performance.now();
   at('вывески');
-  g.add(buildSigns(w, terrain, roads));
+  g.add(farSmall(buildSigns(w, terrain, roads), 600));
   lap('вывески');
 
   if (prof) console.log('чанк ' + part + ': ' + prof.join(' · ') + ' мс');
@@ -1058,6 +1059,21 @@ function cheapGlass(root) {
       m.needsUpdate = true;
     }
   });
+}
+
+// Мебель квартала (скамейки, урны, павильоны, киоски, таблички остановок) и
+// вывески — по сетке на вид на весь квадрат 1024 м, и рисовались они из
+// каждого загруженного квадрата: с Большой Морской — по шесть десятков
+// вызовов на скамейки за два километра. Скамейка в 450 м — пять пикселей,
+// вывеску в 600 м не прочесть. Дальше гасим (cullFar). Заборы и подпорные
+// стены (barriers) и светофоры — крупные и видны издалека, их не трогаем.
+function farSmall(root, far) {
+  root.traverse(o => {
+    if (!o.isMesh || o.userData.far || o.name === 'barriers') return;
+    for (let p = o.parent; p && p !== root; p = p.parent) if (p.name === 'светофоры') return;
+    o.userData.far = far;
+  });
+  return root;
 }
 
 // Включить отбрасывание тени у пачек InstancedMesh. receiveShadow им не даём:
