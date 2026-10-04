@@ -28,6 +28,7 @@ import { buildModelPlinths } from './plinth.js?v=d8230200';
 import { CarCam } from './carcam.js?v=d8230200';
 import { Precip } from './precip.js?v=d8230200';
 import { loadSquares, addFarSquares, addSquares } from './squares.js';
+import { loadSkateparks, buildSkateparks } from './skatepark.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -162,6 +163,7 @@ async function boot() {
     // Террасы скверов и площадей (tools/build-terraces.mjs): 75 КБ, нужны
     // земле с первого квадрата. Нет файла — земля просто без террас.
     await loadSquares(V);
+    await loadSkateparks(V);
     terraces = await fetch(`../data/terraces.json${V ? '?v=' + V : ''}`).then(r => r.json()).then(d => d.items).catch(() => []);
 
     await step('строю рельеф…', 26);
@@ -680,6 +682,7 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
   at('спорт');
   g.add(buildSport(w, terrain));
+  g.add(buildSkateparks(w, terrain));                // фигуры скейт-парков
   lap('спорт');
   yield; pt = performance.now();
   at('кладбища');
