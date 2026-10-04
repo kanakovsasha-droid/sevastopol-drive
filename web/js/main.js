@@ -19,10 +19,11 @@ import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.
 import { CarFX } from './carfx.js?v=46b82387';
 import { precompile } from './warm.js?v=46b82387';
 import { Gamepad } from './gamepad.js?v=46b82387';
-import { Environment } from './env.js?v=46b82387';
+import { Environment, ENV } from './env.js?v=46b82387';
 import { CarLights } from './carlights.js?v=46b82387';
 import { Settings } from './settings.js?v=46b82387';
 import { CarCam } from './carcam.js';
+import { Precip } from './precip.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -81,7 +82,7 @@ const HAZE    = new THREE.Color(0xd3d3c8);
 // иначе даль выбеливается в молоко и город пропадает целиком.
 const FOG = HORIZON.clone().lerp(HAZE, 0.45);
 
-let renderer, scene, camera, sun, sky, hemi, env, carLights;
+let renderer, scene, camera, sun, sky, hemi, env, carLights, precip;
 let water = null;
 let terrain, far = null, landmarkDefs = [], terraces = [], collider, roads, carMesh, car, carFx;
 let cityMap = null, mapCtx = null, mapOpen = false, miniOn = true, hud = null;
@@ -1130,6 +1131,7 @@ function initScene() {
   // фары: прожектор в сцене с самого начала, иначе его появление ночью
   // пересобрало бы шейдеры всего города
   carLights = new CarLights(scene);
+  precip = new Precip(scene);          // снегопад и дождь
 
   water = buildWater();
   scene.add(water);
@@ -1571,6 +1573,8 @@ function loop(now) {
       if (!input.steer) input.steer = p.steer;
       input.gas ||= p.gas; input.brake ||= p.brake;
     }
+    // на снегу заметно скользко, на мокром — чуть
+    car.weatherGrip = 1 - 0.5 * ENV.uWet.value.x - 0.15 * ENV.uWet.value.y;
     car.update(dt, input);
     pad?.feel(dt, car);
   } else if (mode === 'fly') {
@@ -1625,6 +1629,7 @@ function loop(now) {
   const lk = !$('menu').classList.contains('on') && !document.querySelector('#settings.on') && pad?.look(dt);
   if (lk) lookBy(lk.dx, lk.dy);
   updateCamera(dt);
+  precip.update(camera, renderer, env.precipKind, env.precip, 0.25 + 0.75 * env.day);
   lt('камера');
   updateHUD(dt);
   lt('HUD');

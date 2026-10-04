@@ -231,6 +231,7 @@ export class Car {
     // ---- телеметрия: приборы, звук, следы шин
     this.rpm = CAR.idle;
     this.engine = 'on';  // 'on' | 'off' | 'start' — зажигание (toggleEngine)
+    this.weatherGrip = 1;  // сцепление по погоде: снег, мокрый асфальт (main.js из env.js)
     this._crank = 0;
     this.gear = 1;       // 1..9, −1 задний
     this.slip = [0, 0, 0, 0];         // насколько шина за пиком (>1 — скользит)
@@ -811,7 +812,7 @@ export class Car {
       const sx = nY * hz - nZ * hy, sy = nZ * hx - nX * hz, sz = nX * hy - nY * hx;   // влево от колеса
       const vl = vx * hx + vy * hy + vz * hz;      // вдоль колеса
       const vt = vx * sx + vy * sy + vz * sz;      // поперёк
-      const grip = (front ? 1 : CAR.rearGrip) * clamp(1 - CAR.loadSens * (fz / this._w0[i] - 1), 0.72, 1.12);
+      const grip = (front ? 1 : CAR.rearGrip) * clamp(1 - CAR.loadSens * (fz / this._w0[i] - 1), 0.72, 1.12) * this.weatherGrip;
       const muX = CAR.muLong * grip, muY = CAR.muLat * grip;
 
       const cp = this.contact[i]; cp[0] = px; cp[1] = py; cp[2] = pz;

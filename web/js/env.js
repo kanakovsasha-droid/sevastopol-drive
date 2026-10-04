@@ -27,6 +27,9 @@ export const ENV = {
   uNight:  { value: 0 },                              // 0 — день, 1 — ночь (свет в окнах, фонари)
   uSeason: { value: new THREE.Vector4(0, 0, 0, 0) },  // x — осенний цвет, y — облетело, z — снег, w — весна
   uTime:   { value: 0 },
+  // погода на земле: x — снег на дорогах и газонах (копится в снегопад, тает
+  // после), y — мокрый асфальт (дождь), z, w — запас
+  uWet:    { value: new THREE.Vector4(0, 0, 0, 0) },
   // ближайшие фонари: xyz — плафон в мире, w — сила (0 — пусто)
   uLamps:  { value: Array.from({ length: 24 }, () => new THREE.Vector4(0, -1e4, 0, 0)) },
 };
@@ -117,6 +120,8 @@ export const WEATHER = {
   cloudy:   { name: 'Облачно',      cloud: 0.58, sun: 0.75, sky: 1.08, fog: 1.3, grey: 0.22 },
   overcast: { name: 'Пасмурно',     cloud: 0.96, sun: 0.16, sky: 1.25, fog: 1.9, grey: 0.72 },
   fog:      { name: 'Туман',        cloud: 0.80, sun: 0.38, sky: 1.15, fog: 6.0, grey: 0.55 },
+  rain:     { name: 'Дождь',        cloud: 0.98, sun: 0.10, sky: 1.20, fog: 2.6, grey: 0.80, precip: 'rain' },
+  snow:     { name: 'Снегопад',     cloud: 0.98, sun: 0.14, sky: 1.30, fog: 3.2, grey: 0.78, precip: 'snow' },
 };
 // День года, которым изображается сезон, если он выбран вручную.
 export const SEASONS = {
@@ -300,6 +305,12 @@ export class Environment {
     if (!WEATHER[this.cfg.weather]) this.cfg.weather = 'clear';
     if (!SEASONS[this.cfg.season]) this.cfg.season = 'auto';
     this.w = { ...WEATHER[this.cfg.weather] };   // текущая погода, плавно идёт к выбранной
+    this.precip = 0;                       // сила осадков сейчас, 0..1
+    // Снег и лужи копятся со временем. Заданные в адресе (?weather=snow) или
+    // сохранённые с прошлого раза — сразу, чтобы не ждать пару минут.
+    const wet = ENV.uWet.value, P = WEATHER[this.cfg.weather].precip;
+    wet.set(P === 'snow' ? 1 : s.snowCover ?? 0, P === 'rain' ? 1 : s.wet ?? 0, 0, 0);
+    this.precip = P ? 1 : 0;
     this.dir = new THREE.Vector3();        // на солнце
     this.moon = new THREE.Vector3();
     this.light = new THREE.Vector3();      // откуда сейчас светит направленный свет
@@ -311,7 +322,8 @@ export class Environment {
     this.update(0);
   }
 
-  save() { ls.set(KEY, JSON.stringify(this.cfg)); }
+  save() { ls.set(KEY, JSON.stringify({ ...this.cfg, snowCover: ENV.uWet.value.x, wet: ENV.uWet.value.y })); }
+  get precipKind() { return WEATHER[this.cfg.weather].precip || this._lastPrecip || null; }
   onChange(fn) { this.listeners.add(fn); }
   _emit() { for (const f of this.listeners) f(this); }
 
@@ -352,6 +364,17 @@ export class Environment {
     const W = WEATHER[c.weather], k = dt ? 1 - Math.exp(-dt * 0.8) : 1;
     for (const key of ['cloud', 'sun', 'sky', 'fog', 'grey']) this.w[key] += (W[key] - this.w[key]) * k;
     const w = this.w;
+
+    // осадки: нарастают и стихают за несколько секунд; снег на земле копится
+    // минуты две и тает минут пять, лужи — быстрее
+    const P = W.precip;
+    if (P) this._lastPrecip = P;
+    this.precip += ((P ? 1 : 0) - this.precip) * (dt ? 1 - Math.exp(-dt * 0.5) : 1);
+    const wet = ENV.uWet.value;
+    if (dt) {
+      wet.x = clamp(wet.x + (P === 'snow' ? dt / 120 : -dt / 300), 0, 1);
+      wet.y = clamp(wet.y + (P === 'rain' ? dt / 40 : -dt / 150) - (P === 'snow' ? dt / 60 : 0), 0, 1);
+    }
 
     const doy = this.doy;
     sunDirection(doy, c.hour, this.dir);
