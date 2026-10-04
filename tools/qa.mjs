@@ -9,6 +9,7 @@
 //
 // Ключи: --port (5173) · --out каталог прогона (по умолчанию qa/runs/<дата-время>)
 // · --base каталог прогона «до» · --quick · --only id1,id2 (только эти места)
+// · --query строка (добавить к адресу игры, напр. ground=1500) · --serial (грузить чанки по одному)
 // · --no-phys (без прогонов машины) · --hills (добавить заезд по холмам, +3–5 мин).
 //
 // Что делает:
@@ -44,6 +45,7 @@ const QUICK = flag('quick');
 const NOPHYS = flag('no-phys');
 const HILLS = flag('hills');
 const SERIAL = flag('serial');
+const QUERY = arg('query', '');          // добавка к адресу игры, например --query ground=1500
 const ONLY = (arg('only', '') || '').split(',').filter(Boolean);
 const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 13);
 const OUT = resolve(ROOT, arg('out', 'qa/runs/' + stamp));
@@ -57,12 +59,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toTimeString().slice(0, 8), ...a);
 
 // Три улицы для заезда машины: старт — как у check-physics (--start x,z). Выбраны
-// те, где результат заезда повторяется до знака: на Большой Морской (шов чанка
-// на z=1024) и на Гоголя два заезда подряд давали разную тряску — см. отчёт.
+// те, где результат заезда повторяется до знака: на Большой Морской, Гоголя и
+// Генерала Петрова два заезда подряд давали разные цифры (машина въезжает в
+// квартал, который ещё достраивается, или бот-водитель разбивается о бордюр).
 const PHYS = [
   { id: 'lazareva-nakhimova', name: 'проспект Нахимова от пл. Лазарева', start: [-398, 484] },
   { id: 'lenina', name: 'улица Ленина', start: [92, 784] },
-  { id: 'petrova', name: 'улица Генерала Петрова (спуск)', start: [-1051, 1103] },
+  { id: 'streletsky', name: 'Стрелецкий спуск', start: [-1136, 1313] },
 ];
 
 mkdirSync(join(OUT, 'img'), { recursive: true });
@@ -154,7 +157,7 @@ await page.addInitScript(() => {
 
 const first = spots[0];
 log(`порт ${PORT}, мест ${spots.length}${QUICK ? ' (быстрый)' : ''}, вывод ${relative(ROOT, OUT)}`);
-await page.goto(`${URL_BASE}?at=${first.x},${first.z + 1},${first.top}&look=${first.x},${first.z},0`, { waitUntil: 'domcontentloaded' });
+await page.goto(`${URL_BASE}?at=${first.x},${first.z + 1},${first.top}&look=${first.x},${first.z},0${QUERY ? '&' + QUERY : ''}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.G && window.G.car && window.G.fly, null, { timeout: 240000 });
 await page.evaluate(() => {
   const st = document.createElement('style');
