@@ -28,7 +28,8 @@ const JSON_OUT = arg('json', '');
 const ONLY = arg('only', '');
 const SPEEDS = arg('speeds', '60,100').split(',').map(Number);
 const SECTION = +arg('section', 1000);
-const MAXSEC = +arg('maxsec', 1e9);          // для отладки: не больше N участков на маршрут
+const MAXSEC = +arg('maxsec', 1e9);
+const FROM = +arg('from', 0);             // с какого участка (для отладки)          // для отладки: не больше N участков на маршрут
 const ROOT = new URL('..', import.meta.url).pathname;
 
 // ---------------------------------------------------------------- маршруты
@@ -150,7 +151,7 @@ for (const [name, fn] of Object.entries(ROUTES)) {
     cur.push(pts[i]); acc += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
     if (acc >= SECTION || i === pts.length - 1) { if (acc > 60) secs.push(cur); cur = [pts[i]]; acc = 0; }
   }
-  routes.push({ name, lengthM: Math.round(L), secs: secs.slice(0, MAXSEC) });
+  routes.push({ name, lengthM: Math.round(L), secs: secs.slice(FROM, FROM + MAXSEC) });
   if (arg('dump', '')) writeFileSync(arg('dump') + '/routes-' + name + '.json', JSON.stringify(secs));
   console.log(`${name}: ${(L / 1000).toFixed(1)} км, участков ${secs.length}`);
 }
@@ -191,10 +192,14 @@ for (const R of routes) {
       const probe = [];
       for (let i = 0; i < sec.length; i += Math.max(1, Math.floor(sec.length / 12))) probe.push(sec[i]);
       probe.push(sec[sec.length - 1]);
+      // Земля под всем участком — до 150 с; не встала — прыгаем ещё раз.
+      // Без этого участок мерился по наполовину собранной земле: коридора
+      // нет, колесо на сырой сетке — «удары», которых в игре нет.
       let ready = false;
-      for (let i = 0; i < 300 && !ready; i++) {
+      for (let i = 0; i < 750 && !ready; i++) {
         await idle(200);
         ready = probe.every(([x, z]) => T.surfaceAt(x, z));
+        if (i === 400 && !ready) G.jumpTo(sec[0][0], sec[0][1]);
       }
       await idle(300);
       // осевая с шагом 0.25 м
@@ -266,6 +271,7 @@ for (const R of routes) {
   // корзины по 50 м
   let good = 0, all = 0, good100 = 0, all100 = 0;
   for (const sct of out.secs) {
+    if (!sct.ready) continue;                // участок не собрался — не в зачёт
     const nb = Math.max(1, Math.round(sct.len / 50));
     for (const [kmh, run] of Object.entries(sct.runs)) {
       const bad = new Set();
@@ -284,7 +290,8 @@ for (const R of routes) {
     steps5: out.secs.reduce((a, s) => a + s.steps5, 0), kinks5: out.secs.reduce((a, s) => a + s.kinks5, 0),
     crest60: out.secs.reduce((a, s) => a + s.crest60, 0),
     lost60: out.secs.filter(s => s.runs[60] && s.runs[60].lost !== false).length,
-    lost100: out.secs.filter(s => s.runs[100] && s.runs[100].lost !== false).length };
+    lost100: out.secs.filter(s => s.runs[100] && s.runs[100].lost !== false).length,
+    notReady: out.secs.filter(s => !s.ready).length };
   console.log(`== ${R.name}: играбельно на 60 — ${out.playable60}%, на 100 — ${out.playable100}%`, JSON.stringify(out.total));
   result[R.name] = out;
   if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify(result));
