@@ -246,8 +246,10 @@ export class E63Sound {
     const loops = ['v8_idle', 'v8_cruise', 'v8_load'].filter(n => bufs[n] && meta.loops[n]).map(n => {
       const src = ctx.createBufferSource(); src.buffer = bufs[n]; src.loop = true;
       const gg = g(0); src.connect(gg).connect(lp);
-      src.start(t0, Math.random() * bufs[n].duration);
-      return { name: n, rpm: meta.loops[n].rpm, src, g: gg };
+      const off = Math.random() * bufs[n].duration;
+      src.start(t0, off);
+      // t0 и off — чтобы стенд мог посчитать, где сейчас шов петли
+      return { name: n, rpm: meta.loops[n].rpm, src, g: gg, t0, off, len: bufs[n].duration };
     });
     let squeal = null;
     if (bufs.tyre_squeal) {

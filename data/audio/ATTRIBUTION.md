@@ -10,16 +10,19 @@
 
 | Файлы | Запись | Автор | Лицензия |
 |---|---|---|---|
-| `v8_idle` (холостые) | [mustang 1.wav](https://freesound.org/s/205504/) | [VacekH](https://freesound.org/people/VacekH/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-| `v8_load` (разгон в пол) | [mustang 3.wav](https://freesound.org/s/205508/) | [VacekH](https://freesound.org/people/VacekH/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `v8_idle` (холостые), `v8_load` (удержанные высокие обороты) | [mustang 1.wav](https://freesound.org/s/205504/) | [VacekH](https://freesound.org/people/VacekH/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | `v8_cruise` (ровный ход) | [mustang 9.wav](https://freesound.org/s/205511/) | [VacekH](https://freesound.org/people/VacekH/) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | `pop_1` … `pop_6` | [Car Antilag (No cleanup, 32float)](https://freesound.org/s/797835/) | modusmogulus | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | `bang_1`, `bang_3` | [S41-25 Car backfires; reverberant.wav](https://freesound.org/s/675723/) | craigsmith | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | `bang_2` | [BACKFIRE.ogg](https://freesound.org/s/105351/) | CeebFrack | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `starter` (стартер, прокрутка до схватывания) | [Starting of Ford V8 5 Liter engine](https://freesound.org/s/455925/) | [noiseloop](https://freesound.org/people/noiseloop/) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
 | `tyre_squeal` | [Chrysler LHS tire squeal 04 (04-25-2009).wav](https://freesound.org/s/71739/) | audible-edge | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 
 Мотор — Ford Mustang Shelby GT500 (V8), записи VacekH (Roland R4 PRO,
-Sennheiser MKH60), все три петли от одной машины. Записи именно E63 (M177) со
+Sennheiser MKH60), все три петли от одной машины. Запуска мотора в этом
+наборе нет, поэтому стартер взят из записи Ford 5.0 V8 (noiseloop, CC BY 3.0 —
+с указанием автора, как здесь); схватывание и рык после него играют петли
+Mustang. Записи именно E63 (M177) со
 свободной лицензией на Freesound не нашлось. Обороты каждой петли (по частоте
 вспышек, 4 на оборот) — в `sounds.json`.
 

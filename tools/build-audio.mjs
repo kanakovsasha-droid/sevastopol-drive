@@ -28,7 +28,6 @@ export const SOURCES = {
   105351: { file: '105/105351_1553758-hq.mp3', author: 'CeebFrack', title: 'BACKFIRE.ogg', license: 'CC0 1.0' },
   71739: { file: '71/71739_995351-hq.mp3', author: 'audible-edge', title: 'Chrysler LHS tire squeal 04 (04-25-2009).wav', license: 'CC0 1.0' },
   205504: { file: '205/205504_1970026-hq.mp3', author: 'VacekH', title: 'mustang 1.wav', license: 'CC0 1.0' },
-  205508: { file: '205/205508_1970026-hq.mp3', author: 'VacekH', title: 'mustang 3.wav', license: 'CC0 1.0' },
   205511: { file: '205/205511_1970026-hq.mp3', author: 'VacekH', title: 'mustang 9.wav', license: 'CC0 1.0' },
   455925: { file: '455/455925_8138660-hq.mp3', author: 'noiseloop', title: 'Starting of Ford V8 5 Liter engine', license: 'CC BY 3.0' },
 };
@@ -54,8 +53,13 @@ const V8 = [
   // ровный ход ~2750 об/мин 6 с подряд — основа на всех оборотах: обороты в
   // записи почти не меняются, поэтому тембр по петле ровный и шов не слышен
   ['v8_cruise', 205511, 26.6, 32.6, [176, 190], 1, 0.06, true],
-  // разгон в пол на второй — «злой» слой под газом
-  ['v8_load', 205508, 4.95, 6.62, [200, 214], 1, 0.06],
+  // «злой» слой под газом — перегазовка, удержанная на ~3650 об/мин 3.5 с.
+  // Раньше брали разгон в пол на второй (205508, 207→284 Гц): выпрямленный
+  // по высоте, он сохранял тембр разгона — к концу петли звук «темнел» на
+  // треть (центроид 640→440 Гц) и на шве прыгал обратно. На высоких оборотах
+  // петля проходила круг раз в секунду, и каждый круг звучал как ещё одно
+  // переключение. Здесь обороты в записи ровные — тембр по петле тоже.
+  ['v8_load', 205504, 18.3, 21.5, [232, 252], 1, 0.06, true],
 ];
 const LOOPS = [
   ['tyre_squeal', 71739, 5.0, 6.6],
@@ -197,7 +201,7 @@ for (const [name, id, a, b, band, order, sm, fixed] of V8) {
   const X = Math.round(SR * 0.1);
   const n = Math.floor((y.length - X) / cyc) * cyc;
   y = seamless(y.subarray(0, Math.round(n) + X), X);
-  flattenEnv(y, 0.09, name === 'v8_load' ? 0.9 : 0.6);
+  flattenEnv(y, name === 'v8_load' ? 0.045 : 0.09, name === 'v8_load' ? 0.9 : 0.6);
   const k = 0.18 / rms(y);
   for (let i = 0; i < y.length; i++) y[i] *= k;
   writeFileSync(`${OUT}/${name}.wav`, wav(y));

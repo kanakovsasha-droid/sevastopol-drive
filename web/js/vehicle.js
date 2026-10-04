@@ -650,8 +650,6 @@ export class Car {
     }
     // колёса на буксе могут убежать выше отсечки — мотор за ними не идёт
     rpm = Math.min(rpm, CAR.redline + 180);
-    if (rpm > CAR.redline && this._cutT <= -0.02) this._cutT = 0.045;
-    this.limiter = this._cutT > 0 ? 1 : 0;
     if (this.engine === 'off') rpm = 0;
     else if (this.engine === 'start') {
       this._crank += h;
@@ -674,6 +672,12 @@ export class Car {
       const ts = Math.min(rpm, sndTarget);
       this.rpmSound = (this.rpmSound ?? rpm) + (ts - (this.rpmSound ?? rpm)) * Math.min(1, h / 0.07);
     }
+    // Отсечка — по оборотам без рывков колёс (rpmSound): на скорости колесо
+    // на кочке на сотые доли секунды разгружается и подпрыгивает, и раньше
+    // мотор за ним упирался в 7000 — отсечка рвала газ серией, на слух —
+    // несколько «переключений» подряд, которых не было.
+    if (this.rpmSound > CAR.redline && this._cutT <= -0.02) this._cutT = 0.045;
+    this.limiter = this._cutT > 0 ? 1 : 0;
     let engT = 0;
     if (drive && this._shiftT <= 0) {
       engT = torqueAt(rpm) * gas * cut + dumpT;
@@ -1086,7 +1090,12 @@ export class Car {
     if (this.gear < 0 || this._shiftLock > 0) return;
     const k = Math.abs(vLong) / CAR.wheelRadius * CAR.final * 9.5493;   // об/мин на единицу передаточного
     const g = CAR.gears, n = this.gear;
-    const rpm = k * g[n - 1];
+    // Обороты для решения: по скорости машины, но не ниже сглаженных оборотов
+    // мотора — при пробуксовке на скорости мотор уже у отсечки, а «по
+    // скорости» до порога ещё далеко: коробка ждала, и отсечка рвала газ
+    // серией. Теперь переключение вверх — до отсечки.
+    // (на старте с места — нет: пробуксовка там законная, коробка держит первую)
+    const rpm = Math.max(k * g[n - 1], gas > 0.5 && Math.abs(vLong) > 15 ? Math.min(this.rpmSound || 0, CAR.redline + 200) : 0);
     // Вверх: чем больше газ, тем позже (чуть газа — 3000, в пол — 6700); газ
     // совсем бросили — передачу держим (торможение двигателем) до самой
     // отсечки. Раньше порог без газа был 5900: отпустил газ на 6500 — и
@@ -1099,7 +1108,10 @@ export class Car {
     // Пока газ отпускают (педаль ещё не дошла до нуля), порог «вверх» тоже не
     // снижаем: иначе он падал вместе с газом ниже оборотов — тот же апшифт.
     const dm = this.dm || DM0;                       // режим езды: пороги и скорость переключений
-    const up = Math.min(gas < 0.03 || this._lift ? CAR.redline - 150 : dm.upLo + dm.upHi * gas, CAR.redline - 150);
+    // Газ в пол (>90%) — как у AMG MCT 9G в любом режиме: крутит до 6850 (за
+    // 150 до отсечки) и переключается раньше, чем упрётся в ограничитель.
+    // Пороги режима — только для частичного газа.
+    const up = Math.min(gas < 0.03 || this._lift || gas > 0.9 ? CAR.redline - 150 : dm.upLo + dm.upHi * gas, CAR.redline - 150);
     // После любого переключения коробка 0.8 с ничего не решает.
     const LOCK = 0.8;
     if (n < g.length && rpm > up) {

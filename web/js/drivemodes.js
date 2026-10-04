@@ -1,11 +1,13 @@
 // Режимы езды, как AMG DYNAMIC SELECT: Eco · Comfort · Sport · Sport+.
 //
 // Параметры ложатся ПОВЕРХ vehicle.js — множителями и порогами в car.dm, сама
-// машина (CAR, CARS) не меняется. Sport — ровно то, что было до режимов: на
-// нём машина ведёт себя как раньше.
+// машина (CAR, CARS) не меняется.
 //   gas   — показатель кривой педали: >1 — вялый отклик в начале хода;
 //   rise  — во сколько раз быстрее/медленнее «нажимается» газ с клавиатуры;
-//   upLo, upHi — порог переключения вверх: upLo + upHi · газ (об/мин);
+//   upLo, upHi — порог переключения вверх при частичном газе: upLo + upHi · газ
+//                (об/мин; газ 30…90% — Eco 2500–3500, Comfort 4000–5000,
+//                Sport 5500–6500, Sport+ от 6500). Газ в пол (>90%) — в любом
+//                режиме до 6850, как у AMG MCT 9G (vehicle.js, _shift);
 //   down  — ниже скольких оборотов под газом коробка идёт вниз;
 //   shift — длительность переключения (множитель);
 //   steer — время выкручивания руля (множитель): меньше — острее;
@@ -20,10 +22,10 @@ const ls = {
 };
 
 export const MODES = {
-  eco:     { name: 'Eco',     short: 'E',  color: '#7fd18b', gas: 1.7, rise: 0.45, upLo: 1900, upHi: 2500, down: 1400, shift: 1.45, steer: 1.12, esp: 0.95, tcMin: 0.30, tcSlip: 0.10, exhaust: 0.70 },
-  comfort: { name: 'Comfort', short: 'C',  color: '#ffffff', gas: 1.3, rise: 0.70, upLo: 2200, upHi: 3300, down: 1800, shift: 1.20, steer: 1.06, esp: 0.75, tcMin: 0.40, tcSlip: 0.14, exhaust: 0.85 },
-  sport:   { name: 'Sport',   short: 'S',  color: '#e8b451', gas: 1.0, rise: 1.00, upLo: 2600, upHi: 4100, down: 2200, shift: 1.00, steer: 1.00, esp: null, tcMin: null, tcSlip: null, exhaust: 1.00 },
-  sportp:  { name: 'Sport+',  short: 'S+', color: '#ff3b30', gas: 0.85, rise: 1.45, upLo: 3600, upHi: 3500, down: 3000, shift: 0.65, steer: 0.86, esp: 0.20, tcMin: 0.65, tcSlip: 0.26, exhaust: 1.20 },
+  eco:     { name: 'Eco',     short: 'E',  color: '#7fd18b', gas: 1.7, rise: 0.45, upLo: 2000, upHi: 1667, down: 1400, shift: 1.45, steer: 1.12, esp: 0.95, tcMin: 0.30, tcSlip: 0.10, exhaust: 0.70 },
+  comfort: { name: 'Comfort', short: 'C',  color: '#ffffff', gas: 1.3, rise: 0.70, upLo: 3500, upHi: 1667, down: 1800, shift: 1.20, steer: 1.06, esp: 0.75, tcMin: 0.40, tcSlip: 0.14, exhaust: 0.85 },
+  sport:   { name: 'Sport',   short: 'S',  color: '#e8b451', gas: 1.0, rise: 1.00, upLo: 5000, upHi: 1667, down: 2200, shift: 1.00, steer: 1.00, esp: null, tcMin: null, tcSlip: null, exhaust: 1.00 },
+  sportp:  { name: 'Sport+',  short: 'S+', color: '#ff3b30', gas: 0.85, rise: 1.45, upLo: 6000, upHi: 1667, down: 3000, shift: 0.65, steer: 0.86, esp: 0.20, tcMin: 0.65, tcSlip: 0.26, exhaust: 1.20 },
 };
 const ORDER = ['eco', 'comfort', 'sport', 'sportp'];
 
