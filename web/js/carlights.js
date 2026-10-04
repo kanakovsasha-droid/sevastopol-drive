@@ -46,7 +46,7 @@ export const LIGHT_NAMES = { auto: 'авто', off: 'выключены', parkin
 //   tail — задние габариты (они же стоп ярче), tailInner / tailGlass —
 //   красный рассеиватель и наружное стекло фонаря, stop3 — третий стоп,
 //   reverse / reverseGlass — секция заднего хода
-const LAMPS = {
+export const LAMPS = {
   // W213 — имена из models/e63/prep.py
   lamp_drl: 'drl', lamp_drl_guide: 'drl', lamp_lens: 'lens', lamp_high: 'high',
   lamp_glass_front: 'headGlass',
