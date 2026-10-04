@@ -281,7 +281,7 @@ function frame(poly) {
   };
 }
 
-const CAR_CELL = 256, CAR_FAR = 600;
+const CAR_CELL = 256, CAR_FAR = 1000;
 
 export function buildYards(world, terrain) {
   const group = new THREE.Group();
