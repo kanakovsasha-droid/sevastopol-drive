@@ -587,7 +587,12 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
           if (!a) continue;
           for (let t = 0; t < a.length; t += 2) {
             const o = profiles[a[t]];
-            if (o.w <= w0 + 0.5) continue;
+            // Шире — главнее. Равная по ширине тоже главнее, если идёт через
+            // узел насквозь (у неё тут середина, а не конец): на Т-образном
+            // перекрёстке склона примыкающая улица подходила на своей
+            // отметке, и между ними вставал обрыв в 40–50% (50, 4310).
+            const j0 = a[t + 1];
+            if (o.w <= w0 + 0.5 && !(o.w >= w0 - 0.01 && j0 > 3 && j0 < o.pr.n - 4)) continue;
             const d = (o.pr.sx[a[t + 1]] - x) ** 2 + (o.pr.sz[a[t + 1]] - z) ** 2;
             if (d < bd && d < (o.w / 2 + 1.5) ** 2) { bd = d; best = o.h[a[t + 1]]; }
           }
@@ -1628,8 +1633,20 @@ export function* buildRoads(world, terrain, chunk = 500) {
   // асфальтом вставал наклонный «парус», а под ним тёмный клин — по каждому
   // шву квадратов. За границей квадрата высоту не спрашиваем: продолжаем её
   // от ближайшей точки внутри по уклону.
+  // Земля своего квадрата построена с каймой в одну клетку (9 м) — и сетка,
+  // и коридор дорог. Точку чуть за швом спрашиваем у НЕЁ: соседа может не
+  // быть, а своя кайма считана по той же общей решётке и с ним совпадает.
+  // Дальше каймы — продолжаем от ближайшей точки внутри по уклону.
+  const ownSurf = sq0 && terrain.surf ? terrain.surf.get(Math.round(sq0.x0 / (sq0.x1 - sq0.x0)) + '_' + Math.round(sq0.z0 / (sq0.z1 - sq0.z0))) : null;
+  const viaOwn = f => (x, z) => {
+    const keep = terrain.surfaceAt;
+    terrain.surfaceAt = () => ownSurf;
+    try { return f(x, z); } finally { terrain.surfaceAt = keep; }
+  };
+  const KAIMA = ownSurf && ownSurf.grid ? ownSurf.grid.dx * 0.95 : 0;
   const outwards = f => sq0 ? (x, z) => {
     if (x >= sq0.x0 && x < sq0.x1 && z >= sq0.z0 && z < sq0.z1) return f(x, z);
+    if (KAIMA && x > sq0.x0 - KAIMA && x < sq0.x1 + KAIMA && z > sq0.z0 - KAIMA && z < sq0.z1 + KAIMA) return viaOwn(f)(x, z);
     const cx = Math.min(sq0.x1 - 0.05, Math.max(sq0.x0 + 0.05, x));
     const cz = Math.min(sq0.z1 - 0.05, Math.max(sq0.z0 + 0.05, z));
     const d = Math.hypot(x - cx, z - cz), h1 = f(cx, cz);
@@ -1801,18 +1818,39 @@ export function* buildRoads(world, terrain, chunk = 500) {
         const bx = px(b) + (px(d) - px(b)) * u, bz = pz(b) + (pz(d) - pz(b)) * u;
         const ay = at(a) + (at(c) - at(a)) * u, by = at(b) + (at(d) - at(b)) * u;
         const mx = ax + (bx - ax) * v, mz = az + (bz - az) * v, my = ay + (by - ay) * v;
-        const g = hFn(mx, mz) + lift - my;
+        // Мерим по НАРИСОВАННОЙ земле, а не по профилю езды. Профиль у
+        // перекрёстка на склоне вогнутый, и хорда пролёта поперёк улицы
+        // проходила под ним — полотно приподнималось на 30–40 см там, где
+        // земля его и не протыкала, и у узла вставала ступень, на которой
+        // подбрасывало машину (колёса теперь едут по самому полотну).
+        const g = GROUND(mx, mz) + 0.03 - my;
         if (g > need) need = g;
       }
       // Потолок поправки. На замерах хватало 30 см, и больше нам не нужно:
       // одиночный выброс высоты не должен вздёргивать полотно над бордюром
       // (тот живёт на своих 17 см и о поправке не знает).
-      if (need > 0.4) need = 0.4;
+      if (need > 0.3) need = 0.3;
       if (need > 0.005) {
         if (need > up[i]) up[i] = need;
         if (need > up[i + 1]) up[i + 1] = need;
       }
     }
+    // Поправка — не горб. Колёса едут по самому полотну, и вздёрнутые на
+    // 40 см углы одного пролёта давали на перекрёстке вспученный асфальт
+    // (Большая Морская у −410, 517: 45 см на 10 м, отрыв колёс на 80 км/ч),
+    // а соседняя улица в том же узле лежала ниже — ступень. Теперь:
+    //   * на проезжей части у перекрёстка поправки нет вовсе: все полотна
+    //     узла лежат на одной поверхности коридора, без ступеней между ними;
+    //   * в остальном подъём раскатывается пандусом не круче 3 см на вершину
+    //     (шаг 6 м) — изгиб профиля вместо горба.
+    if (cls <= 3) for (let i = 0; i < mt.n; i++)
+      if (up[i] && junctionDist(px(i * 2), pz(i * 2)) < 3) up[i] = 0;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 1; i < mt.n; i++) if (up[i - 1] - 0.03 > up[i]) up[i] = up[i - 1] - 0.03;
+      for (let i = mt.n - 2; i >= 0; i--) if (up[i + 1] - 0.03 > up[i]) up[i] = up[i + 1] - 0.03;
+    }
+    if (cls <= 3) for (let i = 0; i < mt.n; i++)
+      if (up[i] && junctionDist(px(i * 2), pz(i * 2)) < 3) up[i] = 0;
     for (let i = 0; i < mt.n; i++) {
       if (!up[i]) continue;
       ch.P[lo + (i * 2) * 3] += up[i];
@@ -2466,6 +2504,13 @@ export function* buildRoads(world, terrain, chunk = 500) {
     const f = FLD.at(x, z);
     return f > KERB_ISO && f < SIDEWALK + KERB_ISO + 0.3 && walkRoad(FLD.own(x, z));
   };
+  // Парковка и площадка АЗС лежат под дорогой на 9.5 см, дорожка — на
+  // 11.5: два сантиметра, и издали они дрались за глубину пятнами (Термы
+  // Наутико, −1218, 1456). Пролёт дорожки поперёк парковки не рисуем — там
+  // и так асфальт.
+  const LOT = new PolyGrid((world.areas || []).filter(a => (a.k === 'parking' || a.k === 'fuel' || a.k === 'market') && a.poly && a.poly.length >= 6)
+    .map(a => ({ poly: a.poly })), 80);
+  const onLot = (x, z) => !!LOT.find(x, z);
   const order = (ORPH ? [] : ALL).map((r, i) => ({ r, i })).sort((a, b2) => (a.r.c > 3 ? 1 : 0) - (b2.r.c > 3 ? 1 : 0));
 
   let work = 0;
@@ -2569,7 +2614,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
           for (const t of [-1, -0.5, 0, 0.5, 1]) {
             const o = t * hq * sc;
             const qx = bx + nx * o, qz = bz + nz * o;
-            if (onOtherRoad(qx, qz, ri) || onWalkOther(qx, qz, ri) || onSidewalk(qx, qz)
+            if (onOtherRoad(qx, qz, ri) || onWalkOther(qx, qz, ri) || onSidewalk(qx, qz) || onLot(qx, qz)
                 || (FLD && FLD.at(qx, qz) < -0.4)) { hit = true; break; }
           }
           if (hit) break;
