@@ -33,6 +33,7 @@ import { loadSquares, addFarSquares, addSquares } from './squares.js?v=daf8a8c2'
 import { loadSkateparks, buildSkateparks } from './skatepark.js?v=daf8a8c2';
 import { padBlocker } from './pads.js?v=daf8a8c2';
 import { loadSchools, prepSchools, buildSchools } from './schools.js?v=daf8a8c2';
+import { prepFuel } from './fuel.js?v=e4f92276';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -674,7 +675,10 @@ function* buildChunk(d, key) {
   // Стены и улицы в индексы кладём В ТОМ ЖЕ шаге, что и геометрию дорог, до
   // первой паузы: дом, который уже видно, обязан и толкать машину.
   roads.add(part, w.roads);
-  collider.add(part, w.buildings);
+  // АЗС (fuel.js): дома-коробки на площадке снимаются, вместо них в индекс
+  // идут стены павильона, опоры навеса и стела модели сети
+  const fuelWalls = prepFuel(w);
+  collider.add(part, fuelWalls.length ? w.buildings.filter(b => !b.fuelBox).concat(fuelWalls) : w.buildings);
   lap('дороги');
   yield; pt = performance.now();
 

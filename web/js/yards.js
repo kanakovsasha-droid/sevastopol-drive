@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { PolyGrid } from './worldgen.js?v=daf8a8c2';
-import { brandOf, signOf, fuelLines, DEFAULT_COL, buildFuelSigns } from './fuel.js?v=daf8a8c2';
+import { buildFuelStations } from './fuel.js?v=daf8a8c2';
 
 // Оборудование детских площадок и машины на парковках. Места берутся из OSM
 // (data/areas.json -> world.areas): качели и горки ставим только там, где в
@@ -773,134 +773,12 @@ export function buildStructures(world, terrain) {
     }
   }
 
-  // ---- АЗС: навес на колоннах, колонки под ним, касса и стела с ценами
-  // Точки из OSM (amenity=fuel). Навес разворачиваем вдоль ближайшей улицы,
-  // чтобы заезд был с дороги, а не в бок.
-  const fuelSigns = [];                    // надписи сетей — одним атласом (fuel.js)
-  for (const f of world.fuel || []) {
-    // сеть по имени и бренду из OSM: её цвета (если сверены) и подпись
-    const brand = brandOf(f), col = brand?.col || DEFAULT_COL, sign = signOf(f);
-    // Разворот и габарит берём из КОНТУРА OSM, если он есть: раньше навес
-    // ставился «в пяти метрах от точки» под углом к ближайшей улице и вставал
-    // вкривь, а на склоне повисал в воздухе. Площадку АЗС теперь ровняет
-    // buildAreas, и H здесь уже возвращает её отметку.
-    let ang = 0, CW = 14, CD = 9;
-    let cx0 = f.x, cz0 = f.z;
-    if (f.poly && f.poly.length >= 8) {
-      const q = f.poly, n = q.length / 2;
-      let best = null;
-      for (let i = 0; i < n; i++) {
-        const j = (i + 1) % n;
-        const dx = q[j * 2] - q[i * 2], dz = q[j * 2 + 1] - q[i * 2 + 1];
-        const l = Math.hypot(dx, dz);
-        if (l < 1e-6) continue;
-        const px = dx / l, pz = dz / l;
-        let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
-        for (let k = 0; k < n; k++) {
-          const u = q[k * 2] * px + q[k * 2 + 1] * pz, v = -q[k * 2] * pz + q[k * 2 + 1] * px;
-          if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v;
-        }
-        const ar = (u1 - u0) * (v1 - v0);
-        if (!best || ar < best.ar) best = { ar, px, pz, u0, u1, v0, v1 };
-      }
-      if (best) {
-        ang = Math.atan2(best.px, best.pz);
-        CW = Math.max(9, Math.min(26, (best.u1 - best.u0) * 0.72));
-        CD = Math.max(7, Math.min(16, (best.v1 - best.v0) * 0.50));
-        const cu = (best.u0 + best.u1) / 2, cv = best.v0 + (best.v1 - best.v0) * 0.36;
-        cx0 = cu * best.px - cv * best.pz;
-        cz0 = cu * best.pz + cv * best.px;
-      }
-    } else {
-      // только точка: разворачиваем к ближайшей проезжей улице
-      let bd = 1e9;
-      for (const r of world.roads || []) {
-        if (r.c > 2) continue;
-        const q = r.pts;
-        for (let i = 0; i < q.length - 2; i += 2) {
-          const ax = q[i], az = q[i + 1], bx2 = q[i + 2], bz2 = q[i + 3];
-          const vx = bx2 - ax, vz = bz2 - az;
-          const t = Math.max(0, Math.min(1, ((f.x - ax) * vx + (f.z - az) * vz) / (vx * vx + vz * vz || 1)));
-          const d = Math.hypot(f.x - ax - t * vx, f.z - az - t * vz);
-          if (d < bd) { bd = d; ang = Math.atan2(vx, vz); }
-        }
-      }
-    }
-    const CH = 5.2;
-    const ux = Math.sin(ang), uz = Math.cos(ang);
-    const nx = -uz, nz = ux;
-    // ВСЯ станция стоит на ОДНОЙ отметке — по центру площадки, иначе колонны
-    // навеса режет склоном и он висит углом в воздухе
-    const g0 = H(cx0, cz0);
-    const canopy = new THREE.BoxGeometry(CW, 0.75, CD);
-    canopy.rotateY(ang); canopy.translate(cx0, g0 + CH, cz0);
-    parts.push({ geo: canopy, color: [0.90, 0.90, 0.88] });
-    const band = new THREE.BoxGeometry(CW + 0.3, 0.45, CD + 0.3);
-    band.rotateY(ang); band.translate(cx0, g0 + CH - 0.42, cz0);
-    parts.push({ geo: band, color: col.band });   // подзор в цвет сети
-    // имя сети на фризе навеса — с обеих длинных сторон
-    if (sign) for (const sd of [1, -1]) fuelSigns.push({
-      text: sign, col, w: Math.min(CW * 0.6, 8), h: 0.6,
-      x: cx0 + ux * sd * (CD / 2 + 0.17), y: g0 + CH, z: cz0 + uz * sd * (CD / 2 + 0.17), ang: sd > 0 ? ang : ang + Math.PI,
-    });
-    for (const su of [-1, 1]) for (const sv of [-1, 1]) {
-      const px = cx0 + ux * su * (CW / 2 - 1.6) + nx * sv * (CD / 2 - 1.4);
-      const pz = cz0 + uz * su * (CW / 2 - 1.6) + nz * sv * (CD / 2 - 1.4);
-      const col = new THREE.BoxGeometry(0.55, CH, 0.55);
-      col.rotateY(ang); col.translate(px, g0 + CH / 2, pz);
-      parts.push({ geo: col, color: [0.86, 0.86, 0.84] });
-    }
-    // два островка с колонками
-    for (const su of [-1, 1]) {
-      const ix = cx0 + ux * su * 4.2, iz = cz0 + uz * su * 4.2;
-      const isl = new THREE.BoxGeometry(2.4, 0.22, CD - 3.0);
-      isl.rotateY(ang); isl.translate(ix, g0 + 0.11, iz);
-      parts.push({ geo: isl, color: [0.62, 0.61, 0.58] });
-      for (const sv of [-1, 1]) {
-        const px = ix + nx * sv * 1.9, pz = iz + nz * sv * 1.9;
-        const pump = new THREE.BoxGeometry(0.75, 1.75, 1.15);
-        pump.rotateY(ang); pump.translate(px, g0 + 1.10, pz);
-        parts.push({ geo: pump, color: [0.88, 0.88, 0.86] });
-        const disp = new THREE.BoxGeometry(0.12, 0.55, 0.85);
-        disp.rotateY(ang);
-        disp.translate(px + ux * su * 0.42, g0 + 1.45, pz);
-        parts.push({ geo: disp, color: [0.13, 0.14, 0.16] });
-        const top = new THREE.BoxGeometry(0.80, 0.30, 1.20);
-        top.rotateY(ang); top.translate(px, g0 + 2.10, pz);
-        parts.push({ geo: top, color: col.band });
-      }
-    }
-    // касса-магазин за навесом
-    const sx = cx0 + nx * (CD / 2 + 4.5), sz = cz0 + nz * (CD / 2 + 4.5);   // касса на той же отметке
-    const shop = new THREE.BoxGeometry(9.5, 3.6, 6.0);
-    shop.rotateY(ang); shop.translate(sx, g0 + 1.8, sz);
-    parts.push({ geo: shop, color: [0.90, 0.89, 0.85] });
-    const par = new THREE.BoxGeometry(10.1, 0.55, 6.6);
-    par.rotateY(ang); par.translate(sx, g0 + 3.75, sz);
-    parts.push({ geo: par, color: col.band });
-    const win = new THREE.BoxGeometry(7.8, 1.9, 0.12);
-    win.rotateY(ang);
-    win.translate(sx - nx * 3.06, g0 + 1.95, sz - nz * 3.06);
-    parts.push({ geo: win, color: [0.18, 0.28, 0.32] });
-    // стела с ценами у дороги
-    const tx = f.x - nx * 6.5 + ux * (CW / 2 + 1.5), tz = f.z - nz * 6.5 + uz * (CW / 2 + 1.5);
-    // столб — до низа щита: толще щита и иначе проступает сквозь надписи
-    const pole = new THREE.BoxGeometry(0.45, 4.15, 0.45);
-    pole.rotateY(ang); pole.translate(tx, g0 + 2.075, tz);
-    parts.push({ geo: pole, color: [0.72, 0.72, 0.70] });
-    const board = new THREE.BoxGeometry(2.5, 3.0, 0.30);
-    board.rotateY(ang); board.translate(tx, g0 + 5.6, tz);
-    parts.push({ geo: board, color: col.board });
-    // на щите — имя сети и виды топлива из OSM (без цен: их взять неоткуда)
-    const lines = fuelLines(f);
-    for (const sd of [1, -1]) fuelSigns.push({
-      text: sign, lines, col, w: 2.3, h: 2.8,
-      x: tx + ux * sd * 0.16, y: g0 + 5.6, z: tz + uz * sd * 0.16, ang: sd > 0 ? ang : ang + Math.PI,
-    });
-    bump('АЗС');
+  // ---- АЗС: модели сетей из Blender по месту и повороту из OSM (fuel.js)
+  if (world.fuel?.length) {
+    const fg = buildFuelStations(world, H);
+    group.add(fg);
+    stats.АЗС = fg.userData.stats.АЗС;
   }
-  const signMesh = buildFuelSigns(fuelSigns);
-  if (signMesh) group.add(signMesh);
 
   if (!parts.length) { group.userData.stats = stats; return group; }
   const mesh = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({

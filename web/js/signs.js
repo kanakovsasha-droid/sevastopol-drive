@@ -84,6 +84,7 @@ export function buildSigns(world, terrain, roadIndex) {
   const items = [];
   for (const b of world.buildings) {
     if (!b.sg || !b.sg.length) continue;
+    if (b.fuelBox) continue;            // коробка АЗС снята моделью сети (fuel.js) — вывеска повисла бы в воздухе
     const p = b.poly, n = p.length / 2;
     let best = null;
     // Стена задана руками: у гимназии табличка должна висеть на том же фасаде,
