@@ -7,6 +7,7 @@ import { buildYards, buildStructures } from './yards.js?v=b077ef04';
 import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=b077ef04';
 import { buildFurniture } from './furniture.js?v=b077ef04';
 import { buildLandmarks, setModelWarm } from './landmarks.js?v=b077ef04';
+import { buildModelPlinths } from './plinth.js?v=b077ef04';
 import { buildSigns } from './signs.js?v=b077ef04';
 import { loadStreet, buildStreet, streetFurniture } from './street.js?v=b077ef04';
 import { buildCemeteries } from './cemetery.js?v=b077ef04';
@@ -671,6 +672,8 @@ function* buildChunk(d, key) {
   at('памятные');
   const lm = buildLandmarks(w, terrain, defs, roads);
   g.add(lm);
+  // цоколь до земли под готовыми моделями зданий (plinth.js)
+  g.add(buildModelPlinths(defs, d.allBuildings || w.buildings, terrain));
   lap('памятные');
   yield; pt = performance.now();
   // Дом, отданный памятному зданию, не должен рисоваться ещё и рядовым.

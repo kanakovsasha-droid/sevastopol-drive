@@ -650,7 +650,10 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
     // Корень и hypot тут — самое дорогое место всей сборки квадрата: на плотном
     // квартале это под два миллиона отсчётов. Внутри плоской зоны расстояние
     // не нужно вовсе, снаружи считаем обычным sqrt по квадратам.
-    const rad2 = rad * rad, inner2 = inner * inner, core2 = (q.w / 2 + 2) ** 2;
+    // Ядро — проезжая часть плюс ячейка растра: выборка билинейная, и
+    // соседняя ячейка чужого плато, попавшая в интерполяцию у самой кромки,
+    // роняла край полотна на метры (Красный спуск над Троллейбусным, 175, 1540).
+    const rad2 = rad * rad, inner2 = inner * inner, core2 = (q.w / 2 + 2 + res) ** 2;
     for (let i = 0; i < n; i++) {
       // Касательная и уклон в отсчёте: высоту ячейки продолжаем от него по
       // уклону, а не берём ступенькой.
@@ -719,7 +722,7 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
   // десятой части, а проходов по полю шесть десятков.
   const cells = [];
   for (let i = 0; i < W * H; i++) if (wgt[i] > 0) cells.push(i);
-  if (!cells.length) return { tgt, wgt, cap, W, H, x0, z0, res };
+  if (!cells.length) return { tgt, wgt, cap, core: lvl, W, H, x0, z0, res };
   yield;
 
   // Соседние улицы спорят за одни ячейки, и жёсткий выбор одной из них рвёт
@@ -802,7 +805,10 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
   // потолок пересчитываем по сглаженной высоте, иначе он режет её же
   for (const i of cells) if (cap[i] < tgt[i]) cap[i] = tgt[i];
 
-  return crop({ tgt, wgt, cap, W, H, x0, z0, res }, keep);
+  // core — ячейки самой проезжей части: по ним земля потом подтягивается к
+  // полотну (buildTerrainTile), что бы с ней ни делали площадки и срезы.
+  for (let i = 0; i < W * H; i++) lvl[i] = lvl[i] === 2 ? 1 : 0;
+  return crop({ tgt, wgt, cap, core: lvl, W, H, x0, z0, res }, keep);
 }
 
 // Считаем коридор с запасом за краем квадрата (иначе сглаживание и ограничение
@@ -820,7 +826,7 @@ function crop(c, keep) {
   if (W >= c.W && H >= c.H) return c;
   const out = {
     tgt: new Float32Array(W * H), wgt: new Float32Array(W * H),
-    cap: new Float32Array(W * H), W, H, res,
+    cap: new Float32Array(W * H), core: c.core ? new Uint8Array(W * H) : null, W, H, res,
     x0: c.x0 + i0 * res, z0: c.z0 + j0 * res,
   };
   for (let j = 0; j < H; j++) {
@@ -828,6 +834,7 @@ function crop(c, keep) {
     out.tgt.set(c.tgt.subarray(a, a + W), b);
     out.wgt.set(c.wgt.subarray(a, a + W), b);
     out.cap.set(c.cap.subarray(a, a + W), b);
+    if (c.core) out.core.set(c.core.subarray(a, a + W), b);
   }
   return out;
 }
@@ -842,7 +849,7 @@ export function sampleCorridor(c, x, z) {
   const i = Math.floor(gx), j = Math.floor(gz);
   if (i < 0 || j < 0 || i >= c.W - 1 || j >= c.H - 1) return null;
   const fx = gx - i, fz = gz - j;
-  let sw = 0, sh = 0, wsum = 0, cap = Infinity;
+  let sw = 0, sh = 0, wsum = 0, cap = Infinity, core = 0;
   for (let dj = 0; dj < 2; dj++)
     for (let di = 0; di < 2; di++) {
       const bw = (di ? fx : 1 - fx) * (dj ? fz : 1 - fz);
@@ -851,9 +858,10 @@ export function sampleCorridor(c, x, z) {
       sw += w * bw;
       if (w > 0) { sh += c.tgt[k] * w * bw; wsum += w * bw; }
       if (c.cap[k] < cap) cap = c.cap[k];
+      if (c.core && c.core[k]) core += bw;
     }
-  if (wsum <= 0) return { h: 0, w: 0, cap };
-  return { h: sh / wsum, w: sw, cap };
+  if (wsum <= 0) return { h: 0, w: 0, cap, core };
+  return { h: sh / wsum, w: sw, cap, core };
 }
 
 // ------------------------------------------------------------------ море
@@ -1425,6 +1433,20 @@ export function* buildTerrainTile(terrain, index, opts) {
   const plat = yield* platformsGen(ext, ne, ex0, ez0, step, cwE, capE, world.buildings,
                                    [gx0 - 0.01, gz0 - 0.01, gx0 + (n - 1) * step + 0.01, gz0 + (n - 1) * step + 0.01], mlev);
   applySiteCuts(ext, ne, ex0, ez0, step);
+  // ДОРОГИ ПЕРВИЧНЫ (roadlevels.js): под самой проезжей частью центра земля
+  // не ниже полотна, что бы с ней ни сделали площадки домов, террасы и
+  // срезы. Срезанная под площадку земля у кромки опускала профиль езды на
+  // метры (он не смеет висеть выше земли больше чем на 1.1 м) — и колесо
+  // проваливалось сквозь нарисованный асфальт (ул. у −250, 937).
+  for (let j = 0; j < ne; j++)
+    for (let i = 0; i < ne; i++) {
+      const x = ex0 + i * step, z = ez0 + j * step;
+      if (levelWeight(x, z) <= 0) continue;
+      const cr = corrAt(x, z);
+      if (!cr || cr.core < 0.5) continue;
+      const k = j * ne + i;
+      if (ext[k] < cr.h - 0.02) ext[k] = cr.h - 0.02;
+    }
   lap('цвет и дороги');
 
   const heights = new Float32Array(n * n);
@@ -2272,7 +2294,9 @@ export function* buildRoads(world, terrain, chunk = 500) {
     // накладываются друг на друга, и хорды шестиметровых пролётов разных улиц
     // по выпуклой поверхности расходились на 5–12 см: колесо, переезжая с
     // одного на другое, получало ступеньку (пл. Лазарева у «Мир Бургера»).
-    const ext = densify(e0, (ax, az, bx, bz) => junctionDist((ax + bx) / 2, (az + bz) / 2) < 14 ? 3 : 6);
+    // Дворовый проезд коридора не имеет и лежит прямо на сетке рельефа с её
+    // изломами через 9 м и стенками площадок домов — ему тоже 3 м.
+    const ext = densify(e0, (ax, az, bx, bz) => o.r.c >= 3 || junctionDist((ax + bx) / 2, (az + bz) / 2) < 14 ? 3 : 6);
     // Митры считаем здесь и переиспользуем при отрисовке: сосед должен мерить
     // по ТОМУ ЖЕ полотну, которое потом ляжет на землю.
     const mt0 = miters(ext);
