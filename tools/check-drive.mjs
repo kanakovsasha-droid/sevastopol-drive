@@ -178,7 +178,7 @@ const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
 const errors = [];
 page.on('pageerror', e => errors.push(String(e).slice(0, 300)));
 const s0 = routes[0].secs[0][0];
-await page.goto(`http://127.0.0.1:${PORT}/web/?radius=700&ground=1300`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${PORT}/web/?radius=1200&ground=1300`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => window.G && window.G.car, null, { timeout: 240000 });
 
 await page.evaluate(() => {
@@ -207,7 +207,9 @@ for (const R of routes) {
       let ready = false;
       for (let i = 0; i < 1500 && !ready; i++) {
         await idle(200);
-        ready = probe.every(([x, z]) => T.surfaceAt(x, z));
+        // и кварталы города: мосты (полотно, setDeck) и нарисованный асфальт
+        // приезжают с ними, без них колесо на мосту ехало по дну оврага
+        ready = probe.every(([x, z]) => T.surfaceAt(x, z) && (G.chunks.has(G.chunks.keyAt(x, z)) || !G.chunks.cells || !G.chunks.cells.has(G.chunks.keyAt(x, z))));
         if ((i === 400 || i === 900) && !ready) G.jumpTo(sec[0][0], sec[0][1]);
       }
       await idle(300);

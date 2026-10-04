@@ -276,6 +276,15 @@ const nearBridge = new Uint8Array(N);
   chains.forEach((c, ci) => { if (c.r.c > 1 || c.r.w < 7 || c.r.br || c.r.tn) return;
     for (const id of c.ids) { const k = Math.floor(NX[id] / G) * 100003 + Math.floor(NZ[id] / G); let l = g.get(k); if (!l) g.set(k, l = []); l.push(ci, id); } });
   const seen = new Set();
+  // направление улицы в вершине — по соседям в её цепочке
+  const pos = chains.map(c => { const m = new Map(); c.ids.forEach((id, k) => { if (!m.has(id)) m.set(id, k); }); return m; });
+  const dirOf = (ci, id) => {
+    const c = chains[ci], k = pos[ci].get(id);
+    if (k === undefined) return null;
+    const a = c.ids[Math.max(0, k - 1)], b = c.ids[Math.min(c.ids.length - 1, k + 1)];
+    const dx = NX[b] - NX[a], dz = NZ[b] - NZ[a], L = Math.hypot(dx, dz);
+    return L > 0.1 ? [dx / L, dz / L] : null;
+  };
   chains.forEach((c, ci) => {
     if (c.r.c > 1 || c.r.w < 7 || c.r.br || c.r.tn) return;
     for (const id of c.ids) {
@@ -286,7 +295,12 @@ const nearBridge = new Uint8Array(N);
           for (let t = 0; t < l.length; t += 2) {
             const o = chains[l[t]]; if (l[t] === ci || o.r === c.r) continue;
             const d = Math.hypot(NX[l[t + 1]] - NX[id], NZ[l[t + 1]] - NZ[id]);
-            if (d < bd && d > 4 && d < (c.r.w + o.r.w) / 2 + 6) { bd = d; best = l[t + 1]; }
+            if (!(d < bd && d > 4 && d < (c.r.w + o.r.w) / 2 + 6)) continue;
+            // Только параллельные: на серпантине соседняя петля той же
+            // дороги идёт в 15 м выше — это не вторая проезжая часть.
+            const u = dirOf(ci, id), v = dirOf(l[t], l[t + 1]);
+            if (!u || !v || Math.abs(u[0] * v[0] + u[1] * v[1]) < 0.94) continue;
+            bd = d; best = l[t + 1];
           }
         }
       if (best < 0) continue;
@@ -317,6 +331,14 @@ for (let i = 0; i < N; i++) {
 }
 tlog('земля посчитана');
 const G0raw = Float32Array.from(G0);       // для итоговой статистики
+// Поперечная связь двух проезжих частей, у которых земля расходится больше
+// чем на 2 м, — это уступ с подпорной стенкой (или эстакада над улицей), а
+// не одна дорога: связь снимаем (как и в коридоре, worldgen.js).
+{
+  let off = 0;
+  for (let e = 0; e < NE; e++) if (EK[e] && Math.abs(G0[EA[e]] - G0[EB[e]]) > 2) { EK[e] = 2; EG[e] = 10; off++; }
+  tlog('поперечных связей снято по земле', off);
+}
 // данные: вес вершины
 const DW = new Float32Array(N).fill(1);
 for (const i of noData) DW[i] = 0;
@@ -540,7 +562,7 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
     for (let i = n - 1; i >= 0; i--) h[i] = y[i] / Dg[i] - (i + 1 < n ? l1[i + 1] * h[i + 1] : 0) - (i + 2 < n ? l2[i + 2] * h[i + 2] : 0);
     return h;
   };
-  const KLIM = KTR * 0.75, LMAX = 2e11;
+  const KLIM = KTR * 0.75, LMAX = 2e11, DMAX = +arg('dmax', 5);
   let worstAll = 0;
   const solveStroke = ({ V, S }, gOf, wOf) => {
     const n = V.length;
@@ -562,23 +584,21 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
       h = solve5(n, d0, d1, d2, b);
       // Штраф поднимаем, где кривизна выше предела, но не до бесконечности:
       // там, где предел с землёй несовместим (крутой съезд с горы в конце
-      // шоссе), профиль выпрямлялся в линию и уходил от земли на 70 м.
-      // Ушёл больше чем на 12 м — штраф там опускаем (насыпь через овраг в 5–8 м —
-      // норма для трассы, её не трогаем): лучше перелом круче
-      // предела, чем дорога в воздухе или в толще горы.
+      // шоссе), профиль выпрямлялся в линию и уходил от земли на 70 м. Ушёл
+      // дальше DMAX — штраф там опускаем: лучше перелом круче предела, чем
+      // дорога в насыпи или выемке в два этажа. Эти два правила не спорят:
+      // там, где профиль далеко от земли, штраф только опускается.
       let bad = 0;
+      const far = new Uint8Array(n);
+      for (let i = 0; i < n; i++) if (w[i] > 0.05 && w[i] < 100 && Math.abs(h[i] - g[i]) > DMAX)
+        for (let j = Math.max(0, i - 6); j <= Math.min(n - 1, i + 6); j++) far[j] = 1;
       for (let i = 1; i < n - 1; i++) {
-        if (cwv[i] > 0) continue;
+        if (cwv[i] > 0 || far[i]) continue;
         const l1 = S[i] - S[i - 1], l2 = S[i + 1] - S[i];
         const k = Math.abs((h[i + 1] - h[i]) / l2 - (h[i] - h[i - 1]) / l1) / ((l1 + l2) / 2);
-        // там, где профиль уже далеко от земли, штраф не растёт — иначе
-        // круги спорили: здесь поднимали, рядом опускали, и выходил горб
-        if (k > KLIM * 0.9 && !(w[i] > 0.05 && w[i] < 100 && Math.abs(h[i] - g[i]) > 8)) {
-          bad++; for (let j = Math.max(1, i - 3); j <= Math.min(n - 2, i + 3); j++) lam[j] = Math.min(LMAX, lam[j] * 2.5);
-        }
+        if (k > KLIM * 0.9) { bad++; for (let j = Math.max(1, i - 3); j <= Math.min(n - 2, i + 3); j++) if (!far[j]) lam[j] = Math.min(LMAX, lam[j] * 2.5); }
       }
-      for (let i = 0; i < n; i++) if (w[i] > 0.05 && w[i] < 100 && Math.abs(h[i] - g[i]) > 12)
-        for (let j = Math.max(0, i - 6); j <= Math.min(n - 1, i + 6); j++) lam[j] = Math.max(1e3, lam[j] * 0.3);
+      for (let i = 0; i < n; i++) if (far[i]) { lam[i] = Math.max(1e4, lam[i] * 0.4); bad++; }
       if (!bad) break;
     }
     if (DBG) {
@@ -595,7 +615,7 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
   // Второй круг: в таких вершинах опора — среднее первого круга, с весом.
   const pin = new Float32Array(N), pinW = new Float32Array(N);
   const twin = new Map();
-  for (let e = 0; e < NE; e++) if (EK[e]) {
+  for (let e = 0; e < NE; e++) if (EK[e] === 1) {
     (twin.get(EA[e]) || twin.set(EA[e], []).get(EA[e])).push(EB[e]);
     (twin.get(EB[e]) || twin.set(EB[e], []).get(EB[e])).push(EA[e]);
   }
@@ -620,7 +640,7 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
       const tw = (twin.get(v) || []).filter(u => cnt[u]);
       if (mult[v] < 2 && !tw.length) continue;
       tgt.set(v, tw.length ? (val(v) + tw.reduce((a, u) => a + val(u), 0) / tw.length) / 2 : val(v));
-      tw8.set(v, mult[v] >= 2 ? 1e7 : 5);
+      tw8.set(v, mult[v] >= 2 ? 1e7 : 300);
     }
     if (round === 2) break;
     res = strokes.map(st => solveStroke(st, v => tgt.has(v) ? tgt.get(v) : G0[v], v => tgt.has(v) ? tw8.get(v) : DW[v]));
@@ -733,6 +753,15 @@ const stats = {};
     console.log(`класс ${c}: вершин ${s.v}, от земли ср.кв ${Math.sqrt(s.dev2 / Math.max(1, s.v)).toFixed(2)} м, макс ${s.devMax.toFixed(1)}, >2 м ${s.over2}; ` +
       `рёбер круче предела ${s.eBad} из ${s.e}; переломов сверх предела ×1.5 ${s.tBad} из ${s.t}, худший ${(s.kMax * 100).toFixed(1)} п./20 м`);
   console.log('уклон:', ex.join(' | '));
+  {
+    // две проезжие части: расхождение отметок по поперечным рёбрам
+    const ds = [];
+    for (let e = 0; e < NE; e++) if (EK[e] === 1) ds.push([Math.abs(Hh[EA[e]] - Hh[EB[e]]) - EG[e] * EL[e], e]);
+    ds.sort((a, b) => b[0] - a[0]);
+    const over = ds.filter(d => d[0] > 0.1).length;
+    if (DBG) for (const [d, e] of ds.slice(0, 4)) console.log('  пара', EA[e], EB[e], 'H', Hh[EA[e]].toFixed(1), Hh[EB[e]].toFixed(1), 'G', G0raw[EA[e]].toFixed(1), G0raw[EB[e]].toFixed(1), 'pin', PIN[EA[e]], PIN[EB[e]], 'len', EL[e].toFixed(1));
+    console.log(`поперечных рёбер ${ds.length}, сверх допуска на 10+ см ${over}; худшие:`, ds.slice(0, 5).map(([d, e]) => `${NX[EA[e]].toFixed(0)},${NZ[EA[e]].toFixed(0)} ${d.toFixed(2)} м`).join(' | '));
+  }
   // Перелом на 20 м по осевым трасс за центром: уклон на 20 м до точки и
   // после неё, в пунктах. Требование — не больше 1.
   for (const cl of [0, 1]) {
@@ -820,6 +849,15 @@ const out = {
 };
 let nFar = 0, nMiss = 0;
 const farIds = new Set();
+// Мосты far.json. В дальнем слое нет флага моста, и коридор вдавливал их в
+// землю как обычные улицы. С отметками графа полотно моста висит над
+// оврагом или над трассой — и его плато в коридоре тянуло трассу под ним
+// на 2–3 м вверх (развязка у 48376, 15200). Рантайм мосты в коридор не берёт.
+const worldBr = new Set(W.roads.filter(r => r.br).map(r => r.id));
+out.bridges = FAR.roads.filter(r => worldBr.has(r.id)).map(r => r.id);
+// осевые мостов: полотно моста в рантайме — по отметкам (bridgeLevelAt), а
+// в чанках мост бывает нарезан на куски со своими id
+out.bridgePts = Object.fromEntries(FAR.roads.filter(r => worldBr.has(r.id)).map(r => [r.id, r.pts]));
 for (const r of FAR.roads) {
   farIds.add(r.id);
   if (r.c > 3) continue;

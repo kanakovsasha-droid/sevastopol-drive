@@ -35,6 +35,17 @@ if (L) for (const id in L.roads) LV.set(id, decode(L.roads[id]));
 if (L) L.roads = null;              // разжатое лежит в LV
 
 export const ROAD_LEVELS = L;
+// мосты дальнего слоя (в far.json флага нет): в коридор земли их не кладём
+const BR = new Set((L && L.bridges) || []);
+export const isBridge = id => BR.has(id);
+// Полотно моста по отметкам графа: id куска из чанка («w1:2») сводим к id
+// улицы, проекция — на осевую из far.json. null — отметок нет.
+export function bridgeLevelAt(id, x, z) {
+  if (!L || !L.bridgePts || id === undefined) return null;
+  const base = String(id).replace(/:\d+$/, '');
+  const pts = L.bridgePts[base];
+  return pts ? levelAt(base, pts, x, z) : null;
+}
 export const hasLevels = id => LV.has(id);
 
 // Вес первичного профиля в точке. Отметки теперь на всю карту: 1 везде,
