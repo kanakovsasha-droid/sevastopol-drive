@@ -1,23 +1,23 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=983c0099';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=983c0099';
-import { buildStreetProps } from './props.js?v=983c0099';
-import { updateFlora, floraStats, warmFlora } from './flora.js?v=983c0099';
-import { buildYards, buildStructures } from './yards.js?v=983c0099';
-import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=983c0099';
-import { buildFurniture } from './furniture.js?v=983c0099';
-import { buildLandmarks, setModelWarm } from './landmarks.js?v=983c0099';
-import { buildSigns } from './signs.js?v=983c0099';
-import { loadStreet, buildStreet, streetFurniture } from './street.js?v=983c0099';
-import { buildCemeteries } from './cemetery.js?v=983c0099';
-import { audit } from './audit.js?v=983c0099';
-import { buildMap, drawFull, mapUnproject } from './minimap.js?v=983c0099';
-import { Hud } from './hud.js?v=983c0099';
-import { ChunkManager } from './chunks.js?v=983c0099';
-import { Collider, RoadIndex } from './collision.js?v=983c0099';
-import { Car, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=983c0099';
-import { CarFX } from './carfx.js?v=983c0099';
-import { precompile } from './warm.js?v=983c0099';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=b077ef04';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=b077ef04';
+import { buildStreetProps } from './props.js?v=b077ef04';
+import { updateFlora, floraStats, warmFlora } from './flora.js?v=b077ef04';
+import { buildYards, buildStructures } from './yards.js?v=b077ef04';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=b077ef04';
+import { buildFurniture } from './furniture.js?v=b077ef04';
+import { buildLandmarks, setModelWarm } from './landmarks.js?v=b077ef04';
+import { buildSigns } from './signs.js?v=b077ef04';
+import { loadStreet, buildStreet, streetFurniture } from './street.js?v=b077ef04';
+import { buildCemeteries } from './cemetery.js?v=b077ef04';
+import { audit } from './audit.js?v=b077ef04';
+import { buildMap, drawFull, mapUnproject } from './minimap.js?v=b077ef04';
+import { Hud } from './hud.js?v=b077ef04';
+import { ChunkManager } from './chunks.js?v=b077ef04';
+import { Collider, RoadIndex } from './collision.js?v=b077ef04';
+import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=b077ef04';
+import { CarFX } from './carfx.js?v=b077ef04';
+import { precompile } from './warm.js?v=b077ef04';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -201,16 +201,10 @@ async function boot() {
     // настоящая модель приезжает позже, коробочная стоит до неё. Меняем их,
     // только когда шейдеры модели собраны в фоне: у E63 их с десяток (лак с
     // клиркоутом, фары, текстуры), и сборка прямо в кадре — полсекунды стоп-кадра.
-    loadCarModel(undefined, renderer).then(m => {
-      cheapGlass(m);
-      trimCarShadows(m);
-      return precompile(renderer, scene, camera, m, sun).then(() => m);
-    }).then(m => { scene.remove(carMesh); carMesh = m; scene.add(m); })
-      .catch(e => console.warn('модель машины не загрузилась, остаётся коробочная:', e.message));
     car.reset(SPAWN.x, SPAWN.z, 0);
     walk.x = SPAWN.x; walk.z = SPAWN.z;
     // коробка и привод с клавиатуры, звук, дым — всё в carfx.js
-    carFx = new CarFX({ scene, camera, car: () => car,
+    carFx = new CarFX({ scene, camera, car: () => car, swapModel: swapCarModel,
       driving: () => mode === 'car' && !$('menu').classList.contains('on'), inside: () => cam.mode === 2 });
 
     chunks.onBuild = buildChunk;
@@ -922,6 +916,23 @@ async function prewarm(limit = 6000) {
 // — ещё 92 вызова отрисовки за кадр ради тени, которую целиком даёт кузов.
 // Тень оставляем колёсам и непрозрачным сеткам больше 1.2 м по диагонали
 // (панели кузова, бамперы, капот, днище) — силуэт тени тот же.
+// Модель машины в сцене — та, что выбрана в гараже (car.model). Меняем, только
+// когда шейдеры новой модели собраны в фоне: у E63 их с десяток (лак с
+// клиркоутом, фары, текстуры), и сборка прямо в кадре — полсекунды стоп-кадра.
+// Пока грузится — остаётся прежняя (на старте — коробочная).
+let carModelTicket = 0;
+function swapCarModel() {
+  const ticket = ++carModelTicket;
+  return loadCarModel(CARS[car.model]?.glb, renderer).then(m => {
+    cheapGlass(m);
+    trimCarShadows(m);
+    return precompile(renderer, scene, camera, m, sun).then(() => m);
+  }).then(m => {
+    if (ticket !== carModelTicket) return;            // пока грузилась, выбрали другую
+    scene.remove(carMesh); carMesh = m; scene.add(m);
+  }).catch(e => console.warn('модель машины не загрузилась, остаётся прежняя:', e.message));
+}
+
 function trimCarShadows(root) {
   const box = new THREE.Box3(), v = new THREE.Vector3();
   root.updateMatrixWorld(true);

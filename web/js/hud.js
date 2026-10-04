@@ -1,5 +1,5 @@
-import { drawMini } from './minimap.js?v=983c0099';
-import { CarFX } from './carfx.js?v=983c0099';
+import { drawMini } from './minimap.js?v=b077ef04';
+import { CarFX } from './carfx.js?v=b077ef04';
 
 // Интерфейс поверх игры — вариант A «Циферблат» (утверждён владельцем):
 //   • справа снизу круглый прибор: обороты дугой со шкалой 0–8 и красной
@@ -377,7 +377,7 @@ export class Hud {
       if (on) { g.roundRect(wx, wy, 4, 7, 1.2); g.fillStyle = '#fff'; g.fill(); }
       else { g.roundRect(wx + 0.6, wy + 0.6, 2.8, 5.8, 1); g.strokeStyle = 'rgba(255,255,255,.45)'; g.lineWidth = 1.2; g.stroke(); }
     };
-    const front = drive !== 'rwd';
+    const front = String(drive).toLowerCase() !== 'rwd';     // телеметрия physics пишет 'RWD'
     wheel(0, 0, front); wheel(12, 0, front); wheel(0, 17, true); wheel(12, 17, true);
     g.restore();
   }

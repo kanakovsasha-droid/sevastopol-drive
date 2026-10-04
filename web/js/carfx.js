@@ -1,6 +1,8 @@
-import { E63Sound } from './engine-audio.js?v=983c0099';
-import { RoadSurface } from './roadsurf.js?v=983c0099';
-import { TireSmoke } from './smoke.js?v=983c0099';
+import { E63Sound } from './engine-audio.js?v=b077ef04';
+import { RoadSurface } from './roadsurf.js?v=b077ef04';
+import { TireSmoke } from './smoke.js?v=b077ef04';
+import { Garage } from './garage.js?v=b077ef04';
+import { CARS } from './vehicle.js?v=b077ef04';
 
 // Всё, что машина делает «вокруг» физики: коробка и привод с клавиатуры,
 // звук мотора и шин, дым из-под колёс.
@@ -85,10 +87,18 @@ export async function loadCarSounds(ctx, base = '../data/audio/') {
 export class CarFX {
   // opts: scene, camera, car() — текущая машина, driving() — сейчас за рулём
   // и меню закрыто, inside() — камера в салоне
-  constructor({ scene, camera, car, driving, inside }) {
+  // swapModel() — main.js грузит в сцену модель той машины, что сейчас car.model
+  constructor({ scene, camera, car, driving, inside, swapModel }) {
     CarFX.last = this;                    // для отладки из консоли и стенда
     this.camera = camera;
     this.getCar = car; this.driving = driving; this.inside = inside;
+    this.swapModel = swapModel || (() => {});
+    // гараж: какая машина была в прошлый раз — на той и стартуем
+    const first = Garage.saved();
+    if (first !== car().model) car().setModel(first);
+    this._credit();
+    this.swapModel();
+    this.garage = new Garage({ car, choose: id => this.chooseCar(id) });
     this.smoke = new TireSmoke(scene);
     // колёса опираются на нарисованный асфальт, а не на профиль коридора
     this.surface = new RoadSurface(scene);
@@ -144,16 +154,22 @@ export class CarFX {
     this.packs = ['open'];
     try { this.packs = [...await findModPacks(), 'open']; } catch { /* нет — значит нет */ }
     const want = new URLSearchParams(location.search).get('snd');
+    // По умолчанию — открытый набор (основа звука и на сайте), а хлопки на
+    // сбросе — из w212-tuning, если он лежит локально. Ключ хранилища новый:
+    // прежний выбор (пакет мода целиком) больше не навязываем.
     let saved = null;
-    try { saved = localStorage.getItem('sev.snd'); } catch { /* нет хранилища */ }
-    const pick = [want, saved, this.packs[0]].find(p => p && this.packs.includes(p)) || 'open';
+    try { saved = localStorage.getItem('sev.snd2'); } catch { /* нет хранилища */ }
+    if (this.packs.includes('w212-tuning')) {
+      try { this.audio.usePops((await loadModPack(ctx, 'w212-tuning')).bufs); } catch { /* без них — открытые хлопки */ }
+    }
+    const pick = [want, saved, 'open'].find(p => p && this.packs.includes(p)) || 'open';
     await this.usePack(pick);
   }
 
   async usePack(id) {
     if (!this.audio) return;
     this.pack = id;
-    try { localStorage.setItem('sev.snd', id); } catch { /* нет хранилища */ }
+    try { localStorage.setItem('sev.snd2', id); } catch { /* нет хранилища */ }
     if (id === 'open') { if (this.open) this.audio.useSamples(this.open.bufs, this.open.meta); return; }
     try {
       const m = await loadModPack(this.ctx, id);
@@ -164,6 +180,24 @@ export class CarFX {
       console.warn('пакет звука не загрузился, остаётся открытый:', e.message);
       if (this.open) this.audio.useSamples(this.open.bufs, this.open.meta);
     }
+  }
+
+  // Пересесть в другую машину: параметры физики, модель, звук своей машины,
+  // подпись автора модели.
+  chooseCar(id) {
+    const car = this.getCar();
+    if (!car.setModel(id)) return;
+    this._credit();
+    this.swapModel();
+    // звук не меняем: основа — открытый набор (с хлопками w212, если они есть),
+    // пакеты модов целиком — по J
+  }
+
+  // В подписи внизу — автор модели той машины, что сейчас в игре
+  _credit() {
+    const a = [...document.querySelectorAll('#credit a')].find(x => x.href.includes('sketchfab.com'));
+    const M = CARS[this.getCar().model];
+    if (a && M) a.outerHTML = M.credit;
   }
 
   // J — следующий звуковой пакет (если их больше одного)
