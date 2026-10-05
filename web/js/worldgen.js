@@ -1,13 +1,14 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=10448e16';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=10448e16';
-import { buildCoverage } from './coverage.js?v=10448e16';
-import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=10448e16';
-import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt } from './roadlevels.js?v=10448e16';
-import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=10448e16';
-import { resolveAreas, sportSkipIds } from './sport.js?v=10448e16';
-import { planParking, roadSegIndex } from './parking.js?v=10448e16';
-import { seriesOf, seriesWall, seriesExtras } from './series.js?v=10448e16';
+import { SEA_FLOOR } from './terrain.js?v=e287a336';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=e287a336';
+import { buildCoverage } from './coverage.js?v=e287a336';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=e287a336';
+import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt } from './roadlevels.js?v=e287a336';
+import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=e287a336';
+import { resolveAreas, sportSkipIds } from './sport.js?v=e287a336';
+import { planParking, roadSegIndex } from './parking.js?v=e287a336';
+import { seriesOf, seriesWall, seriesExtras } from './series.js?v=e287a336';
+import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=e287a336';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -3790,6 +3791,7 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
       : (b.h < 4.2 || area < 38) ? 2 : 0;
     const roofKind = flatRoof ? 3 : 1;
 
+    const gate = gateOf(b), gh = (x, z) => terrain.gridHeightAt(x, z);
     let u = 0;
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
@@ -3802,6 +3804,19 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
       let u0 = u, u1 = u + l, wk = wallKind;
       u = u1;
       if (ser) ({ kind: wk, u0, u1 } = seriesWall(ser, i, ax, az, bx, bz, l));
+      // арка-проезд (passage.js): стена рвётся проёмом
+      const cut = gate && gateCut(gate, i, ax, az, bx, bz, l);
+      if (cut) {
+        gateWall(gate, cut, ax, az, bx, bz, l, u0, u1, yFloor, yTop, Hb, nx, nz, w, wk, pushV, (ax, az, bx, bz, u0, u1) => {
+          pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wk);
+          pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wk);
+          pushV(bx, yBase, bz, nx, 0, nz, w, u1, wb, Hb, wk);
+          pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wk);
+          pushV(ax, yTop, az, nx, 0, nz, w, u0, Hb, Hb, wk);
+          pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wk);
+        }, gh);
+        continue;
+      }
       // Обход ПО нормали: при обратном порядке стена отсекается как задняя грань,
       // и снаружи видно нутро дома вместо ближних стен.
       pushV(ax, yBase, az, nx, 0, nz, w, u0, wb, Hb, wk);
@@ -3812,6 +3827,7 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
       pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wk);
     }
     if (ser) { seriesExtras(ser, yFloor, yTop, w, Hb, boxSolid); stats.series = (stats.series || 0) + 1; }
+    if (gate) gateLining(gate, w, pushV, gh, Hb);
 
     // Рыночный ряд: длинный сарай под двускатной ребристой кровлей, по бокам
     // тент над проходом. Вальма из общего кода тут не годится — ряд узкий
