@@ -944,6 +944,9 @@ export function plantFlora(parent, sets) {
 const live = {};       // k → { near: {mesh, cap}, mid: {...} }
 let MAT = null, SMAT = null;
 const last = new THREE.Vector3(1e9, 1e9, 1e9);
+const fwd = new THREE.Vector3(), lastDir = new THREE.Vector3(0, -2, 0);
+const CONE_PAD = THREE.MathUtils.degToRad(18), TURN = THREE.MathUtils.degToRad(8);
+const NEAR_ALL2 = 25 * 25;          // ближе 25 м — всё: крона над головой и сбоку
 const scratch = {};
 export const floraStats = { near: 0, mid: 0, rebuilds: 0, ms: 0 };
 // Отладка (tools/flora.html): force = 0 / 1 / 2 — всё ближним, средним или дальним планом.
@@ -1009,10 +1012,25 @@ export function updateFlora(camera, scene, now) {
     if (st !== e.st) { e.st = st; dirty = true; }
   }
   const c = camera.position;
-  if (!dirty && c.distanceToSquared(last) < 100) return;
+  // НАБОР — ТОЛЬКО ПЕРЕД КАМЕРОЙ. Ближний и средний план рисуются одной
+  // сеткой на породу без отсечения по кадру, и раньше в неё шли все деревья
+  // на 600 м кругом — две трети за спиной и по бокам: с Большой Морской это
+  // 290 тысяч треугольников в кадре. Теперь берём конус взгляда с запасом
+  // CONE_PAD на каждую сторону и пересобираем набор и при повороте больше
+  // чем на TURN — запас его покрывает, дерево у края кадра не моргает.
+  // Тень от деревьев — своя сетка (flora:shadow), её набираем по-прежнему
+  // кругом: тень от дерева за спиной падает в кадр.
+  camera.getWorldDirection(fwd);
+  const turned = fwd.dot(lastDir) < Math.cos(TURN);
+  if (!dirty && !turned && c.distanceToSquared(last) < 100) return;
   const t0 = performance.now();
   dirty = false;
   last.copy(c);
+  lastDir.copy(fwd);
+  const tv = Math.tan(THREE.MathUtils.degToRad(camera.fov || 60) / 2);
+  const cone = Math.atan(Math.hypot(tv, tv * (camera.aspect || 1.8))) + CONE_PAD;
+  const cosC = cone >= Math.PI ? -2 : Math.cos(cone);
+  const fx = fwd.x, fy = fwd.y, fz = fwd.z;
   const cnt = { shadow0: 0 };
   for (const k of KEYS) cnt[k + 0] = cnt[k + 1] = 0;
   for (const e of entries) {
@@ -1030,10 +1048,13 @@ export function updateFlora(camera, scene, now) {
         let lod = d2 < rn2 ? 0 : 1;
         if (floraDebug.force >= 0) { if (floraDebug.force === 2) continue; lod = floraDebug.force; }
         else if (d2 >= rm2) continue;
-        const key = k + lod, j = cnt[key]++;
-        const sc = grow(k, lod, j + 1);
-        sc.M.set(s.M.subarray(i * 16, i * 16 + 16), j * 16);
-        sc.C[j * 3] = s.C[i * 3]; sc.C[j * 3 + 1] = s.C[i * 3 + 1]; sc.C[j * 3 + 2] = s.C[i * 3 + 2];
+        // в конусе взгляда (или вплотную к камере — крона над головой)
+        if (d2 < NEAR_ALL2 || ex * fx + ey * fy + ez * fz >= cosC * Math.sqrt(d2)) {
+          const key = k + lod, j = cnt[key]++;
+          const sc = grow(k, lod, j + 1);
+          sc.M.set(s.M.subarray(i * 16, i * 16 + 16), j * 16);
+          sc.C[j * 3] = s.C[i * 3]; sc.C[j * 3 + 1] = s.C[i * 3 + 1]; sc.C[j * 3 + 2] = s.C[i * 3 + 2];
+        }
         if (!lod && d2 < SHADOW_R2) {
           const js = cnt.shadow0++;
           grow('shadow', 0, js + 1).M.set(s.CM.subarray(i * 16, i * 16 + 16), js * 16);

@@ -6,7 +6,7 @@ import { updateFlora, floraStats, warmFlora } from './flora.js?v=e53617c3';
 import { buildYards, buildStructures } from './yards.js?v=e53617c3';
 import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=e53617c3';
 import { buildFurniture } from './furniture.js?v=e53617c3';
-import { buildLandmarks, setModelWarm } from './landmarks.js?v=e53617c3';
+import { buildLandmarks, setModelWarm, updateModels } from './landmarks.js?v=e53617c3';
 import { buildSigns } from './signs.js?v=e53617c3';
 import { loadStreet, buildStreet, streetFurniture } from './street.js?v=e53617c3';
 import { buildCemeteries } from './cemetery.js?v=e53617c3';
@@ -28,7 +28,6 @@ import { Assists } from './assists.js?v=e53617c3';
 import { buildModelPlinths } from './plinth.js?v=e53617c3';
 import { CarCam } from './carcam.js?v=e53617c3';
 import { Precip } from './precip.js?v=e53617c3';
-import { batchCar } from './carbatch.js?v=e53617c3';
 import { loadFootprints, monumentTest } from './footprints.js?v=e53617c3';
 import { loadSquares, addFarSquares, addSquares } from './squares.js?v=e53617c3';
 import { loadSkateparks, buildSkateparks } from './skatepark.js?v=e53617c3';
@@ -729,7 +728,10 @@ function* buildChunk(d, key) {
   w.buildings.forEach((b, i) => { if (b.id && skipIds.has(b.id)) skip.add(i); });
   for (const i of skip) { const b = w.buildings[i]; if (b && b.id) skipIds.add(b.id); }
   at('дома');
-  g.add(yield* buildBuildings(w, terrain, 500, skip));
+  // Куски домов — по сетке 512 м, кратной квадрату 1024: при 500 м границы
+  // кусков не совпадали с краями квадрата, и он резался на девять сеток (с
+  // узкими полосками по краям) вместо четырёх — вызовы в кадре и в тени.
+  g.add(yield* buildBuildings(w, terrain, 512, skip));
   g.add(buildSchools(w, terrain, skip));           // школы: парапет и крыльцо
   lap('дома');
   yield; pt = performance.now();
@@ -756,11 +758,12 @@ function* buildChunk(d, key) {
                               defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear })),
                               d.allBuildings || w.buildings);
   castShadows(furn);
+  farSmall(furn, 450);
   g.add(furn);
   lap('мебель');
   yield; pt = performance.now();
   at('вывески');
-  g.add(buildSigns(w, terrain, roads));
+  g.add(farSmall(buildSigns(w, terrain, roads), 600));
   lap('вывески');
 
   if (prof) console.log('чанк ' + part + ': ' + prof.join(' · ') + ' мс');
@@ -822,6 +825,18 @@ function cullFar() {
     }
     c.o.visible = cp.distanceTo(c.s.center) - c.s.radius < c.o.userData.far;
   }
+  // Дальний силуэт — по вызову отрисовки на квадрат 1 км, и с земли в кадре
+  // их под сотню, большей частью там, где туман уже съел всё. Туман FogExp2:
+  // доля цвета предмета exp(−(d·density)²); при d·density = 2.76 это 0.05% —
+  // ни на каком фоне не различить. Квадраты дальше гасим. В тумане и
+  // ночью плотность больше — и граница сама подходит ближе.
+  const fog = scene.fog;
+  const far = fog && fog.density > 0 ? 2.76 / fog.density : Infinity;
+  for (const m of farCells.values()) {
+    if (m.userData.covered) continue;
+    const bb = m.geometry.boundingBox || (m.geometry.computeBoundingBox(), m.geometry.boundingBox);
+    m.visible = bb.distanceToPoint(cp) < far;
+  }
 }
 
 function revealSome() {
@@ -855,7 +870,7 @@ function revealSome() {
     staging = null;
     st.g.traverse(o => { if (o.userData.far) farCull.push({ o, g: st.g, s: null }); });
     const fc = farCells.get(st.key);
-    if (fc) fc.visible = false;                  // под детальным кварталом силуэт не нужен
+    if (fc) { fc.visible = false; fc.userData.covered = true; }   // под детальным кварталом силуэт не нужен
   }
 }
 
@@ -900,7 +915,7 @@ function dropChunk(g, key) {
   // Силуэт возвращаем, только если этот квартал его и прятал: пачка сирот
   // хозяина выгружается вместе с ним, а недособранный квартал силуэт не трогал.
   const fc = farCells.get(key);
-  if (fc && wasShown) fc.visible = true;
+  if (fc && wasShown) { fc.visible = true; fc.userData.covered = false; }
 }
 
 // Мосты всех загруженных чанков одним полем: полотно ищем по всем частям и
@@ -976,9 +991,9 @@ let carModelTicket = 0;
 function swapCarModel() {
   const ticket = ++carModelTicket;
   return loadCarModel(CARS[car.model]?.glb, renderer).then(m => {
-    // сетки с одинаковыми материалами — в одну (carbatch.js): 92 → ~35 вызовов
-    const b = batchCar(m);
-    if (b.before) console.log(`машина: сеток ${b.before} → ${b.after}, картинок-заливок ${b.flat}, повторов ${b.dedup}`);
+    // непрозрачное уже слито атласом при загрузке (caratlas.js в loadCarModel)
+    const a = m.userData.atlas;
+    if (a) console.log(`машина: сеток ${a.before} → ${a.after}, слоёв картинок ${a.layers}`);
     cheapGlass(m);
     trimCarShadows(m);
     return precompile(renderer, scene, camera, m, sun).then(() => uploadTextures(m)).then(() => m);
@@ -1027,7 +1042,11 @@ function trimCarShadows(root) {
     let wheel = false;
     for (let p = o; p; p = p.parent) if ((root.userData.wheels || []).includes(p)) wheel = true;
     const big = wheel || box.getSize(v).length() > 1.2;
-    if (!big || ms.every(m => m.transparent)) { o.castShadow = false; off++; } else kept++;
+    // Хром — молдинги, рамки окон, решётка, значки: полоски тоньше текселя
+    // карты теней (0.24 м), в тени их не видно, а у E63 это 31 тысяча
+    // треугольников в каждом кадре карты теней.
+    const chrome = ms.every(m => /chrome/i.test(m.name || ''));
+    if (!big || (chrome && !wheel) || ms.every(m => m.transparent)) { o.castShadow = false; off++; } else kept++;
   });
   root.userData.shadowCasters = kept;
 }
@@ -1048,6 +1067,21 @@ function cheapGlass(root) {
       m.needsUpdate = true;
     }
   });
+}
+
+// Мебель квартала (скамейки, урны, павильоны, киоски, таблички остановок) и
+// вывески — по сетке на вид на весь квадрат 1024 м, и рисовались они из
+// каждого загруженного квадрата: с Большой Морской — по шесть десятков
+// вызовов на скамейки за два километра. Скамейка в 450 м — пять пикселей,
+// вывеску в 600 м не прочесть. Дальше гасим (cullFar). Заборы и подпорные
+// стены (barriers) и светофоры — крупные и видны издалека, их не трогаем.
+function farSmall(root, far) {
+  root.traverse(o => {
+    if (!o.isMesh || o.userData.far || o.name === 'barriers') return;
+    for (let p = o.parent; p && p !== root; p = p.parent) if (p.name === 'светофоры') return;
+    o.userData.far = far;
+  });
+  return root;
 }
 
 // Включить отбрасывание тени у пачек InstancedMesh. receiveShadow им не даём:
@@ -1704,6 +1738,7 @@ function loop(now) {
   lt('HUD');
   revealSome();
   cullFar();
+  updateModels(camera);            // уровень подробности памятных моделей
   lt('показ');
   // деревья: ближний и средний план вокруг камеры, ветер
   updateFlora(camera, scene, now);

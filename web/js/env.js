@@ -40,6 +40,15 @@ export const ENV = {
   // поздний час: 0 — вечер (до 22:30), 1 — глубокая ночь (2:30–5:00), к утру
   // обратно; по нему в окнах гаснет свет — к трём часам горит мало
   uLate:   { value: 0 },
+  // фары машины (carlights.js) — для бликов на мокром асфальте: uHead — точка
+  // прожектора и его сила, uHeadL / uHeadR — линзы фар в мире (w — 0..1
+  // включены), uHeadDir — куда смотрит машина, uHeadMat / uHeadMap — матрица и маска луча самого прожектора
+  uHead:     { value: new THREE.Vector4(0, -1e4, 0, 0) },
+  uHeadL:    { value: new THREE.Vector4(0, -1e4, 0, 0) },
+  uHeadR:    { value: new THREE.Vector4(0, -1e4, 0, 0) },
+  uHeadDir:  { value: new THREE.Vector4(0, 0, 1, 0) },   // куда смотрит машина
+  uHeadMat:  { value: new THREE.Matrix4() },
+  uHeadMap:  { value: null },
 };
 
 // ---------------------------------------------------------------- свет фонарей
