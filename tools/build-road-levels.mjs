@@ -1036,7 +1036,10 @@ tlog(`улиц far.json с отметками ${nFar}, без — ${nMiss}`);
   for (const j of W.junctions) {
     if (BOX && (j.x < BOX.x0 - MARGIN / 2 || j.x > BOX.x1 + MARGIN / 2 || j.z < BOX.z0 - MARGIN / 2 || j.z > BOX.z1 + MARGIN / 2)) continue;
     if ((j.mw || 0) < 5) continue;
-    const R = Math.min(30, j.r) + 5;
+    // За центром узел — одна вершина, соседние точки улиц в 8 м за пятном:
+    // в круге r + 5 м их одна-две, и наклон не определялся. Берём r + 16 м.
+    const jcw = centerW(j.x, j.z);
+    const R = Math.min(30, j.r) + (jcw >= 1 ? 5 : 16);
     let n = 0, sx = 0, sz = 0, sh = 0, sxx = 0, szz = 0, sxz = 0, sxh = 0, szh = 0;
     for (let a = Math.floor((j.x - R) / G); a <= Math.floor((j.x + R) / G); a++)
       for (let b = Math.floor((j.z - R) / G); b <= Math.floor((j.z + R) / G); b++)
@@ -1051,7 +1054,12 @@ tlog(`улиц far.json с отметками ${nFar}, без — ${nMiss}`);
         }
     if (n <= 0) continue;
     let a0 = sh / n, bx = 0, bz = 0;
-    const sol = solve3([[n, sx, sz], [sx, sxx, sxz], [sz, sxz, szz]], [sh, sxh, szh]);
+    // Гребень (ε·n на наклоны): если точки легли в одну линию (одна улица
+    // через узел), система вырождена, и плоскость выходила ГОРИЗОНТАЛЬНОЙ —
+    // плато поперёк улицы на уклоне 3–5%, ступенька в метр (Хрусталёва, −290, 6470).
+    // С гребнем наклон вдоль улицы берётся по ней, поперёк — ноль.
+    const eps = jcw >= 1 ? 0 : 2 * n;
+    const sol = solve3([[n, sx, sz], [sx, sxx + eps, sxz], [sz, sxz, szz + eps]], [sh, sxh, szh]);
     if (sol) [a0, bx, bz] = sol;
     // плоскость не круче 12%
     const gl = Math.hypot(bx, bz);

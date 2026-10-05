@@ -231,7 +231,10 @@ for (const R of routes) {
         const a = sec[k - 1], b = sec[k], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
         for (let d = 0; d < L; d += step) {
           const x = a[0] + (b[0] - a[0]) * d / L, z = a[1] + (b[1] - a[1]) * d / L;
-          H.push(T.driveHeightAt(x, z)); XZ.push([x, z]); S.push(s + d);
+          // как колесо (vehicle._hAt): полотно путепровода над головой — не опора
+          let hh = T.driveHeightAt(x, z);
+          if (H.length && hh > H[H.length - 1] + 1.9 && T.groundDriveHeightAt) hh = Math.min(hh, T.groundDriveHeightAt(x, z));
+          H.push(hh); XZ.push([x, z]); S.push(s + d);
         }
         s += L;
       }
