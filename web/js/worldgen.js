@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=d696c603';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=d696c603';
-import { buildCoverage } from './coverage.js?v=d696c603';
-import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=d696c603';
-import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt, centerWeight } from './roadlevels.js?v=d696c603';
-import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=d696c603';
-import { resolveAreas, sportSkipIds } from './sport.js?v=d696c603';
-import { planParking, roadSegIndex } from './parking.js?v=d696c603';
-import { seriesOf, seriesWall, seriesExtras } from './series.js?v=d696c603';
-import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=d696c603';
-import { castleExtras } from './castle.js?v=d696c603';
+import { SEA_FLOOR } from './terrain.js?v=b67046f1';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=b67046f1';
+import { buildCoverage } from './coverage.js?v=b67046f1';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=b67046f1';
+import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt, centerWeight } from './roadlevels.js?v=b67046f1';
+import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=b67046f1';
+import { resolveAreas, sportSkipIds } from './sport.js?v=b67046f1';
+import { planParking, roadSegIndex } from './parking.js?v=b67046f1';
+import { seriesOf, seriesWall, seriesExtras } from './series.js?v=b67046f1';
+import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=b67046f1';
+import { castleExtras } from './castle.js?v=b67046f1';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -3778,18 +3778,23 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
     // тоже под скатом. Прежний порог (18 м / 900 м²) оставлял 700+ крупных,
     // но невысоких домов плоскими — квартал вырождался в поле коробок.
     // Школы, храмы, рынок и витражные корпуса не трогаем: у них своя кровля.
-    const pitched = market || wantHip ||
+    // типовой дом (series.js): свой фасад, цвет и сетка пролётов на стенах
+    const ser = seriesOf(b);
+    // Хрущёвка и сталинка — всегда под скатом (шифер / черепица), как
+    // Толстого, 4А. Кубик rand бросаем как раньше: порядок бросков держит
+    // кровли и цвета соседей.
+    const pitched = (market || wantHip ||
       (b.fx !== 'glass' && !b.school && !b.temple && b.rs !== 'flat' &&
-       b.h <= 22 && area <= 2200 && n >= 4 && rand() < 0.92);
+       b.h <= 22 && area <= 2200 && n >= 4 && rand() < 0.92)) ||
+      (!!ser && !!ser.roof && b.rs !== 'flat' && b.h <= 22 && n >= 4);
     const flatRoof = !pitched;
     stats.total++; if (pitched) stats.pitched++;
-    const roof = b.rc ? hexRGB(b.rc)
+    let roof = b.rc ? hexRGB(b.rc)
       : market ? MARKET_ROOF
       : flatRoof ? ROOFS_FLAT[(rand() * ROOFS_FLAT.length) | 0]
       : ROOFS_TILE[(rand() * ROOFS_TILE.length) | 0];
+    if (ser && ser.roof && pitched && !b.rc) roof = ser.roof;
     const tint = 0.93 + rand() * 0.15;
-    // типовой дом (series.js): свой фасад, цвет и сетка пролётов на стенах
-    const ser = seriesOf(b);
     const wc0 = ser ? ser.color : wall;
     const w = [Math.min(1, wc0[0] * tint), Math.min(1, wc0[1] * tint), Math.min(1, wc0[2] * tint)];
     // гараж, сарай, будка — окон не рисуем

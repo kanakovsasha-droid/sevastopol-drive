@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { ENV } from './env.js?v=d696c603';
-import { BUILT } from './series.js?v=d696c603';
-import { gateOf, gateCut } from './passage.js?v=d696c603';
+import { ENV } from './env.js?v=b67046f1';
+import { BUILT } from './series.js?v=b67046f1';
+import { gateOf, gateCut } from './passage.js?v=b67046f1';
 
 // Фасады типовых домов деталями (п. 18 очереди): подоконники, карнизы и
 // парапеты, балконы хрущёвок, экраны лоджий девятиэтажек, рустованный цоколь
@@ -23,7 +23,7 @@ import { gateOf, gateCut } from './passage.js?v=d696c603';
 // далеко. Дальше круга балконы снова рисует шейдер: ENV.uFacadeR говорит ему,
 // где начинаются объёмные, чтобы не было двух балконов разом.
 
-const NEAR = 170, NEAR_SILL = 95, STEP = 10, MAX = 3500;   // 3500 × 10 тр. × (кадр + тень) ≈ 70k
+const NEAR = 170, NEAR_SILL = 95, STEP = 10, MAX = 4500;   // 4500 × 10 тр. × (кадр + тень) ≈ 90k (сталинкам с балконами и консолями тесно в 3500)
 const F = 13;                        // чисел на деталь в кеше дома
 
 // ---- те же формулы, что в шейдере ----
@@ -42,8 +42,9 @@ const gmod = (x, y) => x - y * Math.floor(x / y);
 const s2l = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 const enc = v => Math.round(255 * s2l(Math.max(0, Math.min(1, v))));
 
-// виды детали (aDet, целая часть): 0 гладкая, 1 стекло в раме, 2 решётка, 3 руст
-const SOLID = 0, GLASS = 1, BARS = 2, RUST = 3;
+// виды детали (aDet, целая часть): 0 гладкая, 1 стекло в раме, 2 решётка, 3 руст,
+// 4 балюстрада, 5 консоли карниза
+const SOLID = 0, GLASS = 1, BARS = 2, RUST = 3, BALUS = 4, BRACKET = 5;
 
 // ---- детали одного дома ----
 // Коробка у стены: вдоль стены от ua до ub (м от угла A), по высоте y0..y1,
@@ -154,14 +155,20 @@ function panelHouse(ser, w, wl, s, at, inCut, blank, fk, Hb, yFloor, yTop, cl, b
 }
 
 // сталинка (15) — общий фасад materials.js с поправкой stal
+// Послевоенный центр (и 2–4-этажки Корабельной, Северной): инкерманский камень
+// и светлая штукатурка, рустованный первый этаж, лопатки через два пролёта,
+// тяжёлый карниз на консолях, руст по углам, балконы с балясинами по осям
+// фасада, сандрики над окнами второго этажа.
 function stalinka(ser, w, wl, s, at, cut, inCut, blank, Hb, yFloor, yBase, cl, box) {
   const L = w.l;
+  const yc = yFloor + Hb;                                       // верх стены
   // карниз: полка с выносом и ступень под ней — там, где шейдер рисует тень
-  box(wl, 1, SOLID, -0.45, L + 0.45, yFloor + Hb - 0.55, yFloor + Hb - 0.28, 0, 0.45, mul(cl, 1.10, 0.02));
-  box(wl, 1, SOLID, -0.22, L + 0.22, yFloor + Hb - 0.88, yFloor + Hb - 0.55, 0, 0.22, mul(cl, 0.97));
-  // этаж как в шейдере: у видов > 6.5 (ордер, сталинка) fh0 = 5.20 м, не 3.3 —
-  // иначе тяга и отливы режут окна поперёк (materials.js, «фасад»)
-  const nf = Math.max(1, Math.floor(Hb / 5.2 + 0.35)), fh = Hb / nf;
+  box(wl, 1, SOLID, -0.45, L + 0.45, yc - 0.55, yc - 0.28, 0, 0.45, mul(cl, 1.10, 0.02));
+  box(wl, 1, SOLID, -0.22, L + 0.22, yc - 0.88, yc - 0.55, 0, 0.22, mul(cl, 0.97));
+  // консоли (модульоны) под полкой — одна деталь на стену, зубцы режет шейдер
+  box(wl, 1, BRACKET, 0.1, L - 0.1, yc - 0.80, yc - 0.55, 0.22, 0.42, mul(cl, 1.04, 0.02));
+  // этаж как в шейдере: у сталинки (вид 15) fh0 = 3.6 м (materials.js, «фасад»)
+  const nf = Math.max(1, Math.floor(Hb / 3.6 + 0.35)), fh = Hb / nf;
   // рустованный цоколь до низа витрин и тяга над первым этажом; у арки-проезда
   // цоколь рвётся. Ниже 1.15 м под отметкой шейдер рисует окна полуподвала
   // (материалы, «цоколь») — их не закрываем, там камень остаётся в плоскости.
@@ -169,18 +176,47 @@ function stalinka(ser, w, wl, s, at, cut, inCut, blank, Hb, yFloor, yBase, cl, b
   const yp = Math.max(yBase, yFloor - 1.15);
   for (const [a, b] of segs) if (b - a > 0.3) box(wl, 1, RUST, a - 0.07, b + 0.07, yp, yFloor + 0.26, 0, 0.07, mul(cl, 0.80));
   if (nf >= 2) for (const [a, b] of segs) if (b - a > 0.3) box(wl, 1, SOLID, a - 0.09, b + 0.09, yFloor + fh - 0.05, yFloor + fh + 0.10, 0, 0.09, mul(cl, 1.04));
+  // руст по углам (крупные камни вразбежку) — от тяги до карниза
+  if (nf >= 2 && L > 3) {
+    box(wl, 1, RUST, 0, 0.75, yFloor + fh + 0.10, yc - 0.88, 0, 0.06, mul(cl, 0.94));
+    box(wl, 1, RUST, L - 0.75, L, yFloor + fh + 0.10, yc - 0.88, 0, 0.06, mul(cl, 0.94));
+  }
   if (blank) return;
   const B = ser.bay;
-  const b0 = Math.round(w.u0 / B), b1 = Math.round(w.u1 / B);
+  const b0 = Math.round(w.u0 / B), b1 = Math.round(w.u1 / B), nb = b1 - b0;
+  // лопатки — там же, где их рисует шейдер: оси через два пролёта
+  if (nf >= 2) for (let k = Math.ceil(b0 / 2) * 2; k <= b1; k += 2) {
+    const um = at(k * B);
+    if (um < 1.0 || um > L - 1.0) continue;                     // у угла — руст
+    box(wl, 1, SOLID, um - 0.26, um + 0.26, yFloor + fh + 0.10, yc - 0.88, 0, 0.07, mul(cl, 1.07, 0.03));
+  }
+  // оси балконов: середина стены и через четыре пролёта от неё
+  const mid = b0 + Math.floor(nb / 2);
+  const balcBay = bi => nb >= 5 && Math.abs(bi - mid) % 4 === 0 && bi > b0 && bi < b1 - 1;
   for (let bi = b0; bi < b1; bi++) {
     const ua = at(bi * B), ub = at((bi + 1) * B), bw = ub - ua, um = (ua + ub) / 2;
+    const balc = balcBay(bi);
     for (let fi = 1; fi < nf; fi++) {
       const top = fi >= nf - 1.5 ? 1 : 0;
-      const x0 = 0.27 + 0.05 * top, x1 = 0.73 - 0.05 * top, y0 = 0.20 + 0.03 * top;
+      const x0 = 0.27 + 0.05 * top, x1 = 0.73 - 0.05 * top, y0 = 0.20 + 0.03 * top, y1 = 0.84 - 0.085 * top;
       const y = yFloor + (fi + y0) * fh;
       if (y - yFloor > Hb - 1.0 || inCut(ua, ub, y)) continue;   // под карнизом окна нет
       const hw = (x1 - x0) * bw / 2 + 0.08;
+      if (balc && fi < nf - 1 + (nf <= 2 ? 1 : 0)) {
+        // балкон на консолях: плита, балюстрада спереди и с боков, поручень
+        const sa = um - hw - 0.25, sb = um + hw + 0.25, D = 0.85;
+        box(wl, 1, SOLID, sa, sb, y - 0.16, y, 0, D, mul(cl, 1.02));
+        box(wl, 1, BALUS, sa + 0.04, sb - 0.04, y, y + 0.92, D - 0.10, D - 0.02, mul(cl, 1.06, 0.02));
+        box(wl, 1, BALUS, sa + 0.04, sa + 0.12, y, y + 0.92, 0.02, D - 0.10, mul(cl, 1.06, 0.02));
+        box(wl, 1, BALUS, sb - 0.12, sb - 0.04, y, y + 0.92, 0.02, D - 0.10, mul(cl, 1.06, 0.02));
+        continue;
+      }
       box(wl, 0, SOLID, um - hw, um + hw, y - 0.07, y, 0, 0.11, mul(cl, 1.06, 0.02));
+      // сандрик — полочка над окном второго этажа (бельэтаж)
+      if (fi === 1 && nf >= 3) {
+        const yt = yFloor + (fi + y1) * fh + 0.10;
+        box(wl, 0, SOLID, um - hw - 0.06, um + hw + 0.06, yt, yt + 0.13, 0, 0.16, mul(cl, 1.08, 0.02));
+      }
     }
   }
 }
@@ -221,7 +257,18 @@ function material() {
           // координата вдоль длинной горизонтальной стороны: у боковин — глубина
           float u = vSize.x >= vSize.z ? vLoc.x : vLoc.z;
           float hu = max(vSize.x, vSize.z) * 0.5, hy = vSize.y * 0.5;
-          if (kind > 2.5) {
+          if (kind > 4.5) {
+            // консоли карниза: зубец 16 см через 0.55 м, книзу темнее (тень полки)
+            if (abs(fract(u / 0.55) - 0.5) * 0.55 > 0.08) discard;
+            diffuseColor.rgb *= 0.80 + 0.20 * clamp(vLoc.y / max(vSize.y, 0.01) + 0.5, 0.0, 1.0);
+          } else if (kind > 3.5) {
+            // балюстрада: поручень, нижний брус и точёные балясины через 0.2 м
+            float t = clamp((vLoc.y + hy - 0.11) / max(vSize.y - 0.20, 0.01), 0.0, 1.0);
+            float rb = 0.028 + 0.040 * pow(sin(3.1416 * clamp(t * 1.15 - 0.05, 0.0, 1.0)), 2.0) * (1.0 - 0.35 * step(0.55, t));
+            float solidB = step(hy - 0.09, vLoc.y) + step(vLoc.y, -hy + 0.11) + step(hu - 0.07, abs(u));
+            if (solidB < 0.5 && abs(fract(u / 0.2) - 0.5) * 0.2 > rb) discard;
+            diffuseColor.rgb *= 0.93 + 0.07 * step(0.5, solidB);
+          } else if (kind > 2.5) {
             // руст: блоки инкерманского камня 0.92 x 0.46 вразбежку
             vec2 blk = vec2(u / 0.92, vWY / 0.46);
             blk.x += step(0.5, fract(blk.y * 0.5)) * 0.5;
