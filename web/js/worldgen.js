@@ -3,7 +3,7 @@ import { SEA_FLOOR } from './terrain.js?v=e287a336';
 import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=e287a336';
 import { buildCoverage } from './coverage.js?v=e287a336';
 import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=e287a336';
-import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt } from './roadlevels.js?v=e287a336';
+import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt, centerWeight } from './roadlevels.js?v=e287a336';
 import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=e287a336';
 import { resolveAreas, sportSkipIds } from './sport.js?v=e287a336';
 import { planParking, roadSegIndex } from './parking.js?v=e287a336';
@@ -480,7 +480,10 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
     // в узлах, на примыканиях и между проезжими частями, и поправки ниже,
     // писанные для профилей, снятых с рельефа, их только портили — на
     // развязке трассы коридор вставал на 2.7 м выше отметок (48376, 15200).
-    profiles.push({ pr, draw, h: Float32Array.from(pr.h), w: r.w, c: r.c, rank: r.__rank || 0, lv: !!(ROAD_LEVELS && r.id !== undefined && hasLevels(r.id)) });
+    // В квадрате центра — как было (centerWeight): поправки и там, где отметки.
+    let inC = false;
+    for (let i = 0; i < pr.n && !inC; i += 4) if (centerWeight(pr.sx[i], pr.sz[i]) >= 0.5) inC = true;
+    profiles.push({ pr, draw, h: Float32Array.from(pr.h), w: r.w, c: r.c, rank: r.__rank || 0, lv: !inC && !!(ROAD_LEVELS && r.id !== undefined && hasLevels(r.id)) });
     if ((work += pr.n) > 2500) { work = 0; yield; }
   }
 
@@ -746,6 +749,9 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
   // (дворовый проезд на склоне рядом с трассой тянул её край на полметра),
   // и к полотну соседней улицы, лежащему выше или ниже на 3 м и больше.
   const rkq = profiles.map(q => q.c * 100 - q.w);
+  // ячейки квадрата центра: там старшинства нет — как было (roads3)
+  const cen = new Uint8Array(W * H);
+  for (const idx of cells) cen[idx] = centerWeight(x0 + (idx % W) * res, z0 + ((idx / W) | 0) * res) >= 0.5 ? 1 : 0;
   for (let pass = 0; pass < 2; pass++) {
     sm.set(tgt);
     for (const idx of cells) {
@@ -758,7 +764,7 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
           if (jj < 0 || ii < 0 || jj >= H || ii >= W) continue;
           const k = jj * W + ii;
           if (wgt[k] <= 0) continue;
-          if (core && cown[k] !== own && cown[k] >= 0 && (rkq[cown[k]] > rkq[own] + 1e-6 || Math.abs(tgt[k] - tgt[idx]) > 3)) continue;
+          if (core && !cen[idx] && cown[k] !== own && cown[k] >= 0 && (rkq[cown[k]] > rkq[own] + 1e-6 || Math.abs(tgt[k] - tgt[idx]) > 3)) continue;
           const bw = (di === 0 && dj === 0) ? 4 : (di === 0 || dj === 0) ? 2 : 1;
           sh += tgt[k] * wgt[k] * bw; sw += wgt[k] * bw;
         }
@@ -808,7 +814,7 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
     // проходов поднимал её полотно на 2.7 м (ЮБК у 48375, 15200).
     if (la > 0) {
       const oa = cown[a], ob = cown[b2];
-      if (oa >= 0 && ob >= 0 && oa !== ob) {
+      if (oa >= 0 && ob >= 0 && oa !== ob && !cen[a]) {
         // Два полотна разных улиц на разной высоте (проезжие части трассы на
         // склоне ЮБК в 8 м друг от друга и в 6 м по высоте) — между ними
         // подпорная стенка, а не общий уклон: сводить их — значит гнуть обе.

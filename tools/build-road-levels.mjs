@@ -227,6 +227,7 @@ const node = (x, z, osm, free) => {
   if (key) nodeId.set(key, id);
   return id;
 };
+const NOBREND = process.argv.includes('--no-brend');
 const edgesL = [];      // a, b, len, base, kind, imp, cls
 const chains = [];      // по улице: вершины, длины дуги, длина дуги в узлах OSM
 const noData = new Set();
@@ -241,7 +242,7 @@ for (const r of use) {
     // в пятно перекрёстка, как всех. Иначе мост, упёршийся в перекрёсток,
     // висел отдельной вершиной, трасса за ним кончалась свободным концом и
     // уходила на 7 м вверх (ул. Новикова у Сапунгорской, 2290, 9600).
-    const end = node(x, z, true, free && k > 0 && k < p.length / 2 - 1);
+    const end = node(x, z, true, free && (NOBREND || (k > 0 && k < p.length / 2 - 1)));
     if (k > 0) {
       const px = p[k * 2 - 2], pz = p[k * 2 - 1], L = Math.hypot(x - px, z - pz);
       const m = Math.max(1, Math.ceil(L / STEP));
@@ -966,6 +967,28 @@ const stats = {};
 // графа через общие точки и берём отметку там. Шаг выхода — 8 м, последний
 // отсчёт — в конце осевой. Сантиметры, разностями.
 const byId = new Map(chains.map(c => [c.r.id, c]));
+// ЦЕНТР — КАК В ROADS3/ROADS4. Квадрат центра 3×3 км настраивали по своему
+// решателю (data/road-levels-roads3.json — его отметки, формат v1: s по осевой
+// world.json, h); полный граф решает его чуть иначе, и на стенде центр и
+// кольцо пл. Восставших выходили хуже (удары 27 → 71). В квадрате берём
+// прежние отметки, на 200 м за краем — плавно к новым (вес как levelWeight
+// прежнего рантайма).
+const HC = existsSync(ROOT + 'data/road-levels-roads3.json') ? JSON.parse(readFileSync(ROOT + 'data/road-levels-roads3.json')) : null;
+const hcAt = (id, s) => {
+  const e = HC && HC.roads[id];
+  if (!e) return null;
+  const S = e.s, h = e.h, m = S.length;
+  if (m === 1) return h[0];
+  if (s <= S[0]) return h[0] + (h[1] - h[0]) / Math.max(0.5, S[1] - S[0]) * (s - S[0]);
+  if (s >= S[m - 1]) return h[m - 1] + (h[m - 1] - h[m - 2]) / Math.max(0.5, S[m - 1] - S[m - 2]) * (s - S[m - 1]);
+  let lo = 0, hi = m - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (S[mid] <= s) lo = mid; else hi = mid; }
+  const t = (s - S[lo]) / Math.max(1e-6, S[hi] - S[lo]);
+  const h0 = h[Math.max(0, lo - 1)], h1 = h[lo], h2 = h[hi], h3 = h[Math.min(m - 1, hi + 1)];
+  const m1 = (h2 - h0) / 2, m2 = (h3 - h1) / 2, t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * h1 + (t3 - 2 * t2 + t) * m1 + (-2 * t3 + 3 * t2) * h2 + (t3 - t2) * m2;
+};
+let nHC = 0;
 const levelsFor = (c, pts) => {
   const wp = c.r.pts, n = pts.length / 2;
   // s графа в точках OSM
@@ -988,7 +1011,13 @@ const levelsFor = (c, pts) => {
     while (seg < n - 2 && so[seg + 1] < s) seg++;
     const t = so[seg + 1] > so[seg] ? (s - so[seg]) / (so[seg + 1] - so[seg]) : 0;
     const swv = sw[seg] + (sw[seg + 1] - sw[seg]) * t;
-    out.push(hOn(c.cv, swv));
+    let hv = hOn(c.cv, swv);
+    if (HC) {
+      const x = pts[seg * 2] + (pts[seg * 2 + 2] - pts[seg * 2]) * t, z = pts[seg * 2 + 1] + (pts[seg * 2 + 3] - pts[seg * 2 + 1]) * t;
+      const w = centerW(x, z);
+      if (w > 0) { const ho = hcAt(c.r.id, swv); if (ho !== null) { hv = ho * w + hv * (1 - w); if (i === 0) nHC++; } }
+    }
+    out.push(hv);
   }
   const cm = out.map(v => Math.round(v * 100));
   const enc = [cm[0]];
@@ -1000,6 +1029,8 @@ const out = {
      'сантиметры: первая — сама, дальше разности. junctions: x, z, r (дм), a (см), bx, bz (1e-4), пятно (дм от центра). ' +
      'yards: квадраты data/road-levels/<cx>_<cz>.json с дворовыми проездами вне far.json.',
   v: 2, step: STEP, box: BOX, ramp: 200, roads: {}, junctions: [], yards: [],
+  // квадрат центра: рантайм там ведёт коридор по-старому (centerWeight)
+  center: HC ? { ...CENTER, ramp: CRAMP } : null,
 };
 let nFar = 0, nMiss = 0;
 const farIds = new Set();
@@ -1021,7 +1052,7 @@ for (const r of FAR.roads) {
   if (!lv) { nMiss++; continue; }
   out.roads[r.id] = lv; nFar++;
 }
-tlog(`улиц far.json с отметками ${nFar}, без — ${nMiss}`);
+tlog(`улиц far.json с отметками ${nFar}, без — ${nMiss}; из них с отметками центра ${nHC}`);
 // ПЛОСКОСТИ ПЕРЕКРЁСТКОВ. Полотна узла накладываются друг на друга, и
 // поверхность коридора в узле — склейка плато разных улиц: не плоскость.
 // Треугольник поперёк улицы шириной 10 м ложился хордой на 9–12 см выше
@@ -1030,6 +1061,7 @@ tlog(`улиц far.json с отметками ${nFar}, без — ${nMiss}`);
 // r + 5 м), рантайм кладёт её в коридор.
 {
   const G = 20, g = new Map();
+  const HCJ = new Map((HC ? HC.junctions : []).map(o => [Math.round(o[0] * 10) + ',' + Math.round(o[1] * 10), o]));
   // полотно моста — не опора плоскости перекрёстка под ним (у путепровода
   // DW ≠ 0: опора габарита)
   for (let i = 0; i < N; i++) { if (!DW[i] || noData.has(i)) continue; const k = Math.floor(NX[i] / G) * 100003 + Math.floor(NZ[i] / G); let l = g.get(k); if (!l) g.set(k, l = []); l.push(i); }
@@ -1064,11 +1096,16 @@ tlog(`улиц far.json с отметками ${nFar}, без — ${nMiss}`);
     // плоскость не круче 12%
     const gl = Math.hypot(bx, bz);
     if (gl > 0.12) { bx *= 0.12 / gl; bz *= 0.12 / gl; }
+    // центр: плоскость прежнего решателя (та же точка узла)
+    if (HC && jcw > 0) {
+      const o = HCJ.get(Math.round(j.x * 10) + ',' + Math.round(j.z * 10));
+      if (o) { a0 = o[3] * jcw + a0 * (1 - jcw); bx = o[4] * jcw + bx * (1 - jcw); bz = o[5] * jcw + bz * (1 - jcw); }
+    }
     const poly = j.poly ? j.poly.map((v, k) => Math.round((v - (k % 2 ? j.z : j.x)) * 10)) : null;
     out.junctions.push([Math.round(j.x * 10), Math.round(j.z * 10), Math.round(Math.min(30, j.r) * 10),
       Math.round(a0 * 100), Math.round(bx * 1e4), Math.round(bz * 1e4), poly]);
   }
-  tlog('плоскостей перекрёстков', out.junctions.length);
+  tlog('плоскостей перекрёстков', out.junctions.length, HC ? '(центр — из road-levels-roads3.json)' : '');
 }
 // ДВОРОВЫЕ ПРОЕЗДЫ вне far.json — по квадратам 1024 м, с осевой. Проезд
 // кладётся в каждый квадрат, который задевает его рамка + 64 м (как чанки):

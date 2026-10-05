@@ -47,6 +47,18 @@ export function bridgeLevelAt(id, x, z) {
   return pts ? levelAt(base, pts, x, z) : null;
 }
 export const hasLevels = id => LV.has(id);
+// Квадрат центра (roads3): там отметки и коридор — как были до отметок на всю
+// карту (поправки стыков и пар проезжих частей, без старшинства улиц) —
+// так центр настроен. 1 в квадрате, к нулю на ramp метрах за краем.
+export function centerWeight(x, z) {
+  const b = L && L.center;
+  if (!b) return 0;
+  const dx = Math.max(b.x0 - x, 0, x - b.x1), dz = Math.max(b.z0 - z, 0, z - b.z1);
+  const d = Math.hypot(dx, dz);
+  if (d <= 0) return 1;
+  const t = Math.max(0, 1 - d / (b.ramp || 200));
+  return t * t * (3 - 2 * t);
+}
 
 // Вес первичного профиля в точке. Отметки теперь на всю карту: 1 везде,
 // где они есть. Старый файл с квадратом (box) — 1 в квадрате, к нулю на ramp
