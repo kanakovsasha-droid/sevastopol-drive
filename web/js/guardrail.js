@@ -10,11 +10,12 @@ import * as THREE from 'three';
 //   • кромка над обрывом: земля за обочиной ниже полотна на DROP1 м в 8 м
 //     от кромки или на DROP2 м в 16 м.
 // Не ставим у примыканий (перекрёсток, съезд, соседняя улица ближе NEAR м),
-// у домов и на мостах — там вместо стали бетонные блоки «Нью-Джерси» по
+// в посёлках (дом ближе 15 м) и на мостах — там вместо стали бетонные блоки «Нью-Джерси» по
 // обеим кромкам. На прямых без отбойника — сигнальные столбики С1 со
 // светоотражателями: раз в 50 м, в повороте — чаще.
 //
-// Всё инстансами: на квадрат четыре сетки (балка, стойки, блоки, столбики).
+// Всё инстансами: на квадрат до трёх сеток (звено отбойника со стойкой,
+// блоки, столбики).
 // Отбойник и блоки толкают машину — тонкими контурами в общий Collider.
 // Строится только то, что лежит в СВОЁМ квадрате чанка: длинная дорога
 // приходит в каждый квадрат целиком, а ставить её ограждение надо один раз.
@@ -226,7 +227,9 @@ export function prepGuardrail(w, terrain, d, S) {
         const nx = T[i * 2 + 1] * sg, nz = -T[i * 2] * sg;
         const ex = px + nx * (hw + 0.6), ez = pz + nz * (hw + 0.6);
         // чужая улица, перекрёсток, дом рядом — здесь не ставим совсем
-        if (nearRoad(ex, ez, r, T[i * 2], T[i * 2 + 1], hw + 0.6) || atJunction(ex, ez) || house(ex + nx * 2, ez + nz * 2, 3)) { bad[i] = 1; continue; }
+        if (nearRoad(ex, ez, r, T[i * 2], T[i * 2 + 1], hw + 0.6) || atJunction(ex, ez)) { bad[i] = 1; continue; }
+        // в посёлке (дом ближе 15 м) — тротуар и заборы, отбойника нет
+        if (house(ex, ez, 15)) { bad[i] = 1; continue; }
         // внешняя кромка: K > 0 — дорога заворачивает к нормали sg = 1
         // (центр поворота с её стороны), снаружи тогда кромка sg = −1
         const outer = Math.abs(K[i]) > 1 / CURVE_R && Math.sign(K[i]) === -sg;
@@ -274,7 +277,6 @@ export function prepGuardrail(w, terrain, d, S) {
         const px = q[i * 2], pz = q[i * 2 + 1];
         const nx = T[i * 2 + 1] * sg, nz = -T[i * 2] * sg;
         const x = px + nx * (hw + 1.0), z = pz + nz * (hw + 1.0);
-        if (house(x, z, 12)) continue;               // в посёлке столбиков нет
         last = i;
         if (own(x, z)) posts.push(x, G(x, z), z, -nx, -nz);
       }
@@ -328,60 +330,81 @@ function pushWall(walls, line, nx, nz) {
 }
 
 // ---- геометрия
+// Своя сборка из граней без донышек и торцов: звеньев на квадрат сотни, и
+// каждый лишний треугольник множится на них (бюджет задачи — +5%).
 const s2l = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 
-function colored(geo, c) {
-  const g = geo.index ? geo.toNonIndexed() : geo;
-  const n = g.attributes.position.count, a = new Float32Array(n * 3), lc = c.map(s2l);
-  for (let i = 0; i < n; i++) a.set(lc, i * 3);
-  g.setAttribute('color', new THREE.BufferAttribute(a, 3));
-  for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'color'].includes(k)) g.deleteAttribute(k);
-  return g;
-}
-function merge(list) {
-  let n = 0;
-  for (const g of list) n += g.attributes.position.count;
-  const out = new THREE.BufferGeometry();
-  for (const k of ['position', 'normal', 'color']) {
-    const a = new Float32Array(n * 3);
-    let o = 0;
-    for (const g of list) { a.set(g.attributes[k].array, o); o += g.attributes[k].array.length; }
-    out.setAttribute(k, new THREE.BufferAttribute(a, 3));
+class Faces {
+  constructor() { this.p = []; this.n = []; this.c = []; }
+  // четырёхугольник a-b-c-d; лицом туда, куда смотрит hint
+  quad(a, b, c, d, hint, col) {
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+    const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    if (nx * hint[0] + ny * hint[1] + nz * hint[2] < 0) { [b, d] = [d, b]; nx = -nx; ny = -ny; nz = -nz; }
+    const l = Math.hypot(nx, ny, nz) || 1, lc = col.map(s2l);
+    for (const v of [a, b, c, a, c, d]) { this.p.push(...v); this.n.push(nx / l, ny / l, nz / l); this.c.push(...lc); }
   }
-  return out;
-}
-// профиль (x — к дороге, y — вверх), вытянутый по z на длину len
-function extrude(shape, len) {
-  const g = new THREE.ExtrudeGeometry(new THREE.Shape(shape.map(([x, y]) => new THREE.Vector2(x, y))),
-    { depth: len, bevelEnabled: false });
-  g.computeVertexNormals();
-  return g;
+  // брус без дна: x0..x1, y0..y1, z0..z1
+  box(x0, x1, y0, y1, z0, z1, col, top = true) {
+    this.quad([x1, y0, z0], [x1, y0, z1], [x1, y1, z1], [x1, y1, z0], [1, 0, 0], col);
+    this.quad([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], col);
+    this.quad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], col);
+    this.quad([x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [0, 0, -1], col);
+    if (top) this.quad([x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1], [0, 1, 0], col);
+  }
+  // профиль (x, y), вытянутый по z от 0 до len; грани наружу от центра (cx, cy)
+  sweep(prof, len, cx, cy, col, closed = false) {
+    const m = prof.length;
+    for (let k = 0; k < (closed ? m : m - 1); k++) {
+      const [x0, y0] = prof[k], [x1, y1] = prof[(k + 1) % m];
+      const hint = [(x0 + x1) / 2 - cx, (y0 + y1) / 2 - cy, 0];
+      this.quad([x0, y0, 0], [x1, y1, 0], [x1, y1, len], [x0, y0, len], hint, col);
+    }
+  }
+  geo() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
+    return g;
+  }
 }
 
-// балка «волна» на длину 1 (растягивается по z), лицом к дороге (+x);
-// лицо на x = 0, стойка позади
-function beamGeo() {
-  const W = [[0, 0.44], [0.06, 0.50], [0.025, 0.595], [0.06, 0.69], [0, 0.75],
-             [-0.025, 0.75], [0.035, 0.69], [0.0, 0.595], [0.035, 0.50], [-0.025, 0.44]];
-  return colored(extrude(W, 1), STEEL);
-}
-function postGeo() {
-  const p = new THREE.BoxGeometry(0.1, 1.85, 0.1); p.translate(-0.09, -0.15, 0);   // от −1.07 до 0.78
-  const spacer = new THREE.BoxGeometry(0.08, 0.2, 0.08); spacer.translate(-0.045, 0.6, 0);
-  return merge([colored(p, POST), colored(spacer, POST)]);
+// звено отбойника на STEP м (растягивается по z): балка «волна» лицом к
+// дороге (+x, лицо на x = 0) и стойка позади неё посередине звена —
+// 18 треугольников
+function railGeo() {
+  const f = new Faces();
+  f.sweep([[0, 0.44], [0.06, 0.50], [0.025, 0.595], [0.06, 0.69], [0, 0.75]], STEP, -1, 0.6, STEEL);
+  f.quad([-0.03, 0.44, 0], [-0.03, 0.44, STEP], [-0.03, 0.75, STEP], [-0.03, 0.75, 0], [-1, 0, 0], STEEL);
+  // стойка от −1.07 (в грунте откоса) до 0.72, без торцов
+  const z = STEP / 2;
+  f.box(-0.13, -0.03, -1.07, 0.72, z - 0.05, z + 0.05, POST, false);
+  return f.geo();
 }
 // «Нью-Джерси»: основание 0.6 м, высота 0.81 м, звено 1.95 м (по z от 0)
 function blockGeo() {
-  const P = [[0.3, 0], [0.3, 0.08], [0.2, 0.33], [0.08, 0.81], [-0.08, 0.81], [-0.2, 0.33], [-0.3, 0.08], [-0.3, 0]];
-  const g = extrude(P, 1.95); g.translate(0, -0.05, 0);
-  return colored(g, CONCRETE);
+  const f = new Faces();
+  const P = [[0.3, -0.05], [0.3, 0.08], [0.2, 0.33], [0.08, 0.81], [-0.08, 0.81], [-0.2, 0.33], [-0.3, 0.08], [-0.3, -0.05]];
+  f.sweep(P, 1.95, 0, 0.3, CONCRETE);
+  // торцы: блоки стоят с зазором, их видно
+  for (const z of [0, 1.95]) {
+    const h = [0, 0, z ? 1 : -1];
+    f.quad([0.3, -0.05, z], [0.3, 0.08, z], [-0.3, 0.08, z], [-0.3, -0.05, z], h, CONCRETE);
+    f.quad([0.3, 0.08, z], [0.2, 0.33, z], [-0.2, 0.33, z], [-0.3, 0.08, z], h, CONCRETE);
+    f.quad([0.2, 0.33, z], [0.08, 0.81, z], [-0.08, 0.81, z], [-0.2, 0.33, z], h, CONCRETE);
+  }
+  return f.geo();
 }
-// столбик С1: белый, чёрная полоса наверху, красный светоотражатель к дороге
+// столбик С1: белый, чёрная полоса наверху, красный светоотражатель к дороге (+x)
 function delinGeo() {
-  const body = new THREE.BoxGeometry(0.1, 1.45, 0.12); body.translate(0, 0.475, 0);       // −0.25…1.2
-  const band = new THREE.BoxGeometry(0.104, 0.25, 0.124); band.translate(0, 0.95, 0);
-  const refl = new THREE.BoxGeometry(0.01, 0.15, 0.05); refl.translate(0.055, 0.95, 0);
-  return merge([colored(body, WHITE), colored(band, BLACK), colored(refl, RED)]);
+  const f = new Faces();
+  f.box(-0.05, 0.05, -0.25, 0.82, -0.06, 0.06, WHITE, false);
+  f.box(-0.05, 0.05, 0.82, 1.07, -0.06, 0.06, BLACK, false);
+  f.box(-0.05, 0.05, 1.07, 1.2, -0.06, 0.06, WHITE);
+  f.quad([0.052, 0.87, -0.03], [0.052, 0.87, 0.03], [0.052, 1.02, 0.03], [0.052, 1.02, -0.03], [1, 0, 0], RED);
+  return f.geo();
 }
 
 const _m = new THREE.Matrix4(), _X = new THREE.Vector3(), _Y = new THREE.Vector3(), _Z = new THREE.Vector3(),
@@ -425,22 +448,15 @@ export function buildGuardrail(w) {
   g.name = 'отбойники';
   const R = w.__rails;
   if (!R) return g;
-  const metal = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.35 });
+  const metal = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.2 });
   const plain = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.0 });
   const { rails, posts, blocks } = R;
   const nr = rails.length / 8;
-  if (nr) {
-    const beam = inst(beamGeo(), metal, nr, 'отбойник', i => {
-      const r = rails.slice(i * 8, i * 8 + 8);
-      return linkMatrix(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], 1);
-    });
-    beam.castShadow = true;
-    g.add(beam);
-    g.add(inst(postGeo(), metal, nr, 'стойки отбойника', i => {
-      const r = rails.slice(i * 8, i * 8 + 8);
-      return standMatrix(r[0], r[1], r[2], r[6], r[7]);
-    }));
-  }
+  // тень от тонкой стали не видна, а проход в карту теней — лишний вызов
+  if (nr) g.add(inst(railGeo(), metal, nr, 'отбойник', i => {
+    const r = rails.slice(i * 8, i * 8 + 8);
+    return linkMatrix(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], STEP);
+  }));
   const nb = blocks.length / 8;
   if (nb) {
     const bl = inst(blockGeo(), plain, nb, 'блоки на мосту', i => {
