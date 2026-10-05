@@ -70,13 +70,12 @@ export function buildModelPlinths(defs, buildings, terrain) {
 // пропилеи), и стенка buildModelPlinths её не достаёт. Достраиваем стенку
 // по выпуклой оболочке низа модели (вершины ниже LOW над нулём, как пятно
 // в tools/model-pads.mjs): верх — низ модели над этой точкой, низ — земля.
-// Где под моделью и так земля, где оболочка проходит по пустому (у неё
-// рядом нет вершин модели) — ничего не ставим. Считаем, когда приехала
+// Где под моделью и так земля, где оболочка проходит по пустому (над точкой
+// нет ни одного треугольника модели) — ничего не ставим. Считаем, когда приехала
 // модель: вершины её дальней ступени (lod) лежат в тех же местах.
 
 const LOW = 1.5;          // «низ» модели: вершины ниже этого над нулём
 const SK_INSET = 0.15;    // стенка чуть внутрь пятна: не выступает из-под камня
-const SK_NEAR = 1.0;      // вершина модели дальше этого от точки — над точкой пусто
 const SK_STEP = 1.0;
 const CELL = 0.5;
 let SK_MAT = null;
@@ -106,30 +105,49 @@ function hull(pts) {
 // ноль модели. Возвращает сетку в осях holder или null, если не висит нигде.
 export function buildMonumentSkirt(src, pos, terrain) {
   src.updateMatrixWorld(true);
-  const low = new Map(), bottom = new Map(), v = new THREE.Vector3();
+  // треугольники модели в её осях, разложенные по клеткам CELL×CELL
+  const T = [], cells = new Map(), low = new Map(), v = new THREE.Vector3();
   src.traverse(o => {
     if (!o.isMesh || !o.geometry.attributes.position) return;
-    const pa = o.geometry.attributes.position;
+    const pa = o.geometry.attributes.position, ix = o.geometry.index;
+    const n = ix ? ix.count : pa.count;
+    const at = new Float32Array(pa.count * 3);
     for (let i = 0; i < pa.count; i++) {
       v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld);
-      const k = Math.round(v.x / CELL) + ',' + Math.round(v.z / CELL);
-      const b = bottom.get(k);
-      if (b === undefined || v.y < b) bottom.set(k, v.y);
-      if (v.y < LOW && !low.has(k)) low.set(k, [Math.round(v.x / CELL) * CELL, Math.round(v.z / CELL) * CELL]);
+      at[i * 3] = v.x; at[i * 3 + 1] = v.y; at[i * 3 + 2] = v.z;
+      if (v.y < LOW) { const k = Math.round(v.x / CELL) + ',' + Math.round(v.z / CELL);
+        if (!low.has(k)) low.set(k, [Math.round(v.x / CELL) * CELL, Math.round(v.z / CELL) * CELL]); }
+    }
+    for (let t = 0; t < n; t += 3) {
+      const q = [0, 1, 2].map(j => (ix ? ix.getX(t + j) : t + j) * 3);
+      const tri = q.flatMap(j => [at[j], at[j + 1], at[j + 2]]);
+      const ti = T.push(tri) - 1;
+      const x0 = Math.floor(Math.min(tri[0], tri[3], tri[6]) / CELL), x1 = Math.floor(Math.max(tri[0], tri[3], tri[6]) / CELL);
+      const z0 = Math.floor(Math.min(tri[2], tri[5], tri[8]) / CELL), z1 = Math.floor(Math.max(tri[2], tri[5], tri[8]) / CELL);
+      if ((x1 - x0 + 1) * (z1 - z0 + 1) > 4000) continue;   // стенка-полотно в пол-квартала не нужна
+      for (let a = x0; a <= x1; a++) for (let c = z0; c <= z1; c++) {
+        const k = a + ',' + c; let l = cells.get(k); if (!l) cells.set(k, l = []); l.push(ti);
+      }
     }
   });
   if (low.size < 3) return null;
   const H = hull([...low.values()]);
   if (H.length < 3) return null;
-  const R = Math.ceil(SK_NEAR / CELL);
-  // низ модели над точкой: самая низкая вершина в радиусе SK_NEAR
+  // низ модели над точкой: самый нижний треугольник, который её накрывает
+  // (по вершинам не выйдет: у плоской грани вершины только по углам)
   const under = (x, z) => {
-    const ix = Math.round(x / CELL), iz = Math.round(z / CELL);
+    const l = cells.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL));
     let m = Infinity;
-    for (let a = -R; a <= R; a++) for (let c = -R; c <= R; c++) {
-      if ((a * a + c * c) * CELL * CELL > SK_NEAR * SK_NEAR) continue;
-      const y = bottom.get((ix + a) + ',' + (iz + c));
-      if (y !== undefined && y < m) m = y;
+    if (l) for (const ti of l) {
+      const t = T[ti];
+      const ax = t[0], az = t[2], bx = t[3] - ax, bz = t[5] - az, cx = t[6] - ax, cz = t[8] - az;
+      const d = bx * cz - bz * cx;
+      if (Math.abs(d) < 1e-9) continue;          // стенка, видна ребром
+      const px = x - ax, pz = z - az;
+      const u = (px * cz - pz * cx) / d, w = (bx * pz - bz * px) / d;
+      if (u < -1e-4 || w < -1e-4 || u + w > 1 + 1e-4) continue;
+      const y = t[1] + (t[4] - t[1]) * u + (t[7] - t[1]) * w;
+      if (y < m) m = y;
     }
     return m;
   };
