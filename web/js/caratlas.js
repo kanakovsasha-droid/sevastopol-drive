@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { mergeGeometries } from '../lib/BufferGeometryUtils.js?v=ef5a3a69';
-import { LAMPS } from './carlights.js?v=ef5a3a69';
+import { mergeGeometries } from '../lib/BufferGeometryUtils.js?v=0021fa2c';
+import { LAMPS } from './carlights.js?v=0021fa2c';
 
 // Атлас материалов машины: у E63 в файле 92 сетки и 85 материалов — каждая
 // своим вызовом отрисовки, а машина в кадре всегда. Здесь все непрозрачные

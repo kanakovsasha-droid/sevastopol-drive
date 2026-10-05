@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=ef5a3a69';
-import { buildFuelStations } from './fuel.js?v=ef5a3a69';
+import { PolyGrid } from './worldgen.js?v=0021fa2c';
+import { buildFuelStations } from './fuel.js?v=0021fa2c';
 
 // Оборудование детских площадок и машины на парковках. Места берутся из OSM
 // (data/areas.json -> world.areas): качели и горки ставим только там, где в
