@@ -56,7 +56,7 @@ export function seriesOf(b) {
   const code = e[0], poly = b.poly, n = poly.length / 2;
   const pal = PAL[code];
   const ser = { code, kind: KIND[code], bay: BAY[code], edge: e[1], color: pal[(hashId(b.id) * pal.length) | 0],
-                ax: 1, az: 0, aspect: 1, doors: [], ent: e[2] | 0 };
+                ax: 1, az: 0, aspect: 1, doors: [], id: b.id, b, walls: [], ent: e[2] | 0 };
   // ось дома — по стене подъездов, торцы — стены поперёк неё
   if (ser.edge >= 0 && ser.edge < n) {
     const i = ser.edge, j = (i + 1) % n;
@@ -79,6 +79,11 @@ export function seriesOf(b) {
 // Стена i длиной l: вид фасада и координата вдоль стены (u0 → u1).
 // Двери подъездов запоминаются в ser.doors — по ним встают козырьки.
 export function seriesWall(ser, i, ax, az, bx, bz, l) {
+  const r = wallOf(ser, i, ax, az, bx, bz, l);
+  ser.walls.push({ i, ax, az, bx, bz, l, kind: r.kind, u0: r.u0, u1: r.u1 });   // для facades.js
+  return r;
+}
+function wallOf(ser, i, ax, az, bx, bz, l) {
   const B = ser.bay;
   const N = Math.max(1, Math.round(l / B));
   const dx = (bx - ax) / l, dz = (bz - az) / l;
@@ -102,9 +107,15 @@ export function seriesWall(ser, i, ax, az, bx, bz, l) {
   return { kind: ser.kind + Sec / 16, u0: -off * B, u1: (N - off) * B };
 }
 
+// Собранный дом с отметками уходит в BUILT — объёмные детали фасада
+// (facades.js) строятся по нему лениво, когда к дому подъедет камера.
+export const BUILT = new Map();
+
 // Козырьки над подъездами и лифтовые будки девятиэтажки.
 // box — boxSolid из buildBuildings (центр, полуоси, низ, верх, цвет, вид, ось).
-export function seriesExtras(ser, yFloor, yTop, wall, Hb, box) {
+export function seriesExtras(ser, yFloor, yTop, wall, Hb, box, yBase = yFloor - 0.6) {
+  ser.f = { yFloor, yTop, yBase, wall };
+  BUILT.set(ser.id, ser);
   if (!ser.doors.length) return;
   const conc = [wall[0] * 0.80, wall[1] * 0.79, wall[2] * 0.77];
   for (const [x, z, dx, dz] of ser.doors) {

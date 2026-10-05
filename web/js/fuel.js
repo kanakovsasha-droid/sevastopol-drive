@@ -216,6 +216,30 @@ function area(p) {
   for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) a += (p[j] - p[i]) * (p[j + 1] + p[i + 1]);
   return Math.abs(a / 2);
 }
+// Площадь пересечения многоугольника q с выпуклым r (отсечение Сазерленда —
+// Ходжмана; оба — плоские массивы x, z, замыкающая точка не мешает)
+export function clipArea(q, r) {
+  let out = [];
+  for (let i = 0; i < q.length; i += 2) out.push([q[i], q[i + 1]]);
+  if (out.length > 1 && out[0][0] === out.at(-1)[0] && out[0][1] === out.at(-1)[1]) out.pop();
+  let sa = 0;
+  for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) sa += (r[j] - r[i]) * (r[j + 1] + r[i + 1]);
+  const sg = sa < 0 ? 1 : -1;
+  for (let i = 0; i < r.length && out.length; i += 2) {
+    const ax = r[i], az = r[i + 1], bx = r[(i + 2) % r.length], bz = r[(i + 3) % r.length];
+    const side = p => sg * ((bx - ax) * (p[1] - az) - (bz - az) * (p[0] - ax));
+    const inp = out; out = [];
+    for (let k = 0; k < inp.length; k++) {
+      const P = inp[k], Q = inp[(k + 1) % inp.length], sp = side(P), sq = side(Q);
+      if (sp <= 0) out.push(P);
+      if ((sp < 0) !== (sq < 0) && sp !== sq) {
+        const t = sp / (sp - sq);
+        out.push([P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])]);
+      }
+    }
+  }
+  return out.length < 3 ? 0 : area(out.flat());
+}
 function inside(x, z, p) {
   let c = false;
   for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
@@ -362,6 +386,92 @@ function shopBlocked(world, x, z) {
   return false;
 }
 
+// Модель не должна стоять в доме OSM. У АЗС-точки (без контура) OSM часто
+// рисует саму заправку коробкой с вывеской сети (sg c: 'fuel', «Атан»,
+// building=carport/roof) или мелким домиком под навесом — это навес и
+// касса, модель приносит свои: снимаем. Магазин сети (food_shop «Атан» и
+// т. п.) — настоящий павильон: сначала пробуем отодвинуть модель от него, а
+// если не выходит — тоже снимаем. От остальных домов (гаражи, цеха, жильё)
+// модель двигаем вдоль улицы и от неё, при нужде — меньше масштаб или без
+// своего павильона; что совсем не вписалось — tools/fuel-overlap.mjs.
+const PARTS = [[-8.3, 8.3, -5.3, 5.3], [10.4, 12.4, 7.3, 7.9]];
+const SHOP = [-5.95, 5.95, -15.15, -8.5];
+function placeW(P) {
+  const c = Math.cos(P.rot), s = Math.sin(P.rot);
+  return (lx, lz) => [P.cx + P.s * (lx * c + lz * s), P.cz + P.s * (-lx * s + lz * c)];
+}
+const rectOf = (W, [x0, x1, z0, z1]) => [...W(x0, z0), ...W(x1, z0), ...W(x1, z1), ...W(x0, z1)];
+function overlapOf(P, hideShop, near) {
+  const W = placeW(P);
+  const parts = PARTS.map(r => rectOf(W, r));
+  if (!hideShop) parts.push(rectOf(W, SHOP));
+  let a = 0;
+  for (const b of near) {
+    if (b.hide) continue;
+    for (const r of parts) a += clipArea(b.poly, r);
+  }
+  return a;
+}
+function ownSign(b, brand) {
+  const own = n => { const x = brandOf({ n }); return x && brand && x.id === brand.id; };
+  if (b.t === 'carport' || b.t === 'roof' || /азс|заправ/i.test(b.n || '') || own(b.n)) return 'box';
+  for (const s of b.sg || []) {
+    if (s.c === 'fuel') return 'box';
+    if (own(s.n)) return 'shop';
+  }
+  return '';
+}
+function fitStation(f, world) {
+  const F = f.__fuel, P = F.P, brand = brandOf(f);
+  const R = 45 * P.s;
+  const near = (world.buildings || []).filter(b => {
+    if (b.hide || !b.poly || b.poly.length < 6) return false;
+    for (let i = 0; i < b.poly.length; i += 2) if (Math.abs(b.poly[i] - P.cx) < R && Math.abs(b.poly[i + 1] - P.cz) < R) return true;
+    return false;
+  });
+  if (!near.length || overlapOf(P, F.hideShop, near) < 0.5) return;
+  // 1. коробки самой заправки
+  const parts = [...PARTS, SHOP].map(r => rectOf(F.W, r));
+  const soft = [];
+  for (const b of near) {
+    let a = 0;
+    for (const r of parts) a += clipArea(b.poly, r);
+    if (a < 0.5) continue;
+    const ab = area(b.poly), kind = ownSign(b, brand);
+    if ((kind === 'box' && ab <= 800) || (!kind && ab <= 250 && a >= 0.5 * ab)) { b.hide = true; b.fuelBox = true; }
+    else if (kind === 'shop' && ab <= 800) soft.push(b);
+  }
+  // свой павильон снят — может, на месте павильона модели дома больше нет
+  if (F.hideShop) F.hideShop = shopBlocked(world, ...F.W(0, -11.9));
+  const shop0 = F.hideShop;
+  let base = overlapOf(P, F.hideShop, near);
+  if (base < 0.5) { F.fit = 'снята коробка'; return; }
+  // 2. сдвиг: вдоль улицы до ±14 м, от улицы до 10 м, к ней до 2 м; масштаб;
+  // без павильона модели. Цена — пересечение (сильно) плюс сдвиг.
+  const ax = Math.cos(P.rot), az = -Math.sin(P.rot);
+  let best = { cost: base * 20, P, hideShop: F.hideShop, ov: base, du: 0, dv: 0 };
+  for (const sk of [1, 0.85])
+    for (const hs of F.hideShop ? [true] : [false, true])
+      for (let du = -14; du <= 14; du += 1)
+        for (let dv = -10; dv <= 2; dv += 1) {
+          const Q = { ...P, s: Math.max(0.75, P.s * sk) };
+          Q.cx = P.cx + ax * du + P.nx * dv; Q.cz = P.cz + az * du + P.nz * dv;
+          const ov = overlapOf(Q, hs, near);
+          const cost = ov * 20 + Math.hypot(du, dv * 1.5) + (hs !== F.hideShop ? 12 : 0) + (sk < 1 ? 8 : 0);
+          if (cost < best.cost) best = { cost, P: Q, hideShop: hs, ov, du, dv };
+        }
+  // 3. не вышло отодвинуться от магазина сети — снимаем его
+  if (best.ov >= 0.5 && soft.length) {
+    for (const b of soft) { b.hide = true; b.fuelBox = true; }
+    const ov = overlapOf(P, F.hideShop, near);
+    if (ov < best.ov) best = { P, hideShop: F.hideShop, ov, du: 0, dv: 0, shop: true };
+  }
+  F.P = best.P; F.W = placeW(best.P); F.hideShop = best.hideShop;
+  F.fit = [best.du || best.dv ? `сдвиг ${best.du}/${best.dv} м` : '', best.P.s !== P.s ? `масштаб ${best.P.s.toFixed(2)}` : '',
+    best.hideShop && !shop0 ? 'без павильона' : '', best.shop ? 'снят магазин сети' : '',
+    best.ov >= 0.5 ? `осталось ${best.ov.toFixed(1)} м²` : ''].filter(Boolean).join(', ') || 'снята коробка';
+}
+
 // Подготовка АЗС квартала — ДО индекса стен (main.js, этап «дороги»):
 // место и поворот моделей, дома-коробки на площадках снимаются (hide, и в
 // индекс стен они не идут — помечены fuelBox), а стены павильона, опоры
@@ -389,11 +499,24 @@ export function prepFuel(world) {
     const [shx, shz] = W(0, -11.9);
     const hideShop = shopBlocked(world, shx, shz);
     f.__fuel = { P, W, hideShop };
-    if (!hideShop) walls.push(rect(-5.95, 5.95, -15.15, -8.6));
-    for (const x of [-4.6, 4.6]) for (const z of [-2.7, 2.7]) walls.push(rect(x - 0.34, x + 0.34, z - 0.34, z + 0.34));
-    walls.push(rect(11.4 - 1.0, 11.4 + 1.0, 7.6 - 0.3, 7.6 + 0.3));
+    fitStation(f, world);
+    const F = f.__fuel, R = (x0, x1, z0, z1) => ({ poly: [...F.W(x0, z0), ...F.W(x1, z0), ...F.W(x1, z1), ...F.W(x0, z1)] });
+    if (!F.hideShop) walls.push(R(-5.95, 5.95, -15.15, -8.6));
+    for (const x of [-4.6, 4.6]) for (const z of [-2.7, 2.7]) walls.push(R(x - 0.34, x + 0.34, z - 0.34, z + 0.34));
+    walls.push(R(11.4 - 1.0, 11.4 + 1.0, 7.6 - 0.3, 7.6 + 0.3));
   }
   return walls;
+}
+
+// Части модели в плане (контуры в метрах мира) — для проверки, не стоит ли
+// модель в доме (tools/fuel-overlap.mjs): навес, павильон (если не спрятан),
+// стела. Размеры — по azs_*.glb.
+export function modelParts(f) {
+  const { W, hideShop } = f.__fuel;
+  const rect = (x0, x1, z0, z1) => [...W(x0, z0), ...W(x1, z0), ...W(x1, z1), ...W(x0, z1)];
+  const out = [['навес', rect(...PARTS[0])], ['стела', rect(...PARTS[1])]];
+  if (!hideShop) out.push(['павильон', rect(...SHOP)]);
+  return out;
 }
 
 // ---------------------------------------------------------------- сборка

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../lib/GLTFLoader.js?v=d17fb321';
 import { batchModel } from './modelbatch.js?v=d17fb321';
+import { wantsSkirt, buildMonumentSkirt } from './plinth.js?v=d17fb321';
 
 // Здания, которые нельзя оставлять коробкой. Массу берём из контура OSM,
 // а сверху ставим то, что делает здание узнаваемым: колоннаду, портик,
@@ -60,11 +61,12 @@ const MODEL_NEAR = 380, MODEL_FAR = 460;
 // А в проходе тени onBeforeRender получал камеру солнца в 420 м от игрока,
 // и уровень мог переключаться туда-сюда в каждом кадре.
 const LIVE = new Set();
-function placeModel(holder, file) {
+function placeModel(holder, file, onLoad) {
   const low = file.replace(/\.glb$/, '.lod.glb');
   loadModel(low).then(src => {
     const far = src.clone();
     holder.add(far);
+    if (onLoad) onLoad(src);          // src без родителя: его оси — оси модели
     LIVE.add({ holder, far, file, full: null, asked: false });
   }).catch(e => console.warn('модель не загрузилась:', file, e));
 }
@@ -487,7 +489,11 @@ export function buildLandmarks(world, terrain, defs, roadIndex) {
       const holder = new THREE.Group();
       holder.name = 'model:' + d.file;
       holder.position.set(d.ox, d.y ?? terrain.gridHeightAt(d.ox, d.oz), d.oz);
-      placeModel(holder, d.file);
+      // памятнику на склоне — цоколь до земли по пятну модели (plinth.js)
+      placeModel(holder, d.file, wantsSkirt(d) ? src => {
+        const sk = buildMonumentSkirt(src, holder.position, terrain);
+        if (sk) holder.add(sk);
+      } : null);
       group.add(holder);
       // Модель снимает только те контуры, что перечислены в skip: у памятника
       // своего контура нет, и «ближайший дом» рядом с ним — чужой.
