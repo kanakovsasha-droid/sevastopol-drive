@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ENV } from './env.js?v=ef5a3a69';
+import { ENV } from './env.js?v=10448e16';
 
 // Светофоры: модель как в Севастополе, расстановка по подходам перекрёстка и
 // работающий цикл огней.
