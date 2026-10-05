@@ -112,6 +112,8 @@ function maxFloorsForArea(a) {
 
 function estimateHeight(tags, poly, areaM2) {
   const t = tags.building || tags['building:part'] || 'yes';
+  // навес (building=roof) — высота НИЗА плиты, как в web/js/canopy.js
+  if (t === 'roof') return areaM2 < 40 ? 2.8 : areaM2 < 150 ? 3.6 : 5.0;
   if (FIXED_H[t]) return FIXED_H[t];
   const r = hashAt(poly[0], poly[1]);
   // выбор ведёт район, собственный кубик дома только слегка сдвигает
@@ -815,6 +817,9 @@ function reverse(p) {
     // и из описания дома — не трогаем. Без проверки зоны соседская медиана
     // подняла одноэтажные ларьки до окрестных пяти этажей.
     if (b.lv || b.zone || b.hand) continue;
+    // Гаражи, сараи и навесы этажность у соседей не берут: навес АЗС у
+    // «Атана» на Руднева от медианы вырос до 17.7 м — пятиэтажкой на проезде.
+    if (FIXED_H[b.t]) continue;
     const p = b.poly, n = p.length / 2;
     let cx = 0, cz = 0;
     for (let k = 0; k < n; k++) { cx += p[k * 2]; cz += p[k * 2 + 1]; }
