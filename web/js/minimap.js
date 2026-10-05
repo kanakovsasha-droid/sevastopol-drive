@@ -283,14 +283,18 @@ export function drawMini(ctx, map, o) {
 // Вся карта на весь экран. zoom = 1 — весь мир целиком; больше — приближение
 // с центром на игроке (на полосе трассы в 50 км без этого ничего не разобрать).
 // Использованное преобразование кладём в map.view, чтобы клик по карте умел
-// пересчитать пиксели обратно в метры.
-export function drawFull(ctx, map, w, h, px, pz, yaw, marks, zoom = 1) {
+// пересчитать пиксели обратно в метры. center — {x, z} в метрах, если карту
+// сдвинули (mapnav.js); без него центр на игроке.
+export function drawFull(ctx, map, w, h, px, pz, yaw, marks, zoom = 1, center = null) {
   ctx.clearRect(0, 0, w, h);
   const fit = Math.min(w / map.W, h / map.H) * 0.94;
   const k = fit * zoom;
   let ox, oy;
   if (zoom <= 1.001) { ox = (w - map.W * k) / 2; oy = (h - map.H * k) / 2; }
-  else { ox = w / 2 - map.X(px) * k; oy = h / 2 - map.Z(pz) * k; }
+  else {
+    const cx = center ? center.x : px, cz = center ? center.z : pz;
+    ox = w / 2 - map.X(cx) * k; oy = h / 2 - map.Z(cz) * k;
+  }
   map.view = { k, ox, oy };
 
   ctx.save();

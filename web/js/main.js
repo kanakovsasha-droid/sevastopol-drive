@@ -12,6 +12,7 @@ import { loadStreet, buildStreet, streetFurniture } from './street.js?v=e287a336
 import { buildCemeteries } from './cemetery.js?v=e287a336';
 import { audit } from './audit.js?v=e287a336';
 import { buildMap, drawFull, mapUnproject } from './minimap.js?v=e287a336';
+import { MapNav } from './mapnav.js';
 import { Hud } from './hud.js?v=e287a336';
 import { ChunkManager } from './chunks.js?v=e287a336';
 import { Collider, RoadIndex } from './collision.js?v=e287a336';
@@ -98,7 +99,7 @@ let renderer, scene, camera, sun, sky, hemi, env, carLights, precip;
 let water = null;
 let terrain, far = null, landmarkDefs = [], terraces = [], collider, roads, carMesh, car, carFx;
 let cityMap = null, mapCtx = null, mapOpen = false, miniOn = true, hud = null;
-let mapZoom = 1;                               // 1 — весь мир, больше — вокруг игрока
+let mapNav = null;                             // масштаб и сдвиг карты (mapnav.js)
 // --- потоковая загрузка --------------------------------------------------
 let chunks = null;                             // ChunkManager
 const farCells = new Map();                    // ключ чанка → силуэт дальнего слоя
@@ -1314,12 +1315,7 @@ function bindInput() {
   });
   addEventListener('keyup', e => keys.delete(e.code));
   addEventListener('wheel', e => {
-    if (mapOpen) {
-      mapZoom = clamp(mapZoom * (e.deltaY > 0 ? 0.8 : 1.25), 1, 40);
-      drawMap();
-      e.preventDefault();
-      return;
-    }
+    if (mapOpen) { e.preventDefault(); return; }   // карту крутит mapnav.js
     if (mode === 'fly') fly.speed = clamp(fly.speed * (e.deltaY > 0 ? 0.86 : 1.16), 3, 900);
     else carCam.wheel(e.deltaY);
     e.preventDefault();
@@ -1327,6 +1323,8 @@ function bindInput() {
   addEventListener('blur', () => keys.clear());
 
   $('mapcv').addEventListener('click', mapClick);
+  mapNav = new MapNav({ box: $('mapfull'), cv: $('mapcv'), map: () => cityMap, open: () => mapOpen,
+                        redraw: drawMap, player: playerPos });
   renderer.domElement.addEventListener('click', () => {
     if (!$('menu').classList.contains('on')) renderer.domElement.requestPointerLock();
   });
@@ -1389,7 +1387,7 @@ function toggleMap() {
     cv.width = Math.round(innerWidth * 0.96);
     cv.height = Math.round(innerHeight * 0.92);
     const fit = Math.min(cv.width / cityMap.W, cv.height / cityMap.H) * 0.94;
-    mapZoom = clamp(cv.width / (MAP_SPAN * cityMap.px) / fit, 1, 40);
+    mapNav.reset(cv.width / (MAP_SPAN * cityMap.px) / fit);
     drawMap();
   }
 }
@@ -1397,12 +1395,16 @@ function toggleMap() {
 function drawMap() {
   if (!mapOpen || !cityMap) return;
   const cv = $('mapcv');
-  const px = mode === 'car' ? car.pos.x : mode === 'fly' ? fly.x : walk.x;
-  const pz = mode === 'car' ? car.pos.z : mode === 'fly' ? fly.z : walk.z;
+  const { x: px, z: pz } = playerPos();
   const yaw = mode === 'car' ? car.yaw : mode === 'fly' ? fly.yaw : walk.yaw;
   const marks = landmarkDefs.map(d => ({ name: d.name, x: d.x, z: d.z }))
     .concat(PLACES.slice(0, 6).map(([n, x, z]) => ({ name: n, x, z })));
-  drawFull(cv.getContext('2d'), cityMap, cv.width, cv.height, px, pz, yaw, marks, mapZoom);
+  drawFull(cv.getContext('2d'), cityMap, cv.width, cv.height, px, pz, yaw, marks, mapNav.zoom, mapNav.center());
+}
+
+function playerPos() {
+  return { x: mode === 'car' ? car.pos.x : mode === 'fly' ? fly.x : walk.x,
+           z: mode === 'car' ? car.pos.z : mode === 'fly' ? fly.z : walk.z };
 }
 
 function buildMenu() {
