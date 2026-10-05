@@ -193,7 +193,7 @@ for (const b of houses.values()) {
       if (d > best) { best = d; edge = s.i; }
     }
   }
-  out[b.id] = [code, edge];
+  out[b.id] = b.ent ? [code, edge, b.ent] : [code, edge];   // третье — подъездов (руками)
   count[code]++;
 }
 

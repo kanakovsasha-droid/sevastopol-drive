@@ -1,43 +1,44 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=d17fb321';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=d17fb321';
-import { buildStreetProps } from './props.js?v=d17fb321';
-import { updateFlora, floraStats, warmFlora } from './flora.js?v=d17fb321';
-import { buildYards, buildStructures } from './yards.js?v=d17fb321';
-import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=d17fb321';
-import { buildFurniture } from './furniture.js?v=d17fb321';
-import { buildLandmarks, setModelWarm, updateModels } from './landmarks.js?v=d17fb321';
-import { buildSigns } from './signs.js?v=d17fb321';
-import { loadStreet, buildStreet, streetFurniture } from './street.js?v=d17fb321';
-import { buildCemeteries } from './cemetery.js?v=d17fb321';
-import { audit } from './audit.js?v=d17fb321';
-import { buildMap, drawFull, mapUnproject } from './minimap.js?v=d17fb321';
-import { MapNav } from './mapnav.js';
-import { Hud } from './hud.js?v=d17fb321';
-import { ChunkManager } from './chunks.js?v=d17fb321';
-import { Collider, RoadIndex } from './collision.js?v=d17fb321';
-import { gatePolys } from './passage.js?v=d17fb321';
-import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=d17fb321';
-import { CarFX } from './carfx.js?v=d17fb321';
-import { precompile } from './warm.js?v=d17fb321';
-import { Gamepad } from './gamepad.js?v=d17fb321';
-import { Environment, ENV } from './env.js?v=d17fb321';
-import { CarLights } from './carlights.js?v=d17fb321';
-import { Settings } from './settings.js?v=d17fb321';
-import { Pause } from './pause.js?v=d17fb321';
-import { DriveModes } from './drivemodes.js?v=d17fb321';
-import { Assists } from './assists.js?v=d17fb321';
-import { buildModelPlinths } from './plinth.js?v=d17fb321';
-import { CarCam } from './carcam.js?v=d17fb321';
-import { Precip } from './precip.js?v=d17fb321';
-import { loadFootprints, monumentTest } from './footprints.js?v=d17fb321';
-import { loadSquares, addFarSquares, addSquares } from './squares.js?v=d17fb321';
-import { loadSkateparks, buildSkateparks } from './skatepark.js?v=d17fb321';
-import { padBlocker } from './pads.js?v=d17fb321';
-import { loadSchools, prepSchools, buildSchools } from './schools.js?v=d17fb321';
-import { prepFuel } from './fuel.js?v=d17fb321';
-import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=d17fb321';
-import { Facades } from './facades.js?v=d17fb321';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=d696c603';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=d696c603';
+import { levelsReady } from './roadlevels.js?v=d696c603';
+import { buildStreetProps } from './props.js?v=d696c603';
+import { updateFlora, floraStats, warmFlora } from './flora.js?v=d696c603';
+import { buildYards, buildStructures } from './yards.js?v=d696c603';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=d696c603';
+import { buildFurniture } from './furniture.js?v=d696c603';
+import { buildLandmarks, setModelWarm, updateModels } from './landmarks.js?v=d696c603';
+import { buildSigns } from './signs.js?v=d696c603';
+import { loadStreet, buildStreet, streetFurniture } from './street.js?v=d696c603';
+import { buildCemeteries } from './cemetery.js?v=d696c603';
+import { audit } from './audit.js?v=d696c603';
+import { buildMap, drawFull, mapUnproject } from './minimap.js?v=d696c603';
+import { MapNav } from './mapnav.js?v=d696c603';
+import { Hud } from './hud.js?v=d696c603';
+import { ChunkManager } from './chunks.js?v=d696c603';
+import { Collider, RoadIndex } from './collision.js?v=d696c603';
+import { gatePolys } from './passage.js?v=d696c603';
+import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=d696c603';
+import { CarFX } from './carfx.js?v=d696c603';
+import { precompile } from './warm.js?v=d696c603';
+import { Gamepad } from './gamepad.js?v=d696c603';
+import { Environment, ENV } from './env.js?v=d696c603';
+import { CarLights } from './carlights.js?v=d696c603';
+import { Settings } from './settings.js?v=d696c603';
+import { Pause } from './pause.js?v=d696c603';
+import { DriveModes } from './drivemodes.js?v=d696c603';
+import { Assists } from './assists.js?v=d696c603';
+import { buildModelPlinths } from './plinth.js?v=d696c603';
+import { CarCam } from './carcam.js?v=d696c603';
+import { Precip } from './precip.js?v=d696c603';
+import { loadFootprints, monumentTest } from './footprints.js?v=d696c603';
+import { loadSquares, addFarSquares, addSquares } from './squares.js?v=d696c603';
+import { loadSkateparks, buildSkateparks } from './skatepark.js?v=d696c603';
+import { padBlocker } from './pads.js?v=d696c603';
+import { loadSchools, prepSchools, buildSchools } from './schools.js?v=d696c603';
+import { prepFuel } from './fuel.js?v=d696c603';
+import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=d696c603';
+import { Facades } from './facades.js?v=d696c603';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -389,10 +390,12 @@ class TerrainTiles {
         this.asked.add(c.key);
         asked++;
         terrain.ensureRect(x0, z0, x1, z1);
+        levelsReady(x0, z0, x1, z1);             // дворовые проезды квадрата (roadlevels.js)
       }
       // Пока детальные высоты под квадратом не приехали, собирать нельзя:
       // всё сядет по грубой сетке, а это промах до восемнадцати метров.
-      if (!pick && terrain.detailReady(x0, z0, x1, z1)) pick = c;
+      // и отметки дворовых проездов: без них коридор соберётся без проездов
+      if (!pick && terrain.detailReady(x0, z0, x1, z1) && levelsReady(x0, z0, x1, z1)) pick = c;
       if (pick && asked >= 4) break;
     }
     if (!pick) return;

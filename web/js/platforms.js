@@ -59,6 +59,8 @@ export function openGround(h, n, r = 2) {
 // Отметка площадки дома по id. Дом на шве попадает в окна ОБОИХ соседей, и
 // отметка обязана выйти одинаковой до сантиметра. Окна у соседей разные,
 // поэтому кто посчитал первым, тот и записал — второй берёт готовую.
+import { levelAt, hasLevels } from './roadlevels.js?v=d696c603';
+
 const LEVEL = new Map();
 
 const FULL = 5;        // м от стены, где земля целиком на отметке площадки
@@ -366,6 +368,89 @@ export function* terracesGen(ext, ne, ox, oz, step, cw, cap, list, keep, roads =
     }
     return f;
   };
+  // ПЛОСКОСТЬ ПО УЛИЦАМ. Сквер в городе лежит вровень с улицами вокруг —
+  // а медиана земли по контуру (и тем более сглаженный DSM у парков крупнее
+  // 2 га) уводила его вниз по склону: парк у Центрального рынка стоял на
+  // метр-два ниже Генерала Петрова, со склоном вниз от тротуара. Если улицы
+  // с отметками (roadlevels.js) идут вдоль контура хотя бы на трети его
+  // длины, площадка — наклонная плоскость по их отметкам у контура (не
+  // круче 6%; вес улицы — квадрат её значимости). Считается по отметкам, а не по земле квадрата, — у соседей
+  // по шву одна и та же.
+  const RB2 = 32, rb2 = new Map();
+  for (const r of roads) {
+    if (r.br || r.tn || r.c > 3 || !hasLevels(r.id)) continue;
+    const q = r.pts;
+    for (let t = 0; t + 3 < q.length; t += 2) {
+      const ax = q[t], az = q[t + 1], bx = q[t + 2], bz = q[t + 3];
+      for (let j = Math.floor((Math.min(az, bz) - 30) / RB2); j <= Math.floor((Math.max(az, bz) + 30) / RB2); j++)
+        for (let i = Math.floor((Math.min(ax, bx) - 30) / RB2); i <= Math.floor((Math.max(ax, bx) + 30) / RB2); i++) {
+          const k = i + '_' + j;
+          if (!rb2.has(k)) rb2.set(k, []);
+          rb2.get(k).push(r, t);
+        }
+    }
+  }
+  const streetLevel = (x, z) => {
+    const e = rb2.get(Math.floor(x / RB2) + '_' + Math.floor(z / RB2));
+    if (!e) return null;
+    let best = null, bd = Infinity;
+    for (let t = 0; t < e.length; t += 2) {
+      const r = e[t], q = r.pts, i = e[t + 1];
+      const ax = q[i], az = q[i + 1], vx = q[i + 2] - ax, vz = q[i + 3] - az, L2 = vx * vx + vz * vz;
+      let u = L2 > 0 ? ((x - ax) * vx + (z - az) * vz) / L2 : 0;
+      u = u < 0 ? 0 : u > 1 ? 1 : u;
+      const d = Math.hypot(ax + vx * u - x, az + vz * u - z) - (r.w || 6) / 2;
+      if (d < 22 && d < bd) { bd = d; best = [r, ax + vx * u, az + vz * u]; }
+    }
+    if (!best) return null;
+    const h = levelAt(best[0].id, best[0].pts, best[1], best[2]);
+    // вес — значимость улицы, как в решателе отметок: сквер ровняется по
+    // главной улице, а переулок с другой стороны лишь наклоняет его
+    // (квадрат значимости — как у плоскостей перекрёстков)
+    const imp = (best[0].c <= 1 ? 4 : best[0].c === 2 ? 1.5 : 0.5) * Math.max(0.5, (best[0].w || 6) / 9);
+    return h === null ? null : [h, imp * imp];
+  };
+  const planeOf = it => {
+    const key = 'pl:' + it.id;
+    if (LEVEL.has(key)) return LEVEL.get(key);
+    const p = it.poly, n = p.length / 2;
+    let all = 0, hit = 0;
+    let sw = 0, sx = 0, sz = 0, sh = 0, sxx = 0, szz = 0, sxz = 0, sxh = 0, szh = 0;
+    const cx = (it.bb[0] + it.bb[2]) / 2, cz = (it.bb[1] + it.bb[3]) / 2;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, ax = p[i * 2], az = p[i * 2 + 1], ex = p[j * 2] - ax, ez = p[j * 2 + 1] - az;
+      const k = Math.max(1, Math.ceil(Math.hypot(ex, ez) / 4));
+      for (let t = 0; t < k; t++) {
+        const x = ax + ex * t / k, z = az + ez * t / k;
+        all++;
+        const e = streetLevel(x, z);
+        if (e === null) continue;
+        hit++;
+        const [h, q] = e, X = x - cx, Z = z - cz;
+        sw += q; sx += X * q; sz += Z * q; sh += h * q; sxx += X * X * q; szz += Z * Z * q; sxz += X * Z * q; sxh += X * h * q; szh += Z * h * q;
+      }
+    }
+    let pl = null;
+    if (all && hit / all >= 0.33) {
+      // наименьшие квадраты; при вырожденной системе — горизонтально
+      const det = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+      const A = [[sw, sx, sz], [sx, sxx, sxz], [sz, sxz, szz]], B = [sh, sxh, szh], D0 = det(A);
+      let a = sh / sw, bx = 0, bz = 0;
+      if (Math.abs(D0) > 1e-6) {
+        const col = c => A.map((r, ri) => r.map((v, ci) => ci === c ? B[ri] : v));
+        a = det(col(0)) / D0; bx = det(col(1)) / D0; bz = det(col(2)) / D0;
+      }
+      const g = Math.hypot(bx, bz);
+      if (g > 0.06) {
+        bx *= 0.06 / g; bz *= 0.06 / g;
+        // уклон урезан — высоту центра считаем заново, по тем же весам
+        a = (sh - bx * sx - bz * sz) / sw;
+      }
+      pl = { a, bx, bz, cx, cz };
+    }
+    LEVEL.set(key, pl);
+    return pl;
+  };
   const ix = tIndex(list);
   const seen = new Set(), mine = [];
   for (let j = Math.floor((keep[1] - T_FEATHER) / 512); j <= Math.floor((keep[3] + T_FEATHER) / 512); j++)
@@ -387,11 +472,15 @@ export function* terracesGen(ext, ne, ox, oz, step, cw, cap, list, keep, roads =
     return (src[k] * (1 - fx) + src[k + 1] * fx) * (1 - fz) + (src[k + ne] * (1 - fx) + src[k + ne + 1] * fx) * fz;
   };
   const acc = new Float32Array(ne * ne), accW = new Float32Array(ne * ne), wmax = new Float32Array(ne * ne);
+  const byPl = new Uint8Array(ne * ne);     // площадка по улицам: насыпь и выемка глубже
   let made = 0;
   for (const it of mine) {
-    const p = it.poly, n = p.length / 2, small = it.a <= T_SMALL;
+    const p = it.poly, n = p.length / 2;
+    const pl = planeOf(it);
+    const small = it.a <= T_SMALL || !!pl;
     let P = null;
-    if (small) {
+    if (pl) P = 0;
+    else if (small) {
       P = LEVEL.get('t:' + it.id);
       if (P === undefined) {
         const hs = [];
@@ -435,7 +524,7 @@ export function* terracesGen(ext, ne, ox, oz, step, cw, cap, list, keep, roads =
         const k = j * ne + i;
         w *= roadFactor(x, z);
         if (w <= 0) continue;
-        let tgt = P;
+        let tgt = pl ? pl.a + pl.bx * (x - pl.cx) + pl.bz * (z - pl.cz) : P;
         if (!small) {                     // сглаживание: среднее по окну
           let s = 0, c = 0;
           for (let dj = -T_SMOOTH; dj <= T_SMOOTH; dj++)
@@ -444,6 +533,7 @@ export function* terracesGen(ext, ne, ox, oz, step, cw, cap, list, keep, roads =
           w *= 0.75;
         }
         acc[k] += w * tgt; accW[k] += w;
+        if (pl) byPl[k] = 1;
         if (w > wmax[k]) wmax[k] = w;
       }
     }
@@ -454,7 +544,10 @@ export function* terracesGen(ext, ne, ox, oz, step, cw, cap, list, keep, roads =
     const m = wmax[k];
     if (m <= 0) continue;
     let dev = acc[k] / accW[k] - src[k];
-    if (dev > T_FILL) dev = T_FILL; else if (dev < -T_CUT) dev = -T_CUT;
+    // Площадку по улицам уводим от земли до 7 м: модель рельефа под сквером
+    // в городе — дно между крышами, а сквер в натуре вровень с улицей.
+    const F = byPl[k] ? 7 : T_FILL, C = byPl[k] ? 7 : T_CUT;
+    if (dev > F) dev = F; else if (dev < -C) dev = -C;
     let h = src[k] + m * dev;
     if (h > cap[k]) h = cap[k];
     ext[k] = h;

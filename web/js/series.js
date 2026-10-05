@@ -56,7 +56,7 @@ export function seriesOf(b) {
   const code = e[0], poly = b.poly, n = poly.length / 2;
   const pal = PAL[code];
   const ser = { code, kind: KIND[code], bay: BAY[code], edge: e[1], color: pal[(hashId(b.id) * pal.length) | 0],
-                ax: 1, az: 0, aspect: 1, doors: [], id: b.id, b, walls: [] };
+                ax: 1, az: 0, aspect: 1, doors: [], id: b.id, b, walls: [], ent: e[2] | 0 };
   // ось дома — по стене подъездов, торцы — стены поперёк неё
   if (ser.edge >= 0 && ser.edge < n) {
     const i = ser.edge, j = (i + 1) % n;
@@ -94,7 +94,9 @@ function wallOf(ser, i, ax, az, bx, bz, l) {
   if (l < B * 0.9) return { kind: ser.kind + 0.875, u0: 0, u1: l };
   if (i !== ser.edge || !SECTION[ser.code]) return { kind: ser.kind, u0: 0, u1: N * B };
   // стена подъездов: секции по S пролётов, лестница в середине секции
-  const Sec = Math.max(4, Math.min(9, Math.round(N / Math.max(1, Math.round(N / SECTION[ser.code])))));
+  // число подъездов названо руками (houses.json → entrances) — секции по нему
+  const Sec = ser.ent ? Math.max(3, Math.min(9, Math.floor(N / ser.ent)))
+    : Math.max(4, Math.min(9, Math.round(N / Math.max(1, Math.round(N / SECTION[ser.code])))));
   const rem = N % Sec, off = Math.floor(rem / 2);
   const mid = Math.floor(Sec / 2), step = l / N;
   for (let b = -off; b < N - off; b++) {

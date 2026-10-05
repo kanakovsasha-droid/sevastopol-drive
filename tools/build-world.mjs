@@ -869,6 +869,8 @@ function reverse(p) {
     if (h.chimney) b.chim = h.chimney;
     if (h.series) b.ser = h.series;        // серия названа руками (build-series.mjs)
     if (h.gate) b.gate = h.gate;           // арка-проезд во двор (passage.js)
+    if (h.entrances) b.ent = h.entrances;  // подъездов у типового дома (series.js)
+    if (h.castle) b.castle = h.castle;     // «замок»: зубцы и башня (castle.js)
     b.hand = 1;
     applied++;
   }

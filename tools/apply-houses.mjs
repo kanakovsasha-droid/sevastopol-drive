@@ -43,6 +43,10 @@ for (const h of HOUSES) {
   if (h.fx) f.fx = h.fx;
   if (h.porch) f.porch = 1;
   if (h.chimney) f.chim = h.chimney;
+  if (h.series) f.ser = h.series;
+  if (h.gate) f.gate = h.gate;
+  if (h.entrances) f.ent = h.entrances;
+  if (h.castle) f.castle = h.castle;
   f.hand = 1;
   patch.set(b.id, { f, sign: h.sign ? { n: h.sign, c: h.signKind || 'civic' } : null });
   console.log(`${b.id}: ${h.addr}`);
@@ -51,6 +55,9 @@ for (const h of HOUSES) {
 const apply = b => {
   const p = patch.get(b.id);
   if (!p) return false;
+  // поля, которые ставят только описания: прежнее описание дома не должно
+  // пережить новое (4Б был по ошибке хрущёвкой — серия и крыльцо снимаются)
+  for (const k of ['ser', 'gate', 'ent', 'castle', 'porch', 'chim']) delete b[k];
   Object.assign(b, p.f);
   if (p.sign) {
     b.sg = (b.sg || []).filter(s => s.n !== p.sign.n);

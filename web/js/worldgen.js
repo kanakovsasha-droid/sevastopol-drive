@@ -1,14 +1,15 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=d17fb321';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=d17fb321';
-import { buildCoverage } from './coverage.js?v=d17fb321';
-import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=d17fb321';
-import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt } from './roadlevels.js?v=d17fb321';
-import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=d17fb321';
-import { resolveAreas, sportSkipIds } from './sport.js?v=d17fb321';
-import { planParking, roadSegIndex } from './parking.js?v=d17fb321';
-import { seriesOf, seriesWall, seriesExtras } from './series.js?v=d17fb321';
-import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=d17fb321';
+import { SEA_FLOOR } from './terrain.js?v=d696c603';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=d696c603';
+import { buildCoverage } from './coverage.js?v=d696c603';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=d696c603';
+import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt, centerWeight } from './roadlevels.js?v=d696c603';
+import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=d696c603';
+import { resolveAreas, sportSkipIds } from './sport.js?v=d696c603';
+import { planParking, roadSegIndex } from './parking.js?v=d696c603';
+import { seriesOf, seriesWall, seriesExtras } from './series.js?v=d696c603';
+import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=d696c603';
+import { castleExtras } from './castle.js?v=d696c603';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -395,7 +396,7 @@ function roadProfile(terrain, r) {
   }
   // ДОРОГИ ПЕРВИЧНЫ (roadlevels.js): в центре профиль — отметки, посчитанные
   // по графу улиц, а снятый с рельефа остаётся только за краем квадрата.
-  if (ROAD_LEVELS && id !== undefined && ROAD_LEVELS.roads[id]) {
+  if (ROAD_LEVELS && id !== undefined && hasLevels(id)) {
     let any = false;
     for (let i = 0; i < n; i++) {
       const w = levelWeight(sx[i], sz[i]);
@@ -459,7 +460,10 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
   const profiles = [];
   let work = 0, any = false;
   for (const r of world.roads) {
-    if (r.c > 3 || r.br || r.tn) continue;      // мосты и тоннели на грунт не сажаем
+    // Мосты на грунт не сажаем. Тоннели тоже — кроме тоннелей магистралей
+    // (Меласский на трассе, галерея): без коридора трасса шла поверх горы
+    // по сырому рельефу с уклоном 25%. Теперь там выемка по отметкам графа.
+    if (r.c > 3 || r.br || isBridge(r.id) || (r.tn && r.c > 1)) continue;
     const pr = roadProfile(terrain, r);
     if (!pr) continue;
     // Пересекает ли улица окно. Не пересекает — она в списке только ради
@@ -473,7 +477,14 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
     const draw = bx > x0 - 40 && ax < x1 + 40 && bz > z0 - 40 && az < z1 + 40;
     if (draw) any = true;
     // копия профиля: сведение узлов правит её, а кэш обязан остаться сырым
-    profiles.push({ pr, draw, h: Float32Array.from(pr.h), w: r.w, c: r.c, rank: r.__rank || 0 });
+    // lv — профиль целиком из отметок графа (roadlevels.js): они уже сведены
+    // в узлах, на примыканиях и между проезжими частями, и поправки ниже,
+    // писанные для профилей, снятых с рельефа, их только портили — на
+    // развязке трассы коридор вставал на 2.7 м выше отметок (48376, 15200).
+    // В квадрате центра — как было (centerWeight): поправки и там, где отметки.
+    let inC = false;
+    for (let i = 0; i < pr.n && !inC; i += 4) if (centerWeight(pr.sx[i], pr.sz[i]) >= 0.5) inC = true;
+    profiles.push({ pr, draw, h: Float32Array.from(pr.h), w: r.w, c: r.c, rank: r.__rank || 0, lv: !inC && !!(ROAD_LEVELS && r.id !== undefined && hasLevels(r.id)) });
     if ((work += pr.n) > 2500) { work = 0; yield; }
   }
 
@@ -507,6 +518,7 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
       }
     }
     for (const q of profiles) {
+      if (q.lv) continue;
       const pr = q.pr;
       const a = node.get(nodeKey(pr.ax, pr.az));
       const b = node.get(nodeKey(pr.bx, pr.bz));
@@ -547,7 +559,7 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
       const dx = pr.sx[b2] - pr.sx[a], dz = pr.sz[b2] - pr.sz[a], l = Math.hypot(dx, dz) || 1;
       return [dx / l, dz / l];
     };
-    const adj = profiles.map(q => q.c <= 1 && q.w >= 7 ? new Float32Array(q.h.length) : null);
+    const adj = profiles.map(q => q.c <= 1 && q.w >= 7 && !q.lv ? new Float32Array(q.h.length) : null);
     profiles.forEach((q, qi) => {
       if (!adj[qi]) return;
       const { sx, sz, n } = q.pr;
@@ -622,6 +634,7 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
       return best;
     };
     for (const q of profiles) {
+      if (q.lv) continue;
       const pr = q.pr;
       const hA = wideAt(pr.ax, pr.az, q.w), hB = wideAt(pr.bx, pr.bz, q.w);
       const dA = hA === null ? 0 : Math.max(-2, Math.min(2, hA - q.h[pr.iA]));
@@ -733,10 +746,18 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
   // и плоскость сохраняется, а на стыке двух высот получается плавный переход.
   lap('к:сглаживание');
   const sm = new Float32Array(W * H);
+  // Старшинство улицы: полотно старшей улицы не размывается к плато младшей
+  // (дворовый проезд на склоне рядом с трассой тянул её край на полметра),
+  // и к полотну соседней улицы, лежащему выше или ниже на 3 м и больше.
+  const rkq = profiles.map(q => q.c * 100 - q.w);
+  // ячейки квадрата центра: там старшинства нет — как было (roads3)
+  const cen = new Uint8Array(W * H);
+  for (const idx of cells) cen[idx] = centerWeight(x0 + (idx % W) * res, z0 + ((idx / W) | 0) * res) >= 0.5 ? 1 : 0;
   for (let pass = 0; pass < 2; pass++) {
     sm.set(tgt);
     for (const idx of cells) {
       const i = idx % W, j = (idx / W) | 0;
+      const own = cown[idx], core = lvl[idx] === 2 && own >= 0;
       let sh = 0, sw = 0;
       for (let dj = -1; dj <= 1; dj++)
         for (let di = -1; di <= 1; di++) {
@@ -744,6 +765,7 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
           if (jj < 0 || ii < 0 || jj >= H || ii >= W) continue;
           const k = jj * W + ii;
           if (wgt[k] <= 0) continue;
+          if (core && !cen[idx] && cown[k] !== own && cown[k] >= 0 && (rkq[cown[k]] > rkq[own] + 1e-6 || Math.abs(tgt[k] - tgt[idx]) > 3)) continue;
           const bw = (di === 0 && dj === 0) ? 4 : (di === 0 || dj === 0) ? 2 : 1;
           sh += tgt[k] * wgt[k] * bw; sw += wgt[k] * bw;
         }
@@ -788,13 +810,30 @@ function* roadCorridorGen(world, terrain, ax0, az0, x1, z1, keep, res = 5) {
   for (let e = 0; e < EN; e++) {
     const a = EA[e], b2 = EB[e], la = lvl[a], lb = lvl[b2];
     if (la !== lb) { give[e] = la > lb ? 0 : 1; continue; }
-    if (la > 0) { give[e] = 0.5; continue; }
+    // Плато и полотно разных улиц: уступает младшая (класс, потом ширина).
+    // Поровну дворовый проезд на склоне в 14 м выше трассы за шестьдесят
+    // проходов поднимал её полотно на 2.7 м (ЮБК у 48375, 15200).
+    if (la > 0) {
+      const oa = cown[a], ob = cown[b2];
+      if (oa >= 0 && ob >= 0 && oa !== ob && !cen[a]) {
+        // Два полотна разных улиц на разной высоте (проезжие части трассы на
+        // склоне ЮБК в 8 м друг от друга и в 6 м по высоте) — между ними
+        // подпорная стенка, а не общий уклон: сводить их — значит гнуть обе.
+        // Порог 3 м: меньший перепад — это стык улиц в узле, его сводим.
+        if (la === 2 && Math.abs(tgt[a] - tgt[b2]) > 3) { give[e] = -1; continue; }
+        const A = profiles[oa], B = profiles[ob];
+        const ra = A.c * 100 - A.w, rb = B.c * 100 - B.w;
+        give[e] = ra < rb - 1e-6 ? 0 : rb < ra - 1e-6 ? 1 : 0.5;
+      } else give[e] = 0.5;
+      continue;
+    }
     const fa = 1.05 - Math.min(1, wgt[a]), fb = 1.05 - Math.min(1, wgt[b2]);
     give[e] = fa / (fa + fb);
   }
   for (let pass = 0; pass < 60; pass++) {
     let fixed = 0;
     for (let e = 0; e < EN; e++) {
+      if (give[e] < 0) continue;
       const a = EA[e], b2 = EB[e];
       const d = tgt[a] - tgt[b2];
       if (d > LIM) { const ex = d - LIM; tgt[a] -= ex * give[e]; tgt[b2] += ex * (1 - give[e]); fixed++; }
@@ -1321,8 +1360,15 @@ export function* buildTerrainTile(terrain, index, opts) {
   const E = 6, ne = n + 2 * E;
   const ex0 = gx0 - E * step, ez0 = gz0 - E * step;
   lap('коридор дорог');
+  // Дворовые проезды вне far.json (roadlevels.js) — в коридор вместе с
+  // улицами дальнего слоя: без коридора колесо ехало по сырому рельефу.
+  const corrRoads = index.roadsWithJunctions(near.roads);
+  {
+    const have = new Set(corrRoads.map(r => r.id));
+    for (const r of yardRoadsIn(x0, z0, x1, z1)) if (!have.has(r.id)) corrRoads.push(r);
+  }
   const corrWide = yield* roadCorridorGen(
-    { roads: index.roadsWithJunctions(near.roads) }, terrain, x0, z0, x1, z1,
+    { roads: corrRoads }, terrain, x0, z0, x1, z1,
     [ex0, ez0, ex0 + (ne - 1) * step, ez0 + (ne - 1) * step]);
   // Храним только сам квадрат с каймой: по нему ездит машина и садятся дороги.
   const corr = corrWide && crop(corrWide, [gx0, gz0, bx0 + size + step, bz0 + size + step]);
@@ -2499,11 +2545,17 @@ export function* buildRoads(world, terrain, chunk = 500) {
         const t = Math.max(0, Math.min(1, ((x - A[0]) * vx + (z - A[1]) * vz) / vv));
         return yA + (yB - yA) * t;
       };
-      for (const i of chain) bridgeH.set(i, fn);
+      // Мост с отметками графа (roadlevels.js) — полотно по ним: решатель
+      // натянул его между устоями вместе с подходами, без излома на торцах.
+      // Прямая между отметками концов давала перелом там, где подход идёт
+      // на уклоне (трасса у 51466, 11403).
+      const fnOf = r => (bridgeLevelAt(r.id, r.pts[0], r.pts[1]) === null ? fn
+        : (x, z) => { const h = bridgeLevelAt(r.id, x, z); return h === null ? fn(x, z) : h; });
+      for (const i of chain) bridgeH.set(i, fnOf(ALL[i]));
       // полотно для опор и перил
       for (const i of chain) {
         const r = ALL[i];
-        bridgeDecks.push({ pts: r.pts, w: r.w, hFn: fn, own: wIdx.has(r) });
+        bridgeDecks.push({ pts: r.pts, w: r.w, hFn: bridgeH.get(i), own: wIdx.has(r) });
       }
     }
   }
@@ -3783,6 +3835,7 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
     }
     if (ser) { seriesExtras(ser, yFloor, yTop, w, Hb, boxSolid, yBase); stats.series = (stats.series || 0) + 1; }
     if (gate) gateLining(gate, w, pushV, gh, Hb);
+    if (b.castle) castleExtras(b, yBase, yFloor, yTop, w, roof, Hb, boxSolid, pushV);   // «замок» (castle.js)
 
     // Рыночный ряд: длинный сарай под двускатной ребристой кровлей, по бокам
     // тент над проходом. Вальма из общего кода тут не годится — ряд узкий
