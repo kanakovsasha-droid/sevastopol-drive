@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=0021fa2c';
-import { batchModel } from './modelbatch.js?v=0021fa2c';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=61d7fb24';
+import { batchModel } from './modelbatch.js?v=61d7fb24';
 
 // Здания, которые нельзя оставлять коробкой. Массу берём из контура OSM,
 // а сверху ставим то, что делает здание узнаваемым: колоннаду, портик,
