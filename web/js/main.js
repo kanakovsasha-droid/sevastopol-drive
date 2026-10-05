@@ -1,39 +1,40 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=2c366b11';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=2c366b11';
-import { buildStreetProps } from './props.js?v=2c366b11';
-import { updateFlora, floraStats, warmFlora } from './flora.js?v=2c366b11';
-import { buildYards, buildStructures } from './yards.js?v=2c366b11';
-import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=2c366b11';
-import { buildFurniture } from './furniture.js?v=2c366b11';
-import { buildLandmarks, setModelWarm, updateModels } from './landmarks.js?v=2c366b11';
-import { buildSigns } from './signs.js?v=2c366b11';
-import { loadStreet, buildStreet, streetFurniture } from './street.js?v=2c366b11';
-import { buildCemeteries } from './cemetery.js?v=2c366b11';
-import { audit } from './audit.js?v=2c366b11';
-import { buildMap, drawFull, mapUnproject } from './minimap.js?v=2c366b11';
-import { Hud } from './hud.js?v=2c366b11';
-import { ChunkManager } from './chunks.js?v=2c366b11';
-import { Collider, RoadIndex } from './collision.js?v=2c366b11';
-import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=2c366b11';
-import { CarFX } from './carfx.js?v=2c366b11';
-import { precompile } from './warm.js?v=2c366b11';
-import { Gamepad } from './gamepad.js?v=2c366b11';
-import { Environment, ENV } from './env.js?v=2c366b11';
-import { CarLights } from './carlights.js?v=2c366b11';
-import { Settings } from './settings.js?v=2c366b11';
-import { Pause } from './pause.js?v=2c366b11';
-import { DriveModes } from './drivemodes.js?v=2c366b11';
-import { Assists } from './assists.js?v=2c366b11';
-import { buildModelPlinths } from './plinth.js?v=2c366b11';
-import { CarCam } from './carcam.js?v=2c366b11';
-import { Precip } from './precip.js?v=2c366b11';
-import { loadFootprints, monumentTest } from './footprints.js?v=2c366b11';
-import { loadSquares, addFarSquares, addSquares } from './squares.js?v=2c366b11';
-import { loadSkateparks, buildSkateparks } from './skatepark.js?v=2c366b11';
-import { padBlocker } from './pads.js?v=2c366b11';
-import { loadSchools, prepSchools, buildSchools } from './schools.js?v=2c366b11';
-import { prepFuel } from './fuel.js?v=2c366b11';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=ef5a3a69';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=ef5a3a69';
+import { buildStreetProps } from './props.js?v=ef5a3a69';
+import { updateFlora, floraStats, warmFlora } from './flora.js?v=ef5a3a69';
+import { buildYards, buildStructures } from './yards.js?v=ef5a3a69';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=ef5a3a69';
+import { buildFurniture } from './furniture.js?v=ef5a3a69';
+import { buildLandmarks, setModelWarm, updateModels } from './landmarks.js?v=ef5a3a69';
+import { buildSigns } from './signs.js?v=ef5a3a69';
+import { loadStreet, buildStreet, streetFurniture } from './street.js?v=ef5a3a69';
+import { buildCemeteries } from './cemetery.js?v=ef5a3a69';
+import { audit } from './audit.js?v=ef5a3a69';
+import { buildMap, drawFull, mapUnproject } from './minimap.js?v=ef5a3a69';
+import { Hud } from './hud.js?v=ef5a3a69';
+import { ChunkManager } from './chunks.js?v=ef5a3a69';
+import { Collider, RoadIndex } from './collision.js?v=ef5a3a69';
+import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=ef5a3a69';
+import { CarFX } from './carfx.js?v=ef5a3a69';
+import { precompile } from './warm.js?v=ef5a3a69';
+import { Gamepad } from './gamepad.js?v=ef5a3a69';
+import { Environment, ENV } from './env.js?v=ef5a3a69';
+import { CarLights } from './carlights.js?v=ef5a3a69';
+import { Settings } from './settings.js?v=ef5a3a69';
+import { Pause } from './pause.js?v=ef5a3a69';
+import { DriveModes } from './drivemodes.js?v=ef5a3a69';
+import { Assists } from './assists.js?v=ef5a3a69';
+import { buildModelPlinths } from './plinth.js?v=ef5a3a69';
+import { CarCam } from './carcam.js?v=ef5a3a69';
+import { Precip } from './precip.js?v=ef5a3a69';
+import { loadFootprints, monumentTest } from './footprints.js?v=ef5a3a69';
+import { loadSquares, addFarSquares, addSquares } from './squares.js?v=ef5a3a69';
+import { loadSkateparks, buildSkateparks } from './skatepark.js?v=ef5a3a69';
+import { padBlocker } from './pads.js?v=ef5a3a69';
+import { loadSchools, prepSchools, buildSchools } from './schools.js?v=ef5a3a69';
+import { prepFuel } from './fuel.js?v=ef5a3a69';
+import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=ef5a3a69';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -681,8 +682,11 @@ function* buildChunk(d, key) {
   roads.add(part, w.roads);
   // АЗС (fuel.js): дома-коробки на площадке снимаются, вместо них в индекс
   // идут стены павильона, опоры навеса и стела модели сети
+  // Места, описанные руками (canopy.js), — до АЗС: павильон «Eaty» у «Атана»
+  prepSites(w);
   const fuelWalls = prepFuel(w);
-  collider.add(part, fuelWalls.length ? w.buildings.filter(b => !b.fuelBox).concat(fuelWalls) : w.buildings);
+  // Навесы (building=roof) машину не держат — только их столбы (canopy.js)
+  collider.add(part, w.buildings.filter(b => !b.fuelBox && !isCanopy(b)).concat(fuelWalls, canopyWalls(w)));
   lap('дороги');
   yield; pt = performance.now();
 
@@ -731,8 +735,13 @@ function* buildChunk(d, key) {
   // Куски домов — по сетке 512 м, кратной квадрату 1024: при 500 м границы
   // кусков не совпадали с краями квадрата, и он резался на девять сеток (с
   // узкими полосками по краям) вместо четырёх — вызовы в кадре и в тени.
-  g.add(yield* buildBuildings(w, terrain, 512, skip));
+  // Навес — не дом: плита на столбах вместо коробки (canopy.js)
+  const bskip = new Set(skip);
+  w.buildings.forEach((b, i) => { if (isCanopy(b)) bskip.add(i); });
+  g.add(yield* buildBuildings(w, terrain, 512, bskip));
   g.add(buildSchools(w, terrain, skip));           // школы: парапет и крыльцо
+  g.add(buildCanopies(w, terrain, skip));
+  g.add(buildSites(w, terrain, skip));             // фриз, вывески и драйв «Eaty»
   lap('дома');
   yield; pt = performance.now();
 
