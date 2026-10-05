@@ -867,6 +867,8 @@ function reverse(p) {
     if (h.fx) b.fx = h.fx;                 // витражный фасад назначен вручную
     if (h.porch) b.porch = 1;
     if (h.chimney) b.chim = h.chimney;
+    if (h.series) b.ser = h.series;        // серия названа руками (build-series.mjs)
+    if (h.gate) b.gate = h.gate;           // арка-проезд во двор (passage.js)
     b.hand = 1;
     applied++;
   }
