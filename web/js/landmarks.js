@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=2df4b869';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=10448e16';
+import { batchModel } from './modelbatch.js?v=10448e16';
 
 // Здания, которые нельзя оставлять коробкой. Массу берём из контура OSM,
 // а сверху ставим то, что делает здание узнаваемым: колоннаду, портик,
@@ -28,28 +29,18 @@ function loadModel(file) {
   if (!p) {
     const v = document.querySelector('meta[name="build"]')?.content || '';
     p = slot().then(() => new GLTFLoader().loadAsync(`../data/models/${file}${v ? '?v=' + v : ''}`)).then(g => {
-      g.scene.traverse(o => {
-        if (!o.isMesh) return;
-        const m = o.material;
-        // Тень бросает только масса дома: наличники и решётки в карте теней —
-        // тысячи треугольников ради полосок, которых на стене не разглядеть.
-        o.castShadow = !/trim$|metal|wood|glass/.test(m.name);
-        o.receiveShadow = true;
-        // Теневая сторона под одним небесным светом уходит в грязно-оливковый:
-        // штукатурка добирает отражённым от земли светом, которого в сцене нет.
-        // У деревьев-моделей (leaf, bark) подсветки нет: хвоя с ней выцветает
-        // в салатовый и светится в тени.
-        if (!/^(glass|metal|leaf|bark)$/.test(m.name)) { m.emissive.copy(m.color); m.emissiveIntensity = 0.2; }
-      });
-      if (!warm) return g.scene;
-      // вместе с моделью — заглушку дальнего уровня (HIDDEN): она тоже
-      // рисуется и бросает тень своим вариантом шейдера
+      // Сетки по материалам склеиваются в две — массу с тенью и мелочь без
+      // тени (modelbatch.js): 5–10 вызовов отрисовки на дом → 2 (+1 в тени).
+      // Там же прежние правила: тень бросает только масса дома (наличники и
+      // решётки в карте теней — тысячи треугольников ради полосок), теневая
+      // сторона добирает подсветку 0.2 цвета — штукатурка под одним небесным
+      // светом уходила в грязно-оливковый; у стёкол, металла и деревьев-
+      // моделей (leaf, bark) подсветки нет — хвоя с ней светилась в тени.
+      const scene = batchModel(g.scene).root;
+      if (!warm) return scene;
       const box = new THREE.Group();
-      box.add(g.scene);
-      const stub = new THREE.Mesh(g.scene.getObjectByProperty('isMesh', true).geometry, HIDDEN);
-      stub.castShadow = true;
-      box.add(stub);
-      return warm(box).catch(() => {}).then(() => { box.remove(g.scene); return g.scene; });
+      box.add(scene);
+      return warm(box).catch(() => {}).then(() => { box.remove(scene); return scene; });
     }).finally(freeSlot);
     MODELS.set(file, p);
   }
@@ -61,35 +52,39 @@ function loadModel(file) {
 // выключается дальше MODEL_FAR. Полсотни подробных моделей разом — это пара
 // миллионов треугольников в кадре и в карте теней; так в кадре их две-три.
 const MODEL_NEAR = 380, MODEL_FAR = 460;
+// Уровень выбирает обход живых моделей из главного цикла (updateModels).
+// Раньше это делал onBeforeRender первого меша дальнего уровня, и цена была
+// велика: сторож не отсекался по кадру (рисовался, даже когда дом за спиной),
+// дальний уровень при подробном рисовался пустым материалом — вызов на
+// каждый его меш — и вдобавок бросал тень второй раз поверх подробного.
+// А в проходе тени onBeforeRender получал камеру солнца в 420 м от игрока,
+// и уровень мог переключаться туда-сюда в каждом кадре.
+const LIVE = new Set();
 function placeModel(holder, file) {
   const low = file.replace(/\.glb$/, '.lod.glb');
-  let full = null, asked = false;
-  const probe = new THREE.Vector3();
   loadModel(low).then(src => {
     const far = src.clone();
     holder.add(far);
-    far.traverse(o => { if (o.isMesh) o.userData.mat = o.material; });
-    const swap = on => far.traverse(o => { if (o.isMesh) o.material = on ? HIDDEN : o.userData.mat; });
-    // onBeforeRender зовётся каждый кадр и даёт камеру — отдельный обход
-    // моделей в главном цикле не нужен. Сторож не должен отсекаться по кадру
-    // сам по себе: его рамка — рамка одного материала, а не всего дома.
-    const guard = far.getObjectByProperty('isMesh', true);
-    guard.frustumCulled = false;
-    guard.onBeforeRender = (r, sc, cam) => {
-      const d = probe.setFromMatrixPosition(holder.matrixWorld).distanceTo(cam.position);
-      if (d < MODEL_NEAR && !asked) {
-        asked = true;
-        loadModel(file).then(s2 => { full = s2.clone(); full.visible = false; holder.add(full); });
-      }
-      if (!full) return;
-      if (!full.visible && d < MODEL_NEAR) { full.visible = true; swap(true); }
-      else if (full.visible && d > MODEL_FAR) { full.visible = false; swap(false); }
-    };
+    LIVE.add({ holder, far, file, full: null, asked: false });
   }).catch(e => console.warn('модель не загрузилась:', file, e));
 }
-// Дальний уровень при подробном не убираем со сцены (иначе пропадёт его
-// onBeforeRender), а рисуем пустым материалом: ни цвета, ни глубины.
-const HIDDEN = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+const probe = new THREE.Vector3();
+export function updateModels(cam) {
+  for (const m of LIVE) {
+    // квартал выгружен — модель больше не наша
+    let root = m.holder;
+    while (root.parent) root = root.parent;
+    if (!root.isScene) { LIVE.delete(m); continue; }
+    const d = probe.setFromMatrixPosition(m.holder.matrixWorld).distanceTo(cam.position);
+    if (d < MODEL_NEAR && !m.asked) {
+      m.asked = true;
+      loadModel(m.file).then(s2 => { m.full = s2.clone(); m.full.visible = false; m.holder.add(m.full); });
+    }
+    if (!m.full) continue;
+    if (!m.full.visible && d < MODEL_NEAR) { m.full.visible = true; m.far.visible = false; }
+    else if (m.full.visible && d > MODEL_FAR) { m.full.visible = false; m.far.visible = true; }
+  }
+}
 
 function merge(parts) {
   let nv = 0, ni = 0;

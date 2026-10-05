@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=2df4b869';
-import { ENV, registerLamps } from './env.js?v=2df4b869';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=10448e16';
+import { ENV, registerLamps } from './env.js?v=10448e16';
 
 // АЗС: какая это сеть, и модель сети из Blender (models/azs_<сеть>/build.py →
 // data/models/azs_<сеть>.glb) на месте заправки из OSM.
@@ -248,7 +248,22 @@ function nearestRoad(world, x, z) {
 // модели — к улице), масштаб. Модель: навес 16,6 × 10,6 м, стела на +7,6 м к
 // улице, павильон до −15 м от неё.
 const FRONT = 7.9, BACK = 15.2;
+// Станции, поставленные руками: в OSM у них только точка, и навес по
+// улице разворачивался не туда. Ключ — место точки OSM (±12 м), поэтому
+// пересборка данных правку не теряет. cx, cz — середина навеса модели,
+// rot — поворот (+z модели, сторона стелы, — сюда), s — масштаб.
+const HAND = [
+  // Руднева 44, «АТАН Россия №65» (узел 306025583): навес OSM w198921869 над
+  // проездом с Вакуленчука на Руднева (w111661372, covered, maxheight 4.5).
+  // Ряд колонок — восточнее проезда, магазин — общий павильон с «Eaty» к западу.
+  { x: -3078.2, z: 2759.3, cx: -3068.5, cz: 2755, rot: Math.PI / 2, s: 1.1 },
+];
 function plan(f, world) {
+  const hand = HAND.find(h => Math.hypot(h.x - f.x, h.z - f.z) < 12);
+  if (hand) {
+    const nx = Math.sin(hand.rot), nz = Math.cos(hand.rot);
+    return { cx: hand.cx, cz: hand.cz, rot: hand.rot, s: hand.s, nx, nz };
+  }
   let cx = f.x, cz = f.z, ax = 1, az = 0, L = 22, D = 0;
   const p = f.poly && f.poly.length >= 8 ? f.poly : null;
   let obb = null;
@@ -359,6 +374,18 @@ export function prepFuel(world) {
     const c = Math.cos(P.rot), s = Math.sin(P.rot);
     const W = (lx, lz) => [P.cx + P.s * (lx * c + lz * s), P.cz + P.s * (-lx * s + lz * c)];
     const rect = (x0, x1, z0, z1) => ({ poly: [...W(x0, z0), ...W(x1, z0), ...W(x1, z1), ...W(x0, z1)] });
+    // Навес OSM (building=roof) под навесом модели — тот же навес: снимаем,
+    // иначе плита canopy.js легла бы второй крышей поверх модели
+    for (const b of world.buildings || []) {
+      if (b.t !== 'roof' || b.hide || !b.poly) continue;
+      const q = b.poly;
+      let qx = 0, qz = 0;
+      for (let i = 0; i < q.length; i += 2) { qx += q[i]; qz += q[i + 1]; }
+      qx /= q.length / 2; qz /= q.length / 2;
+      const dx = qx - P.cx, dz = qz - P.cz;
+      const lx = (dx * c - dz * s) / P.s, lz = (dx * s + dz * c) / P.s;   // в осях модели
+      if (Math.abs(lx) < 8.3 + 5 && Math.abs(lz) < 5.3 + 5) { b.hide = true; b.fuelBox = true; }
+    }
     const [shx, shz] = W(0, -11.9);
     const hideShop = shopBlocked(world, shx, shz);
     f.__fuel = { P, W, hideShop };

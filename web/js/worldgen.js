@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=2df4b869';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=2df4b869';
-import { buildCoverage } from './coverage.js?v=2df4b869';
-import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=2df4b869';
-import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt } from './roadlevels.js?v=2df4b869';
-import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=2df4b869';
-import { resolveAreas, sportSkipIds } from './sport.js?v=2df4b869';
-import { planParking, roadSegIndex } from './parking.js?v=2df4b869';
-import { seriesOf, seriesWall, seriesExtras } from './series.js?v=2df4b869';
+import { SEA_FLOOR } from './terrain.js?v=10448e16';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=10448e16';
+import { buildCoverage } from './coverage.js?v=10448e16';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=10448e16';
+import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt } from './roadlevels.js?v=10448e16';
+import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=10448e16';
+import { resolveAreas, sportSkipIds } from './sport.js?v=10448e16';
+import { planParking, roadSegIndex } from './parking.js?v=10448e16';
+import { seriesOf, seriesWall, seriesExtras } from './series.js?v=10448e16';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.

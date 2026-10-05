@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ENV, LAMP_N } from './env.js?v=2df4b869';
+import { ENV, LAMP_N } from './env.js?v=10448e16';
 
 // Всё рисуется процедурно прямо в шейдере, без единой картинки.
 // Причина простая: координаты в атрибутах — метры, поэтому окно всегда 1.4 м,
@@ -37,6 +37,7 @@ float band(float x, float c, float hw){
 const SEASON = `
 uniform float uNight;
 uniform vec4 uLamps[${LAMP_N}];
+uniform vec4 uLampC;     // круг пятен фонарей: xz — центр, w — радиус (env.js)
 varying vec3 vLampP;
 uniform float uLate;      // поздний час (env.js): к глубокой ночи свет в окнах гаснет
 uniform float uTime;      // часы игры — для мерцания телевизоров
@@ -83,7 +84,7 @@ vec3 leafLitter(vec3 c, vec2 p, float amt){
 }
 `;
 
-// Свет фонарей (env.js → ENV.uLamps): мягкий тёплый круг от ближайших
+// Свет фонарей (env.js → ENV.uLamps): мягкий тёплый круг от 64 ближайших
 // плафонов, ламбертом по нормали. Спад — гаусс по расстоянию, к ~24 м сходит
 // на нет без ступени. Раньше оранжевый свет (1, .70, .40) множился на тёмный
 // серый асфальт и давал бурые, как грязь, пятна. Теперь свет почти белый с
@@ -98,9 +99,13 @@ const LAMP_LIGHT = `
       vec3 d = L.xyz - vLampP;
       float r2 = dot(d, d);
       if (r2 > 600.0) continue;
+      // к краю круга uLampC пятно плавно гаснет: в список фонарь попадает
+      // заранее и уже без силы, «включения» при подъезде не видно
+      float fade = 1.0 - smoothstep(uLampC.w * 0.6, uLampC.w, length(L.xz - uLampC.xz));
+      if (fade <= 0.0) continue;
       vec3 ld = normalize((viewMatrix * vec4(d, 0.0)).xyz);
       float ndl = max(dot(normal, ld), 0.0);
-      lampAcc += ndl * L.w * exp(-r2 / 95.0) * (1.0 - smoothstep(320.0, 600.0, r2));
+      lampAcc += ndl * L.w * fade * exp(-r2 / 95.0) * (1.0 - smoothstep(320.0, 600.0, r2));
     }
     vec3 lampAlb = diffuseColor.rgb;
     lampAlb = max(mix(lampAlb, vec3(dot(lampAlb, vec3(0.30, 0.59, 0.11))), 0.5), vec3(0.16));
@@ -119,9 +124,17 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody, season = '' 
     shader.uniforms.uNight = ENV.uNight;
     shader.uniforms.uSeason = ENV.uSeason;
     shader.uniforms.uLamps = ENV.uLamps;
+    shader.uniforms.uLampC = ENV.uLampC;
     shader.uniforms.uWet = ENV.uWet;
     shader.uniforms.uLate = ENV.uLate;
     shader.uniforms.uTime = ENV.uTime;
+    // фары машины — их читает только шейдер дороги (блики на мокром)
+    shader.uniforms.uHead = ENV.uHead;
+    shader.uniforms.uHeadL = ENV.uHeadL;
+    shader.uniforms.uHeadR = ENV.uHeadR;
+    shader.uniforms.uHeadDir = ENV.uHeadDir;
+    shader.uniforms.uHeadMat = ENV.uHeadMat;
+    shader.uniforms.uHeadMap = ENV.uHeadMap;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vLampP;\n' + vertHead)
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLampP = (modelMatrix * vec4(transformed, 1.0)).xyz;\n' + vertBody);
@@ -877,7 +890,7 @@ export function roadMaterial() {
     vertexColors: true, roughness: 0.90, metalness: 0.0, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -6,
   });
-  return inject(mat, 'sev-road', {
+  inject(mat, 'sev-road', {
     vertHead: `attribute vec4 aRoad; attribute float aCls; attribute float aSurf; attribute float aJn;
                varying vec4 vRoad; varying float vCls; varying float vSurf; varying float vJn; varying vec2 vXZ;`,
     vertBody: `vRoad = aRoad; vCls = aCls; vSurf = aSurf; vJn = aJn;
@@ -886,6 +899,50 @@ export function roadMaterial() {
       float asphaltTone(vec2 p) {
         // зерно ~40 см и крупные пятна ~10 м: выгоревшие и подлатанные места
         return (0.86 + 0.22 * fbm(p * 2.7)) * (0.93 + 0.13 * fbm(p * 0.105));
+      }
+      // Блики фар на мокром асфальте (carlights.js → ENV.uHead*). Прожектор
+      // светит из-за камеры вперёд, и обычный блеск лака уходит от зрителя —
+      // мокрый асфальт под фарами выглядел бы просто тёмным. А на деле он
+      // искрит: плёнка воды на крошке ловит свет. Это — искры по клеткам
+      // 7 см под лучом, мерцают при движении. Кто смотрит на машину спереди,
+      // видит ещё и отражения самих фар — длинные полосы по мокрому, вытянутые
+      // к зрителю (анизотропный блеск воды). w — насколько мокро, puddle — лужа.
+      uniform vec4 uHead; uniform vec4 uHeadL; uniform vec4 uHeadR; uniform vec4 uHeadDir;
+      uniform mat4 uHeadMat; uniform sampler2D uHeadMap;
+      float headStreak(vec3 lamp, vec3 P, vec3 V, float sx) {
+        vec3 R = vec3(-V.x, V.y, -V.z);               // отражённый луч зрения (вода — зеркало)
+        vec3 Ld = normalize(lamp - P);
+        // фару видно только спереди: в стороны ±60° от оси машины
+        float vis = smoothstep(0.3, 0.6, dot(normalize(-Ld.xz), normalize(uHeadDir.xz)));
+        float da = atan(R.x * Ld.z - R.z * Ld.x, R.x * Ld.x + R.z * Ld.z);   // по горизонтали
+        float de = asin(clamp(R.y, -1.0, 1.0)) - asin(clamp(Ld.y, -1.0, 1.0)); // по вертикали
+        return vis * exp(-da * da / (sx * sx) - de * de / 0.012);
+      }
+      vec3 headGlints(float w, float puddle) {
+        vec3 P = vLampP;
+        if (dot(P.xz - uHead.xz, P.xz - uHead.xz) > 8100.0) return vec3(0.0);   // дальше 90 м — нечего
+        vec3 V = normalize(cameraPosition - P);
+        // полосы от фар: уже на луже, шире на мокрой крошке
+        float sx = mix(0.035, 0.012, puddle);
+        float st = headStreak(uHeadL.xyz, P, V, sx) + headStreak(uHeadR.xyz, P, V, sx);
+        vec3 streak = vec3(1.0, 0.96, 0.9) * st * uHeadL.w * 1.2;
+        vec4 hc = uHeadMat * vec4(P, 1.0);
+        if (hc.w <= 0.0) return streak * w;
+        vec3 hq = hc.xyz / hc.w;
+        if (any(greaterThan(abs(hq * 2.0 - 1.0), vec3(1.0)))) return streak * w;
+        float beam = texture2D(uHeadMap, hq.xy).r;
+        vec3 Lv = uHead.xyz - P;
+        float r2 = max(dot(Lv, Lv), 1.0);
+        float E = uHead.w * beam * max(Lv.y * inversesqrt(r2), 0.0) / r2;   // освещённость
+        // искры: у клетки своя грань, загорается при своём ракурсе
+        vec2 ci = floor(vXZ * 6.0);
+        float view = floor(atan(V.z, V.x) * 90.0 + V.y * 160.0);
+        float sp = step(0.98, hash21(ci + vec2(view * 0.137, view * 0.071)));
+        vec2 f = fract(vXZ * 6.0) - 0.5;
+        sp *= 1.0 - smoothstep(0.04, 0.25, length(f));
+        // и ровный влажный блеск под лучом — на лужах сильнее
+        vec3 glint = vec3(1.0, 0.95, 0.86) * E * (sp * 2.0 + 0.05 + 0.08 * puddle);
+        return (glint + streak) * w;
       }`,
     fragBody: `
       {
@@ -1093,9 +1150,36 @@ export function roadMaterial() {
           float w = uWet.y * (0.65 + 0.35 * puddle);
           diffuseColor.rgb *= 1.0 - 0.42 * w;
           procRough = mix(procRough, 0.06, w * (0.55 + 0.45 * puddle));
+          if (uHead.w > 0.0) procEmit += headGlints(w, puddle);
         }
       }`,
   });
+  return grazingSpot(mat);
+}
+
+// Фары светят на асфальт почти вдоль него (прожектор в полуметре над дорогой,
+// до отсечки — 46 м), и зеркальная часть GGX при таком скользящем падении не
+// гаснет косинусом, как рассеянная: зрителю впереди машины вся дорога в луче
+// становилась белой простынёй, даже сухая. Глушим блеск прожектора там, где
+// свет падает положе ~10°; рассеянный свет (он и освещает дорогу) не трогаем.
+// Отражения самих фар на мокром рисует headGlints.
+function grazingSpot(mat) {
+  const LFB = THREE.ShaderChunk.lights_fragment_begin;
+  const i0 = LFB.indexOf('#if ( NUM_SPOT_LIGHTS > 0 )'), i1 = LFB.indexOf('#if ( NUM_DIR_LIGHTS > 0 )');
+  const call = 'RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );';
+  if (i0 < 0 || i1 < i0 || LFB.slice(i0, i1).indexOf(call) < 0) return mat;    // другая версия three — как есть
+  const spot = LFB.slice(i0, i1)
+    .replace('SpotLight spotLight;', 'SpotLight spotLight;\n\tvec3 spec0;')
+    .replace(call, 'spec0 = reflectedLight.directSpecular;\n\t\t' + call +
+      '\n\t\treflectedLight.directSpecular = spec0 + (reflectedLight.directSpecular - spec0)' +
+      ' * smoothstep(0.04, 0.17, dot(geometryNormal, directLight.direction));');
+  const chunk = LFB.slice(0, i0) + spot + LFB.slice(i1);
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = sh => {
+    prev(sh);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_begin>', chunk);
+  };
+  return mat;
 }
 
 // ---------------------------------------------------------------- земля

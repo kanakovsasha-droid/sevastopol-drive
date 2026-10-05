@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=2df4b869';
-import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=2df4b869';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=10448e16';
+import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=10448e16';
+import { atlasCarModel } from './caratlas.js?v=10448e16';
 
 // Физика машины. Третий заход.
 //
@@ -561,19 +562,22 @@ export class Car {
     const speed = Math.hypot(v[0], v[1], v[2]);
 
     // ---- ввод: W — газ, S — тормоз, а с места — задний ход. Если main.js
-    // передаёт педали отдельно (gas / brake), газ с тормозом вместе на месте —
-    // бёрнаут: передние держит тормоз, задние буксуют.
+    // передаёт педали отдельно (gas / brake): в игре (есть car.assist) на
+    // автомате бёрнаут — ручник + газ на месте, газ с тормозом — только лаунч
+    // или упор; на ручной и на стенде без помощников бёрнаут — газ с тормозом.
+    // Передние держит тормоз (и на 4MATIC), задние буксуют.
     const thr = clamp(input.throttle || 0, -1, 1);
     const drive = this.mode === 'D';
     let gasT = 0, brakeT = 0, wantRev = this.gear < 0;
     const both = !!(input.gas && input.brake);
-    // Race Start (лаунч-контроль AMG): на месте, в D, ESP Sport или Off —
-    // тормоз в пол и газ в пол: мотор встаёт на LAUNCH_RPM, машина стоит.
-    // Отпустил тормоз — старт: маховик сбрасывается в трансмиссию, а
-    // проскальзывание ведущих держится у пика (ниже, в цикле колёс).
+    // Race Start (лаунч-контроль AMG): на месте, в D — тормоз в пол и газ в
+    // пол: мотор встаёт на LAUNCH_RPM, машина стоит. ESP ON на время старта
+    // сам встаёт в Sport (assists.js). Отпустил тормоз — старт: маховик
+    // сбрасывается в трансмиссию, а проскальзывание ведущих держится у пика
+    // (ниже, в цикле колёс).
     const A = this.assist, still = speed < 0.6;
     if (A && drive && !this.manual && this.engine === 'on') {
-      const can = A.launch && A.esp !== 'on';
+      const can = A.launch;
       if (both && still && can) this.launch = 'armed';
       else if (this.launch === 'armed') {
         this.launch = input.gas && !input.brake ? 'go' : null;
@@ -587,9 +591,12 @@ export class Car {
     // Тормоз держит машину: в лаунче и на полном приводе при газе с тормозом
     // на месте (раньше 4MATIC так ползла вперёд). Момент на колёса не идёт —
     // мотор упирается в гидротрансформатор, обороты — его «стоп».
-    const holdBoth = this.launch === 'armed' || (!!A && both && still && drive && !this.rwd);
+    // На автомате в игре газ с тормозом держит машину на любом приводе.
+    const autoBox = !!A && !this.manual;
+    const holdBoth = this.launch === 'armed' || (!!A && both && still && drive && (autoBox || !this.rwd));
     this.braceHold = holdBoth;
-    const burn = both && drive && speed < 4 && !holdBoth;  // стоя на заднем — сперва включится D
+    const handGas = !!input.handbrake && !input.brake && (!!input.gas || thr > 0);
+    const burn = (autoBox ? handGas : both) && drive && speed < 4 && !holdBoth;  // стоя на заднем — сперва включится D
     this.burnout = burn;
     if (burn || holdBoth) { gasT = 1; brakeT = 1; wantRev = false; }
     else if (both) brakeT = 1;
@@ -619,7 +626,7 @@ export class Car {
     // Без газа на малом ходу автомат сам придерживает машину: иначе после
     // тычка по газу она катится ещё полминуты, а встать можно только тормозом.
     const brake = Math.max(this._brake, gas < 0.02 ? 0.10 * clamp(1 - speed / 3, 0, 1) : 0);
-    const hand = !!input.handbrake;
+    const hand = !!input.handbrake && !burn;     // в бёрнауте ручник — только кнопка, задние крутятся
 
     // ---- руль. Упор зависит от скорости: до угла, который даёт steerLatG
     // бокового, плюс запас на увод шин. Иначе клавиша «до упора» на трассе
@@ -1315,14 +1322,43 @@ export function mountCarModel(body, wheels) {
 // одним солнцем выходит матово-бурым — так красят пластилин, а не машину.
 // Даём отражения только машине: студийное окружение, свёрнутое в PMREM один
 // раз. Городу его не даём — у домов своё освещение, и оно подобрано.
-let carEnv = null;
+//
+// Свёртка асинхронная: раньше fromScene в момент загрузки машины собирал
+// шейдеры комнаты и размытия PMREM прямо в кадре — стоп-кадр. Теперь эти
+// шейдеры собираются в фоне (compileAsync, KHR_parallel_shader_compile),
+// пока качается GLB, и в кадре остаётся только сама свёртка — несколько
+// проходов по готовым программам. Компилируем с тем же целевым буфером, что
+// у PMREM: без него у программ другой ключ (вывод в sRGB, тонмаппинг) и
+// заготовка бы не пригодилась.
+let carEnv = null, carEnvP = null;
+const frame = () => new Promise(r => requestAnimationFrame(() => r()));
 function envFor(renderer) {
-  if (!carEnv && renderer) {
+  if (carEnv || !renderer) return Promise.resolve(carEnv);
+  return carEnvP ||= (async () => {
+    const room = new RoomEnvironment();
     const pm = new THREE.PMREMGenerator(renderer);
-    carEnv = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+    // внутреннее three r185: материалы размытия и GGX заводятся вместе с
+    // буфером «пинг-понг»; fromScene того же размера их переиспользует
+    pm._setSize(256);
+    pm._allocateTargets().dispose();
+    const warm = new THREE.Scene();
+    for (const m of [pm._blurMaterial, pm._ggxMaterial]) if (m) warm.add(new THREE.Mesh(pm._lodMeshes[0].geometry, m));
+    // и куб фона, которым fromScene заливает пустоту вокруг комнаты
+    pm._backgroundBox ||= new THREE.Mesh(new THREE.BoxGeometry(),
+      new THREE.MeshBasicMaterial({ name: 'PMREM.Background', side: THREE.BackSide, depthWrite: false, depthTest: false }));
+    warm.add(new THREE.Mesh(pm._backgroundBox.geometry, pm._backgroundBox.material));
+    const cam = new THREE.PerspectiveCamera(90, 1, 0.1, 100);
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(pm._pingPongRenderTarget);
+    const ready = Promise.all([renderer.compileAsync(room, cam), renderer.compileAsync(warm, cam)]);
+    renderer.setRenderTarget(prev);
+    await ready;
+    await frame();
+    carEnv = pm.fromScene(room, 0.04).texture;
     pm.dispose();
-  }
-  return carEnv;
+    room.dispose?.();
+    return carEnv;
+  })().catch(e => { console.warn('PMREM машины:', e.message); return null; });
 }
 
 // Карту окружения машины — заранее, за экраном загрузки: свёртка PMREM идёт
@@ -1332,7 +1368,9 @@ export function warmCarEnv(renderer) { return envFor(renderer); }
 
 export function loadCarModel(url = '../data/models/e63.glb', renderer = null) {
   const v = document.querySelector('meta[name="build"]')?.content || '';
-  return new GLTFLoader().loadAsync(url + (v ? '?v=' + v : '')).then(g => {
+  // окружение сворачиваем, пока качается модель
+  const envP = envFor(renderer);
+  return Promise.all([new GLTFLoader().loadAsync(url + (v ? '?v=' + v : '')), envP]).then(([g, env]) => {
     const root = g.scene;
     const wheels = ['wheel_FL', 'wheel_FR', 'wheel_RL', 'wheel_RR'].map(n => root.getObjectByName(n));
     const body = root.getObjectByName('body');
@@ -1340,7 +1378,6 @@ export function loadCarModel(url = '../data/models/e63.glb', renderer = null) {
     for (const w of wheels) { w.removeFromParent(); w.position.set(0, 0, 0); }
     body.removeFromParent();
     const car = mountCarModel(body, wheels);
-    const env = envFor(renderer);
     car.traverse(o => {
       if (!o.isMesh) return;
       o.castShadow = true; o.receiveShadow = true;
@@ -1353,6 +1390,9 @@ export function loadCarModel(url = '../data/models/e63.glb', renderer = null) {
         if (/chassis|door|bump|hood|trunk|body_color/i.test(m.name)) { m.roughness = 0.22; m.metalness = 0.35; }
       }
     });
+    // непрозрачные детали — одной сеткой на узел (caratlas.js): у E63 из 92
+    // вызовов отрисовки остаётся около трёх десятков (фары и фонари — свои)
+    atlasCarModel(car);
     return car;
   });
 }

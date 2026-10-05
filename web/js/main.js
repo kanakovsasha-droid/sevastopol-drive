@@ -1,41 +1,41 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=2df4b869';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=2df4b869';
-import { levelsReady } from './roadlevels.js?v=2df4b869';
-import { buildStreetProps } from './props.js?v=2df4b869';
-import { updateFlora, floraStats, warmFlora } from './flora.js?v=2df4b869';
-import { buildYards, buildStructures } from './yards.js?v=2df4b869';
-import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=2df4b869';
-import { buildFurniture } from './furniture.js?v=2df4b869';
-import { buildLandmarks, setModelWarm } from './landmarks.js?v=2df4b869';
-import { buildSigns } from './signs.js?v=2df4b869';
-import { loadStreet, buildStreet, streetFurniture } from './street.js?v=2df4b869';
-import { buildCemeteries } from './cemetery.js?v=2df4b869';
-import { audit } from './audit.js?v=2df4b869';
-import { buildMap, drawFull, mapUnproject } from './minimap.js?v=2df4b869';
-import { Hud } from './hud.js?v=2df4b869';
-import { ChunkManager } from './chunks.js?v=2df4b869';
-import { Collider, RoadIndex } from './collision.js?v=2df4b869';
-import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=2df4b869';
-import { CarFX } from './carfx.js?v=2df4b869';
-import { precompile } from './warm.js?v=2df4b869';
-import { Gamepad } from './gamepad.js?v=2df4b869';
-import { Environment, ENV } from './env.js?v=2df4b869';
-import { CarLights } from './carlights.js?v=2df4b869';
-import { Settings } from './settings.js?v=2df4b869';
-import { Pause } from './pause.js?v=2df4b869';
-import { DriveModes } from './drivemodes.js?v=2df4b869';
-import { Assists } from './assists.js?v=2df4b869';
-import { buildModelPlinths } from './plinth.js?v=2df4b869';
-import { CarCam } from './carcam.js?v=2df4b869';
-import { Precip } from './precip.js?v=2df4b869';
-import { batchCar } from './carbatch.js?v=2df4b869';
-import { loadFootprints, monumentTest } from './footprints.js?v=2df4b869';
-import { loadSquares, addFarSquares, addSquares } from './squares.js?v=2df4b869';
-import { loadSkateparks, buildSkateparks } from './skatepark.js?v=2df4b869';
-import { padBlocker } from './pads.js?v=2df4b869';
-import { loadSchools, prepSchools, buildSchools } from './schools.js?v=2df4b869';
-import { prepFuel } from './fuel.js?v=2df4b869';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=10448e16';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=10448e16';
+import { levelsReady } from './roadlevels.js?v=10448e16';
+import { buildStreetProps } from './props.js?v=10448e16';
+import { updateFlora, floraStats, warmFlora } from './flora.js?v=10448e16';
+import { buildYards, buildStructures } from './yards.js?v=10448e16';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=10448e16';
+import { buildFurniture } from './furniture.js?v=10448e16';
+import { buildLandmarks, setModelWarm, updateModels } from './landmarks.js?v=10448e16';
+import { buildSigns } from './signs.js?v=10448e16';
+import { loadStreet, buildStreet, streetFurniture } from './street.js?v=10448e16';
+import { buildCemeteries } from './cemetery.js?v=10448e16';
+import { audit } from './audit.js?v=10448e16';
+import { buildMap, drawFull, mapUnproject } from './minimap.js?v=10448e16';
+import { Hud } from './hud.js?v=10448e16';
+import { ChunkManager } from './chunks.js?v=10448e16';
+import { Collider, RoadIndex } from './collision.js?v=10448e16';
+import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=10448e16';
+import { CarFX } from './carfx.js?v=10448e16';
+import { precompile } from './warm.js?v=10448e16';
+import { Gamepad } from './gamepad.js?v=10448e16';
+import { Environment, ENV } from './env.js?v=10448e16';
+import { CarLights } from './carlights.js?v=10448e16';
+import { Settings } from './settings.js?v=10448e16';
+import { Pause } from './pause.js?v=10448e16';
+import { DriveModes } from './drivemodes.js?v=10448e16';
+import { Assists } from './assists.js?v=10448e16';
+import { buildModelPlinths } from './plinth.js?v=10448e16';
+import { CarCam } from './carcam.js?v=10448e16';
+import { Precip } from './precip.js?v=10448e16';
+import { loadFootprints, monumentTest } from './footprints.js?v=10448e16';
+import { loadSquares, addFarSquares, addSquares } from './squares.js?v=10448e16';
+import { loadSkateparks, buildSkateparks } from './skatepark.js?v=10448e16';
+import { padBlocker } from './pads.js?v=10448e16';
+import { loadSchools, prepSchools, buildSchools } from './schools.js?v=10448e16';
+import { prepFuel } from './fuel.js?v=10448e16';
+import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=10448e16';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -685,8 +685,11 @@ function* buildChunk(d, key) {
   roads.add(part, w.roads);
   // АЗС (fuel.js): дома-коробки на площадке снимаются, вместо них в индекс
   // идут стены павильона, опоры навеса и стела модели сети
+  // Места, описанные руками (canopy.js), — до АЗС: павильон «Eaty» у «Атана»
+  prepSites(w);
   const fuelWalls = prepFuel(w);
-  collider.add(part, fuelWalls.length ? w.buildings.filter(b => !b.fuelBox).concat(fuelWalls) : w.buildings);
+  // Навесы (building=roof) машину не держат — только их столбы (canopy.js)
+  collider.add(part, w.buildings.filter(b => !b.fuelBox && !isCanopy(b)).concat(fuelWalls, canopyWalls(w)));
   lap('дороги');
   yield; pt = performance.now();
 
@@ -732,8 +735,16 @@ function* buildChunk(d, key) {
   w.buildings.forEach((b, i) => { if (b.id && skipIds.has(b.id)) skip.add(i); });
   for (const i of skip) { const b = w.buildings[i]; if (b && b.id) skipIds.add(b.id); }
   at('дома');
-  g.add(yield* buildBuildings(w, terrain, 500, skip));
+  // Куски домов — по сетке 512 м, кратной квадрату 1024: при 500 м границы
+  // кусков не совпадали с краями квадрата, и он резался на девять сеток (с
+  // узкими полосками по краям) вместо четырёх — вызовы в кадре и в тени.
+  // Навес — не дом: плита на столбах вместо коробки (canopy.js)
+  const bskip = new Set(skip);
+  w.buildings.forEach((b, i) => { if (isCanopy(b)) bskip.add(i); });
+  g.add(yield* buildBuildings(w, terrain, 512, bskip));
   g.add(buildSchools(w, terrain, skip));           // школы: парапет и крыльцо
+  g.add(buildCanopies(w, terrain, skip));
+  g.add(buildSites(w, terrain, skip));             // фриз, вывески и драйв «Eaty»
   lap('дома');
   yield; pt = performance.now();
 
@@ -759,11 +770,12 @@ function* buildChunk(d, key) {
                               defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear })),
                               d.allBuildings || w.buildings);
   castShadows(furn);
+  farSmall(furn, 450);
   g.add(furn);
   lap('мебель');
   yield; pt = performance.now();
   at('вывески');
-  g.add(buildSigns(w, terrain, roads));
+  g.add(farSmall(buildSigns(w, terrain, roads), 600));
   lap('вывески');
 
   if (prof) console.log('чанк ' + part + ': ' + prof.join(' · ') + ' мс');
@@ -825,6 +837,18 @@ function cullFar() {
     }
     c.o.visible = cp.distanceTo(c.s.center) - c.s.radius < c.o.userData.far;
   }
+  // Дальний силуэт — по вызову отрисовки на квадрат 1 км, и с земли в кадре
+  // их под сотню, большей частью там, где туман уже съел всё. Туман FogExp2:
+  // доля цвета предмета exp(−(d·density)²); при d·density = 2.76 это 0.05% —
+  // ни на каком фоне не различить. Квадраты дальше гасим. В тумане и
+  // ночью плотность больше — и граница сама подходит ближе.
+  const fog = scene.fog;
+  const far = fog && fog.density > 0 ? 2.76 / fog.density : Infinity;
+  for (const m of farCells.values()) {
+    if (m.userData.covered) continue;
+    const bb = m.geometry.boundingBox || (m.geometry.computeBoundingBox(), m.geometry.boundingBox);
+    m.visible = bb.distanceToPoint(cp) < far;
+  }
 }
 
 function revealSome() {
@@ -858,7 +882,7 @@ function revealSome() {
     staging = null;
     st.g.traverse(o => { if (o.userData.far) farCull.push({ o, g: st.g, s: null }); });
     const fc = farCells.get(st.key);
-    if (fc) fc.visible = false;                  // под детальным кварталом силуэт не нужен
+    if (fc) { fc.visible = false; fc.userData.covered = true; }   // под детальным кварталом силуэт не нужен
   }
 }
 
@@ -903,7 +927,7 @@ function dropChunk(g, key) {
   // Силуэт возвращаем, только если этот квартал его и прятал: пачка сирот
   // хозяина выгружается вместе с ним, а недособранный квартал силуэт не трогал.
   const fc = farCells.get(key);
-  if (fc && wasShown) fc.visible = true;
+  if (fc && wasShown) { fc.visible = true; fc.userData.covered = false; }
 }
 
 // Мосты всех загруженных чанков одним полем: полотно ищем по всем частям и
@@ -979,9 +1003,9 @@ let carModelTicket = 0;
 function swapCarModel() {
   const ticket = ++carModelTicket;
   return loadCarModel(CARS[car.model]?.glb, renderer).then(m => {
-    // сетки с одинаковыми материалами — в одну (carbatch.js): 92 → ~35 вызовов
-    const b = batchCar(m);
-    if (b.before) console.log(`машина: сеток ${b.before} → ${b.after}, картинок-заливок ${b.flat}, повторов ${b.dedup}`);
+    // непрозрачное уже слито атласом при загрузке (caratlas.js в loadCarModel)
+    const a = m.userData.atlas;
+    if (a) console.log(`машина: сеток ${a.before} → ${a.after}, слоёв картинок ${a.layers}`);
     cheapGlass(m);
     trimCarShadows(m);
     return precompile(renderer, scene, camera, m, sun).then(() => uploadTextures(m)).then(() => m);
@@ -1030,7 +1054,11 @@ function trimCarShadows(root) {
     let wheel = false;
     for (let p = o; p; p = p.parent) if ((root.userData.wheels || []).includes(p)) wheel = true;
     const big = wheel || box.getSize(v).length() > 1.2;
-    if (!big || ms.every(m => m.transparent)) { o.castShadow = false; off++; } else kept++;
+    // Хром — молдинги, рамки окон, решётка, значки: полоски тоньше текселя
+    // карты теней (0.24 м), в тени их не видно, а у E63 это 31 тысяча
+    // треугольников в каждом кадре карты теней.
+    const chrome = ms.every(m => /chrome/i.test(m.name || ''));
+    if (!big || (chrome && !wheel) || ms.every(m => m.transparent)) { o.castShadow = false; off++; } else kept++;
   });
   root.userData.shadowCasters = kept;
 }
@@ -1051,6 +1079,21 @@ function cheapGlass(root) {
       m.needsUpdate = true;
     }
   });
+}
+
+// Мебель квартала (скамейки, урны, павильоны, киоски, таблички остановок) и
+// вывески — по сетке на вид на весь квадрат 1024 м, и рисовались они из
+// каждого загруженного квадрата: с Большой Морской — по шесть десятков
+// вызовов на скамейки за два километра. Скамейка в 450 м — пять пикселей,
+// вывеску в 600 м не прочесть. Дальше гасим (cullFar). Заборы и подпорные
+// стены (barriers) и светофоры — крупные и видны издалека, их не трогаем.
+function farSmall(root, far) {
+  root.traverse(o => {
+    if (!o.isMesh || o.userData.far || o.name === 'barriers') return;
+    for (let p = o.parent; p && p !== root; p = p.parent) if (p.name === 'светофоры') return;
+    o.userData.far = far;
+  });
+  return root;
 }
 
 // Включить отбрасывание тени у пачек InstancedMesh. receiveShadow им не даём:
@@ -1629,7 +1672,7 @@ function loop(now) {
       throttle: menuOpen ? 0 : (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0),
       steer: menuOpen ? 0 : (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0),
       handbrake: !menuOpen && keys.has('Space'),
-      // педали порознь: газ с тормозом вместе на месте — бёрнаут
+      // педали порознь: газ с тормозом на месте — Race Start, ручник с газом — бёрнаут
       gas: !menuOpen && (keys.has('KeyW') || keys.has('ArrowUp')),
       brake: !menuOpen && (keys.has('KeyS') || keys.has('ArrowDown')),
     };
@@ -1707,6 +1750,7 @@ function loop(now) {
   lt('HUD');
   revealSome();
   cullFar();
+  updateModels(camera);            // уровень подробности памятных моделей
   lt('показ');
   // деревья: ближний и средний план вокруг камеры, ветер
   updateFlora(camera, scene, now);
