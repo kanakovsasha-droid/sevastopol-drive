@@ -23,7 +23,7 @@ import { gateOf, gateCut } from './passage.js?v=e287a336';
 // далеко. Дальше круга балконы снова рисует шейдер: ENV.uFacadeR говорит ему,
 // где начинаются объёмные, чтобы не было двух балконов разом.
 
-const NEAR = 170, NEAR_SILL = 95, STEP = 10, MAX = 6000;
+const NEAR = 170, NEAR_SILL = 95, STEP = 10, MAX = 3500;   // 3500 × 10 тр. × (кадр + тень) ≈ 70k
 const F = 13;                        // чисел на деталь в кеше дома
 
 // ---- те же формулы, что в шейдере ----
@@ -160,10 +160,12 @@ function stalinka(ser, w, wl, s, at, cut, inCut, blank, Hb, yFloor, yBase, cl, b
   box(wl, 1, SOLID, -0.45, L + 0.45, yFloor + Hb - 0.55, yFloor + Hb - 0.28, 0, 0.45, mul(cl, 1.10, 0.02));
   box(wl, 1, SOLID, -0.22, L + 0.22, yFloor + Hb - 0.88, yFloor + Hb - 0.55, 0, 0.22, mul(cl, 0.97));
   const nf = Math.max(1, Math.floor(Hb / 3.3 + 0.35)), fh = Hb / nf;
-  // рустованный цоколь от подошвы до низа витрин и тяга над первым этажом;
-  // у арки-проезда цоколь рвётся
+  // рустованный цоколь до низа витрин и тяга над первым этажом; у арки-проезда
+  // цоколь рвётся. Ниже 1.15 м под отметкой шейдер рисует окна полуподвала
+  // (материалы, «цоколь») — их не закрываем, там камень остаётся в плоскости.
   const segs = cut ? [[0, cut[0]], [cut[1], L]] : [[0, L]];
-  for (const [a, b] of segs) if (b - a > 0.3) box(wl, 1, RUST, a - 0.07, b + 0.07, yBase, yFloor + 0.26, 0, 0.07, mul(cl, 0.80));
+  const yp = Math.max(yBase, yFloor - 1.15);
+  for (const [a, b] of segs) if (b - a > 0.3) box(wl, 1, RUST, a - 0.07, b + 0.07, yp, yFloor + 0.26, 0, 0.07, mul(cl, 0.80));
   if (nf >= 2) for (const [a, b] of segs) if (b - a > 0.3) box(wl, 1, SOLID, a - 0.09, b + 0.09, yFloor + fh - 0.05, yFloor + fh + 0.10, 0, 0.09, mul(cl, 1.04));
   if (blank) return;
   const B = ser.bay;
