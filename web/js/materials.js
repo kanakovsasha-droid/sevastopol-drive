@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ENV, LAMP_N } from './env.js?v=0021fa2c';
+import { ENV, LAMP_N } from './env.js?v=61d7fb24';
 
 // Всё рисуется процедурно прямо в шейдере, без единой картинки.
 // Причина простая: координаты в атрибутах — метры, поэтому окно всегда 1.4 м,
