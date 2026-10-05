@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildFuelSigns } from './fuel.js?v=ef5a3a69';
+import { buildFuelSigns } from './fuel.js?v=10448e16';
 
 // Навесы: OSM building=roof. Это крыша без стен — навес АЗС, рынка, стоянки,
 // крыльца. Раньше они шли общим сборщиком домов, а этажность им подбиралась
