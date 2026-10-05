@@ -164,7 +164,8 @@ export function buildMonumentSkirt(src, pos, terrain) {
     for (let s = 0; s <= k; s++) {
       const x = ax + (bx - ax) * s / k, z = az + (bz - az) * s / k;
       const u = under(x, z);
-      if (u === Infinity) { prev = null; continue; }
+      // над точкой только карниз или крона (у Графской — антаблемент) — не цоколь
+      if (u > LOW) { prev = null; continue; }
       const g = terrain.gridHeightAt(pos.x + x, pos.z + z) - pos.y;
       const top = u + 0.05, bot = Math.min(top, g - 0.5);
       const isLow = top - g > 0.1;
