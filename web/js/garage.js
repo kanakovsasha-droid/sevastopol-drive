@@ -1,4 +1,4 @@
-import { CARS } from './vehicle.js?v=06f34811';
+import { CARS } from './vehicle.js?v=d696c603';
 
 // Гараж: выбор машины (W213 / W212) без перезагрузки страницы.
 //
