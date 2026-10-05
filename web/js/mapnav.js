@@ -107,8 +107,9 @@ export class MapNav {
     mk('⌖', 'К себе', () => { this.c = null; this.o.redraw(); });
     this.o.box.appendChild(bar);
     const hint = this.o.box.querySelector('#maphint');
-    if (hint) hint.innerHTML = 'клик — переехать туда &nbsp;·&nbsp; щипок / колесо — масштаб'
-      + ' &nbsp;·&nbsp; два пальца / перетаскивание — сдвиг &nbsp;·&nbsp; Tab — закрыть';
+    if (hint) hint.style.whiteSpace = 'nowrap';
+    if (hint) hint.innerHTML = 'клик — переехать &nbsp;·&nbsp; щипок — масштаб'
+      + ' &nbsp;·&nbsp; два пальца — сдвиг &nbsp;·&nbsp; Tab — закрыть';
   }
 
   listen() {
