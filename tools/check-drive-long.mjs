@@ -138,6 +138,10 @@ const ROUTES = {
   severnaya: () => routeThrough(ends('улица Богданова'), 2, 1),
   korabelnaya: () => routeThrough([...ends('улица Героев Севастополя'), ...ends('улица Генерала Жидилова')], 2, 1),
   gagarin: () => routeThrough([...ends('проспект Октябрьской Революции'), ...ends('проспект Гагарина')], 2, 1),
+  // Центр: пл. Нахимова → пр. Нахимова → пл. Лазарева → Большая Морская → Ленина обратно
+  center: () => routeThrough([[-41, 4], [-422, 533], [-389, 623], [-139, 1639], [-14, 50]], 2, 1),
+  // пл. Лазарева → кольцо на пл. Восставших (круг)
+  vosst: () => routeThrough([[-422, 533], [-762, 1615], [-833, 1616], [-842, 1661], [-791, 1651], [-762, 1615]], 2, 1),
   // Кварталы: по улицам и проездам (класс 2–3), магистрали — в обход.
   ...Object.fromEntries([
     ['q_severnaya', [[3600, -2600], [5200, -1500], [6400, -2600]]],
@@ -270,7 +274,7 @@ for (const R of routes) {
           if (off > 1.5) { run.lost = Math.round(sNow); break; }
           if (n % 120 === 0) await idle(0);
         }
-        run.dist = Math.round(dist); run.air = +run.air.toFixed(2); run.aMax = +run.aMax.toFixed(2); run.t = +t.toFixed(1);
+        run.done = seg >= sec.length; run.dist = Math.round(dist); run.air = +run.air.toFixed(2); run.aMax = +run.aMax.toFixed(2); run.t = +t.toFixed(1);
         res.runs[kmh] = run;
       }
       return res;
@@ -304,7 +308,12 @@ for (const R of routes) {
     crest60: okS.reduce((a, s) => a + s.crest60, 0),
     lost60: out.secs.filter(s => s.runs[60] && s.runs[60].lost !== false).length,
     lost100: out.secs.filter(s => s.runs[100] && s.runs[100].lost !== false).length,
-    notReady: out.secs.filter(s => !s.ready).length };
+    notReady: out.secs.filter(s => !s.ready).length,
+    t60: +sum('t').toFixed(1), t100: +sum1('t').toFixed(1),
+    aMax60: Math.max(0, ...okS.map(s => s.runs[60] ? s.runs[60].aMax : 0)),
+    aMax100: Math.max(0, ...okS.map(s => s.runs[100] ? s.runs[100].aMax : 0)),
+    stuck60: okS.filter(s => s.runs[60] && !s.runs[60].done && s.runs[60].lost === false).length,
+    stuck100: okS.filter(s => s.runs[100] && !s.runs[100].done && s.runs[100].lost === false).length };
   console.log(`== ${R.name}: играбельно на 60 — ${out.playable60}%, на 100 — ${out.playable100}%`, JSON.stringify(out.total));
   result[R.name] = out;
   if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify(result));
