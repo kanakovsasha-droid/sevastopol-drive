@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
+import { mergeGeometries } from '../lib/BufferGeometryUtils.js?v=2c366b11';
 
 // Склейка модели здания (data/models/*.glb) в две сетки при загрузке.
 //
