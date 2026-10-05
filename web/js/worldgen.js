@@ -9,6 +9,7 @@ import { resolveAreas, sportSkipIds } from './sport.js?v=d17fb321';
 import { planParking, roadSegIndex } from './parking.js?v=d17fb321';
 import { seriesOf, seriesWall, seriesExtras } from './series.js?v=d17fb321';
 import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=d17fb321';
+import { castleExtras } from './castle.js?v=d17fb321';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -3783,6 +3784,7 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
     }
     if (ser) { seriesExtras(ser, yFloor, yTop, w, Hb, boxSolid); stats.series = (stats.series || 0) + 1; }
     if (gate) gateLining(gate, w, pushV, gh, Hb);
+    if (b.castle) castleExtras(b, yBase, yFloor, yTop, w, roof, Hb, boxSolid, pushV);   // «замок» (castle.js)
 
     // Рыночный ряд: длинный сарай под двускатной ребристой кровлей, по бокам
     // тент над проходом. Вальма из общего кода тут не годится — ряд узкий
