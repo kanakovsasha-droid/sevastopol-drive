@@ -34,8 +34,17 @@
 //      1024 м в data/road-levels/<cx>_<cz>.json вместе с осевой: коридор
 //      земли берёт их, когда собирает квадрат.
 //
+//   5. Вторая волна roads5 (06.10.2026): доводка привязана к земле (--anch, м), поперечные
+//      связи проезжих частей — только напротив, путепроводы держат габарит
+//      над улицей внизу (--clr, м), концы мостов сводятся в перекрёсток,
+//      одномерная задача — только класс 0 (--trc), класс 1 — графом с
+//      переломом до 3 п. на 20 м (--k1).
+//
 //   node tools/build-road-levels.mjs                 → вся карта
 //   node tools/build-road-levels.mjs --box x0,x1,z0,z1 [--out file]  → кусок (для замеров)
+//   отладка: --probe x,z,r (вершины и нарушения у точки), --viol x0,x1,z0,z1
+//   (худшие нарушения в рамке), --stroke x,z (штрих трассы через точку), --debug
+//   ВНИМАНИЕ: data/road-levels/* (дворовые проезды) пишутся и с --out.
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
@@ -228,7 +237,11 @@ for (const r of use) {
   for (let k = 0; k < p.length / 2; k++) {
     const x = p[k * 2], z = p[k * 2 + 1];
     // узел конца звена — раньше вставных точек: те ищут вершину перекрёстка
-    const end = node(x, z, true, free);
+    // Концы моста и тоннеля — устои, они на земле и в сети улиц: сводим их
+    // в пятно перекрёстка, как всех. Иначе мост, упёршийся в перекрёсток,
+    // висел отдельной вершиной, трасса за ним кончалась свободным концом и
+    // уходила на 7 м вверх (ул. Новикова у Сапунгорской, 2290, 9600).
+    const end = node(x, z, true, free && k > 0 && k < p.length / 2 - 1);
     if (k > 0) {
       const px = p[k * 2 - 2], pz = p[k * 2 - 1], L = Math.hypot(x - px, z - pz);
       const m = Math.max(1, Math.ceil(L / STEP));
@@ -300,6 +313,12 @@ const nearBridge = new Uint8Array(N);
             // дороги идёт в 15 м выше — это не вторая проезжая часть.
             const u = dirOf(ci, id), v = dirOf(l[t], l[t + 1]);
             if (!u || !v || Math.abs(u[0] * v[0] + u[1] * v[1]) < 0.94) continue;
+            // И напротив, а не наискось: ближайшая параллельная точка второй
+            // проезжей части бывает на 10 м вперёд по склону — связь «на одной
+            // отметке» тогда тянет узел вниз по склону (пл. Нахимова: узел
+            // Ленина × пр. Нахимова к точке другой проезжей части на 1.3 м ниже).
+            const ox = (NX[l[t + 1]] - NX[id]) / d, oz = (NZ[l[t + 1]] - NZ[id]) / d;
+            if (Math.abs(ox * u[0] + oz * u[1]) > +arg("abeam", 0.6)) continue;
             bd = d; best = l[t + 1];
           }
         }
@@ -362,8 +381,88 @@ for (let it = 0; it < 200; it++) for (const i of noData) {
   for (let k = deg[i]; k < deg[i + 1]; k++) { s += G0[NB[k]]; w++; }
   if (w) G0[i] = s / w;
 }
+// ПУТЕПРОВОДЫ. Мост над улицей — без данных земли, полотно натягивалось
+// между устоями, а устои стоят на той же земле, что и улица внизу: на
+// развязке 7-го км Городское шоссе шло «мостом» в 0.3–0.5 м над Балаклавским
+// шоссе, полотно перехватывало колесо — удар до 7 g. Где осевая моста
+// пересекает осевую другой улицы (не моста и не тоннеля), держим габарит:
+// полотно не ниже улицы под ним на CLR м — опорой в данных (одномерная задача
+// трасс) и ограничением в проекциях.
+const CLR = +arg('clr', 6.0);
+const clrL = [];        // мост, улица внизу
+{
+  const G = 24, g = new Map();
+  const segKey = (i, j) => i * 100003 + j;
+  chains.forEach((c, ci) => {
+    if (c.r.br || c.r.tn) return;
+    for (let k = 1; k < c.ids.length; k++) {
+      const a = c.ids[k - 1], b = c.ids[k];
+      for (let i = Math.floor(Math.min(NX[a], NX[b]) / G); i <= Math.floor(Math.max(NX[a], NX[b]) / G); i++)
+        for (let j = Math.floor(Math.min(NZ[a], NZ[b]) / G); j <= Math.floor(Math.max(NZ[a], NZ[b]) / G); j++)
+          (g.get(segKey(i, j)) || g.set(segKey(i, j), []).get(segKey(i, j))).push(ci, k);
+    }
+  });
+  const cross = (ax, az, bx, bz, cx, cz, dx, dz) => {
+    const r = (bx - ax) * (dz - cz) - (bz - az) * (dx - cx);
+    if (Math.abs(r) < 1e-9) return null;
+    const t = ((cx - ax) * (dz - cz) - (cz - az) * (dx - cx)) / r, u = ((cx - ax) * (bz - az) - (cz - az) * (bx - ax)) / r;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? [t, u] : null;
+  };
+  const seen = new Set();
+  for (const c of chains) {
+    if (!c.r.br) continue;
+    const ids = new Set(c.ids), L = c.ss[c.ss.length - 1];
+    for (let k = 1; k < c.ids.length; k++) {
+      const a = c.ids[k - 1], b = c.ids[k];
+      for (let i = Math.floor(Math.min(NX[a], NX[b]) / G); i <= Math.floor(Math.max(NX[a], NX[b]) / G); i++)
+        for (let j = Math.floor(Math.min(NZ[a], NZ[b]) / G); j <= Math.floor(Math.max(NZ[a], NZ[b]) / G); j++)
+          for (const [oci, ok] of ((l => { const o = []; for (let q = 0; q < (l || []).length; q += 2) o.push([l[q], l[q + 1]]); return o; })(g.get(segKey(i, j))))) {
+            const o = chains[oci], p = o.ids[ok - 1], q = o.ids[ok];
+            if (ids.has(p) || ids.has(q)) continue;               // примыкает к мосту — не под ним
+            const x = cross(NX[a], NZ[a], NX[b], NZ[b], NX[p], NZ[p], NX[q], NZ[q]);
+            if (!x) continue;
+            const s = c.ss[k - 1] + (c.ss[k] - c.ss[k - 1]) * x[0];
+            if (s < 6 || s > L - 6) continue;                      // у самого устоя — съезд, а не пролёт
+            const v = x[0] < 0.5 ? a : b, u = x[1] < 0.5 ? p : q;
+            if (!noData.has(v)) continue;
+            const key = v + ',' + u; if (seen.has(key)) continue; seen.add(key);
+            clrL.push(v, u);
+          }
+    }
+  }
+  // Опоры: недостающий габарит — пополам: полотно вверх, улица внизу в
+  // выемку. Модель рельефа (30 м, поверхность) путепровода не видит: «земля»
+  // под ним — то полотно, то улица, и тянуть полотно на все 6 м вверх
+  // значило поднимать трассу на подходах на сотни метров (ул. Новикова над
+  // Балаклавским шоссе). Вес опоры — сильнее земли.
+  const need = new Map();
+  for (let k = 0; k < clrL.length; k += 2) {
+    const v = clrL[k], u = clrL[k + 1], n = CLR - (G0[v] - G0[u]);
+    if (n > (need.get(k) || 0)) need.set(k, n);
+  }
+  const lift = new Map(), sink = new Map();
+  for (const [k, n] of need) {
+    const v = clrL[k], u = clrL[k + 1];
+    lift.set(v, Math.max(lift.get(v) || 0, n / 2)); sink.set(u, Math.max(sink.get(u) || 0, n / 2));
+  }
+  for (const [v, d] of lift) { G0[v] += d; DW[v] = Math.max(DW[v], 1e4); }
+  for (const [u, d] of sink) { G0[u] -= d; DW[u] = Math.max(DW[u], 1e4); }
+  if (DBG) for (let k = 0; k < clrL.length; k += 2) console.log('путепровод', NX[clrL[k]].toFixed(0), NZ[clrL[k]].toFixed(0), 'улица внизу', G0[clrL[k + 1]].toFixed(1), 'полотно', G0[clrL[k]].toFixed(1));
+  tlog('путепроводов над улицами (пар вершин)', clrL.length / 2);
+}
+const clrSet = new Set(clrL);
+const clearance = () => {
+  for (let k = 0; k < clrL.length; k += 2) {
+    const v = clrL[k], u = clrL[k + 1], d = Hh[v] - Hh[u];
+    if (d >= CLR) continue;
+    const mv = PIN[v] ? 0 : 1, mu = PIN[u] ? 0 : 1;
+    if (mv + mu <= 0) continue;
+    const ex = (CLR - d) / (mv + mu);
+    Hh[v] += ex * mv; Hh[u] -= ex * mu;
+  }
+};
 // склон, сглаженный на ~70 м: по нему решаем, где улица и правда крутая
-const GS = Float32Array.from(G0), T = new Float32Array(N);
+const GS =Float32Array.from(G0), T = new Float32Array(N);
 for (let it = 0; it < 70; it++) {
   for (let i = 0; i < N; i++) { let s = GS[i] * 2, w = 2; for (let k = deg[i]; k < deg[i + 1]; k++) { s += GS[NB[k]]; w++; } T[i] = s / w; }
   GS.set(T);
@@ -402,13 +501,19 @@ for (let e = 0; e < NE; e++) { if (EI[e] > nodeImp[EA[e]]) nodeImp[EA[e]] = EI[e
 // краями по длине. Иначе тройка «подход — перекрёсток — перекрёсток»
 // отбрасывалась, и перелом на въезде в перекрёсток ничем не держался (до 15%).
 const KMAX = 0.025, KTR = 0.01 / 20;
+// Шоссе класса 1 (Балаклавское, Камышовое, улицы Новикова, Хрусталёва) —
+// не автомагистраль: радиус вертикальной кривой 2 км там уводил профиль
+// от земли на 4–6 м (выход из оврага на ул. Новикова, развязка 7-го км),
+// и коридор рвался ступенями. Им — KTR1 (3 п. на 20 м, радиус ~670 м:
+// на 100 км/ч 0.12 g) и мягче начальный штраф.
+const KTR1 = +arg('k1', 3) / 100 / 20, LAM1 = +arg('lam1', 2e6);
 const PIN = new Uint8Array(N);    // трасса за центром: отметки решены одномерно
 const limOf = (cls, b, l1, l2) => {
   const street = KMAX * 2 * Math.min(l1, l2) / STEP;
   if (cls > 1) return street;
   const cw = centerW(NX[b], NZ[b]);
   // запас 0.75: проекции сходятся к пределу снизу не до конца
-  return KTR * 0.75 * (l1 + l2) / 2 * (1 - cw) + street * cw;
+  return (cls === 1 ? KTR1 : KTR) * 0.75 * (l1 + l2) / 2 * (1 - cw) + street * cw;
 };
 const cv = chains.map(c => {
   const v = [], s0 = [], s1 = [];
@@ -508,7 +613,8 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
 // Дальше эти отметки — опора с большим весом, граф подстраивает к ним
 // остальные улицы (их узлы на трассе почти не подвижны).
 {
-  const isTr = qi => { const r = cv[qi].c.r; return r.c <= 1 && cv[qi].v.length >= 2; };
+  const TRC = +arg('trc', 0);
+  const isTr = qi => { const r = cv[qi].c.r; return r.c <= TRC && cv[qi].v.length >= 2; };
   const seen = new Set();
   const strokes = [];
   for (let qi = 0; qi < cv.length; qi++) {
@@ -531,20 +637,20 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
       q = p[0]; fromStart = p[1];
     }
     // вершины и длины дуги
-    const V = [], S = [];
+    const V = [], S = [], C = [];
     for (const [q2, fwd] of seq) {
-      const c = cv[q2], m = c.v.length;
+      const c = cv[q2], m = c.v.length, cl = c.c.r.c;
       const idx = fwd ? [...Array(m).keys()] : [...Array(m).keys()].reverse();
       for (let t = 0; t < m; t++) {
         const k = idx[t], vv = c.v[k];
         if (V.length && V[V.length - 1] === vv) continue;
-        if (!V.length) { V.push(vv); S.push(0); continue; }
+        if (!V.length) { V.push(vv); S.push(0); C.push(cl); continue; }
         const kp = idx[t - 1];
         const arm = Math.abs(c.pos[k] - c.pos[kp]);
-        V.push(vv); S.push(S[S.length - 1] + Math.max(0.5, arm));
+        V.push(vv); S.push(S[S.length - 1] + Math.max(0.5, arm)); C.push(cl);
       }
     }
-    if (V.length >= 2) strokes.push({ V, S, imp: Math.max(...seq.map(([q2]) => cv[q2].c.imp)) });
+    if (V.length >= 2) strokes.push({ V, S, C, imp: Math.max(...seq.map(([q2]) => cv[q2].c.imp)) });
   }
   // пятидиагональная симметричная система: A·h = b, A хранится лентой
   // d0 — диагональ, d1[i] = A[i][i+1], d2[i] = A[i][i+2]. LDLᵀ, L — единичная
@@ -564,13 +670,17 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
   };
   const KLIM = KTR * 0.75, LMAX = 2e11, DMAX = +arg('dmax', 5);
   let worstAll = 0;
-  const solveStroke = ({ V, S }, gOf, wOf) => {
+  const solveStroke = ({ V, S, C }, gOf, wOf) => {
     const n = V.length;
     const w = new Float64Array(n), g = new Float64Array(n), lam = new Float64Array(n), cwv = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       w[i] = wOf(V[i]) + 1e-6; g[i] = gOf(V[i]); cwv[i] = centerW(NX[V[i]], NZ[V[i]]);
-      lam[i] = 2e8 * (1 - cwv[i]) + 1e3;
+      lam[i] = (C[i] === 1 ? LAM1 : 2e8) * (1 - cwv[i]) + 1e3;
     }
+    // У путепровода профиль обязан подняться (или уйти в выемку) на габарит:
+    // кривизну там не ужесточаем, иначе штраф перебивал опору габарита.
+    const soft = new Uint8Array(n);
+    for (let i = 0; i < n; i++) if (clrSet.has(V[i])) for (let j = Math.max(0, i - 12); j <= Math.min(n - 1, i + 12); j++) { soft[j] = 1; lam[j] = Math.min(lam[j], LAM1); }
     let h = null;
     for (let round = 0; round < 16; round++) {
       const d0 = Float64Array.from(w), d1 = new Float64Array(n), d2 = new Float64Array(n), b = new Float64Array(n);
@@ -593,10 +703,10 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
       for (let i = 0; i < n; i++) if (w[i] > 0.05 && w[i] < 100 && Math.abs(h[i] - g[i]) > DMAX)
         for (let j = Math.max(0, i - 6); j <= Math.min(n - 1, i + 6); j++) far[j] = 1;
       for (let i = 1; i < n - 1; i++) {
-        if (cwv[i] > 0 || far[i]) continue;
+        if (cwv[i] > 0 || far[i] || soft[i]) continue;
         const l1 = S[i] - S[i - 1], l2 = S[i + 1] - S[i];
         const k = Math.abs((h[i + 1] - h[i]) / l2 - (h[i] - h[i - 1]) / l1) / ((l1 + l2) / 2);
-        if (k > KLIM * 0.9) { bad++; for (let j = Math.max(1, i - 3); j <= Math.min(n - 2, i + 3); j++) if (!far[j]) lam[j] = Math.min(LMAX, lam[j] * 2.5); }
+        if (k > (C[i] === 1 ? KTR1 * 0.75 : KLIM) * 0.9) { bad++; for (let j = Math.max(1, i - 3); j <= Math.min(n - 2, i + 3); j++) if (!far[j]) lam[j] = Math.min(LMAX, lam[j] * 2.5); }
       }
       for (let i = 0; i < n; i++) if (far[i]) { lam[i] = Math.max(1e4, lam[i] * 0.4); bad++; }
       if (!bad) break;
@@ -624,6 +734,7 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
   // жёсткая общая отметка: важнейшая трасса задаёт её, равные — среднее.
   // Вес опоры 20 (было) не перебивал штраф кривизны, штрихи расходились на
   // метр, и среднее вставало в одной вершине горбом.
+  let lastT = null, lastW = null;
   for (let round = 0; round < 3; round++) {
     const best = new Float32Array(N).fill(-1), sum = new Float64Array(N), cnt = new Float32Array(N), mult = new Uint8Array(N);
     strokes.forEach((st, k) => st.V.forEach((v, i) => {
@@ -635,6 +746,7 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
     // общая вершина — жёстко; пара проезжих частей — мягко (в развязке
     // «пары» находятся у всех съездов подряд, и жёсткие цели спорили бы)
     const tgt = new Map(), tw8 = new Map();
+    lastT = tgt; lastW = tw8;
     for (let v = 0; v < N; v++) {
       if (!cnt[v]) continue;
       const tw = (twin.get(v) || []).filter(u => cnt[u]);
@@ -644,6 +756,18 @@ tlog(`троек ${NT}, из них на стыках кусков ${nJoint}`);
     }
     if (round === 2) break;
     res = strokes.map(st => solveStroke(st, v => tgt.has(v) ? tgt.get(v) : G0[v], v => tgt.has(v) ? tw8.get(v) : DW[v]));
+  }
+  if (arg('stroke')) {
+    const [sx, sz] = arg('stroke').split(',').map(Number);
+    strokes.forEach((st, k) => {
+      const hit = st.V.findIndex(v => Math.hypot(NX[v] - sx, NZ[v] - sz) < 12);
+      if (hit < 0) return;
+      console.log('штрих', k, 'вершин', st.V.length, 'imp', st.imp);
+      for (let i = Math.max(0, hit - 25); i < Math.min(st.V.length, hit + 25); i++) {
+        const v = st.V[i];
+        console.log('  ', i, v, NX[v].toFixed(0), NZ[v].toFixed(0), 's', st.S[i].toFixed(0), 'h', res[k].h[i].toFixed(2), 'g', G0[v].toFixed(2), 'raw', G0raw[v].toFixed(2), 'w', DW[v].toFixed(2), noData.has(v) ? 'нет' : '', clrL.includes(v) ? 'габ' : '', lastT && lastT.has(v) ? 'цель ' + lastT.get(v).toFixed(2) + ' в ' + lastW.get(v) : '');
+      }
+    });
   }
   let nV = 0;
   pin.fill(0); pinW.fill(0);
@@ -694,6 +818,7 @@ const bend = () => {
 const project = () => {
   for (let pass = 0; pass < 3; pass++) {
     bend();
+    clearance();
     for (let e = 0; e < NE; e++) {
       const a = EA[e], b = EB[e], d = Hh[a] - Hh[b], lim = EG[e] * EL[e];
       if (d <= lim && d >= -lim) continue;
@@ -721,7 +846,23 @@ for (let it = 0; it < IT1; it++) {
 }
 // Доводка одними проекциями: 1200 кругов (было 120) — переломов сверх
 // предела 83 → 2, худший 9.6% → 5.1%.
-for (let k = 0; k < IT2; k++) { project(); if (k % 300 === 299) tlog('доводка', k + 1); }
+//
+// ПРИВЯЗКА К ЗЕМЛЕ. Одни проекции без данных земли за 1200 кругов уводили
+// целые районы: противоречивые тройки перелома (петли, стыки у площадей)
+// толкали узел по кругу, и он уходил на метры — дрейф > 10 м у 233 вершин,
+// до 225 м; узел на пл. Нахимова встал на −3.2 м при земле 11.8. Теперь
+// доводка держит вершину в коридоре: между решением сглаживания и землёй,
+// плюс ANCH м в обе стороны. Где ограничения с землёй несовместимы, лучше
+// остаточный перелом, чем яма или насыпь в этаж.
+const ANCH = +arg('anch', 3.0);
+const HS = Float32Array.from(Hh);
+const HLO = new Float32Array(N), HHI = new Float32Array(N);
+for (let i = 0; i < N; i++) {
+  if (PIN[i] || !DW[i]) { HLO[i] = -Infinity; HHI[i] = Infinity; continue; }
+  HLO[i] = Math.min(Hh[i], G0[i]) - ANCH; HHI[i] = Math.max(Hh[i], G0[i]) + ANCH;
+}
+const clampH = () => { for (let i = 0; i < N; i++) { const h = Hh[i]; if (h < HLO[i]) Hh[i] = HLO[i]; else if (h > HHI[i]) Hh[i] = HHI[i]; } };
+for (let k = 0; k < IT2; k++) { project(); clampH(); if (k % 300 === 299) tlog('доводка', k + 1); }
 // итог: отклонение от земли и уклоны — по классам
 const stats = {};
 {
@@ -753,6 +894,19 @@ const stats = {};
     console.log(`класс ${c}: вершин ${s.v}, от земли ср.кв ${Math.sqrt(s.dev2 / Math.max(1, s.v)).toFixed(2)} м, макс ${s.devMax.toFixed(1)}, >2 м ${s.over2}; ` +
       `рёбер круче предела ${s.eBad} из ${s.e}; переломов сверх предела ×1.5 ${s.tBad} из ${s.t}, худший ${(s.kMax * 100).toFixed(1)} п./20 м`);
   console.log('уклон:', ex.join(' | '));
+  {
+    // дрейф от земли (вершины с данными; мосты, тоннели и край карты — нет)
+    let d5 = 0, d10 = 0, dm = 0, at = '';
+    for (let i = 0; i < N; i++) {
+      if (noData.has(i) || nearBridge[i]) continue;
+      const d = Math.abs(Hh[i] - G0raw[i]);
+      if (d > 5) d5++; if (d > 10) d10++;
+      if (d > dm) { dm = d; at = NX[i].toFixed(0) + ',' + NZ[i].toFixed(0); }
+    }
+    let nk = -1, nd = Infinity;
+    for (let i = 0; i < N; i++) { const d = Math.hypot(NX[i] + 15, NZ[i] - 47); if (d < nd) { nd = d; nk = i; } }
+    console.log(`от земли > 5 м: ${d5}, > 10 м: ${d10}, макс ${dm.toFixed(1)} у ${at}; пл. Нахимова (−15,47): H ${Hh[nk].toFixed(1)} при земле ${G0raw[nk].toFixed(1)}`);
+  }
   {
     // две проезжие части: расхождение отметок по поперечным рёбрам
     const ds = [];
@@ -876,7 +1030,9 @@ tlog(`улиц far.json с отметками ${nFar}, без — ${nMiss}`);
 // r + 5 м), рантайм кладёт её в коридор.
 {
   const G = 20, g = new Map();
-  for (let i = 0; i < N; i++) { if (!DW[i]) continue; const k = Math.floor(NX[i] / G) * 100003 + Math.floor(NZ[i] / G); let l = g.get(k); if (!l) g.set(k, l = []); l.push(i); }
+  // полотно моста — не опора плоскости перекрёстка под ним (у путепровода
+  // DW ≠ 0: опора габарита)
+  for (let i = 0; i < N; i++) { if (!DW[i] || noData.has(i)) continue; const k = Math.floor(NX[i] / G) * 100003 + Math.floor(NZ[i] / G); let l = g.get(k); if (!l) g.set(k, l = []); l.push(i); }
   for (const j of W.junctions) {
     if (BOX && (j.x < BOX.x0 - MARGIN / 2 || j.x > BOX.x1 + MARGIN / 2 || j.z < BOX.z0 - MARGIN / 2 || j.z > BOX.z1 + MARGIN / 2)) continue;
     if ((j.mw || 0) < 5) continue;
@@ -940,6 +1096,42 @@ if (!BOX) {
   tlog(`дворовых проездов ${nYard} в ${yards.size} квадратах, ${(bytes / 1e6).toFixed(2)} МБ`);
 }
 out.stats = stats;
+if (arg('viol')) {
+  const [x0, x1, z0, z1] = arg('viol').split(',').map(Number);
+  const inb = i => NX[i] > x0 && NX[i] < x1 && NZ[i] > z0 && NZ[i] < z1;
+  const nm = i => { for (const c of chains) if (c.ids.includes(i)) return (c.r.n || c.r.id) + ' c' + c.r.c; return '?'; };
+  const L = [];
+  for (let t = 0; t < NT; t++) {
+    if (!inb(TB[t])) continue;
+    const k = (Hh[TD[t]] - Hh[TB[t]]) / TL2[t] - (Hh[TB[t]] - Hh[TA[t]]) / TL1[t];
+    const ex = Math.abs(k) - TLIM[t];
+    if (ex > 0.01) L.push([ex, 'T', TB[t], (k * 100).toFixed(1) + '/' + (TLIM[t] * 100).toFixed(1), TL1[t].toFixed(1), TL2[t].toFixed(1)]);
+  }
+  for (let e = 0; e < NE; e++) {
+    if (!inb(EA[e])) continue;
+    const g = Math.abs(Hh[EA[e]] - Hh[EB[e]]) / EL[e], ex = g - EG[e];
+    if (ex > 0.01) L.push([ex, 'E' + EK[e], EA[e], (g * 100).toFixed(1) + '/' + (EG[e] * 100).toFixed(1), EL[e].toFixed(1)]);
+  }
+  L.sort((a, b) => b[0] - a[0]);
+  console.log('нарушений', L.length);
+  for (const r of L.slice(0, 25)) { const i = r[2]; console.log(r[1], NX[i].toFixed(0), NZ[i].toFixed(0), 'H', Hh[i].toFixed(1), 'G', G0raw[i].toFixed(1), 'Hs', HS[i].toFixed(1), r.slice(3).join(' '), nm(i)); }
+}
+if (arg('probe')) {
+  const [px, pz, pr] = arg('probe').split(',').map(Number);
+  const near = new Set();
+  for (let i = 0; i < N; i++) if (Math.hypot(NX[i] - px, NZ[i] - pz) < (pr || 25)) near.add(i);
+  const nm = i => { for (const c of chains) if (c.ids.includes(i)) return (c.r.n || c.r.id) + ' c' + c.r.c; return '?'; };
+  for (const i of near) console.log('v', i, NX[i].toFixed(1), NZ[i].toFixed(1), 'H', Hh[i].toFixed(2), 'Hs', HS[i].toFixed(2), 'G', G0raw[i].toFixed(2), 'G0', G0[i].toFixed(2), 'DW', DW[i].toFixed(2), 'pin', PIN[i], 'imp', nodeImp[i].toFixed(2), nm(i));
+  for (let t = 0; t < NT; t++) {
+    if (!near.has(TB[t])) continue;
+    const k = (Hh[TD[t]] - Hh[TB[t]]) / TL2[t] - (Hh[TB[t]] - Hh[TA[t]]) / TL1[t];
+    if (Math.abs(k) > TLIM[t] * 1.2) console.log('  тройка', TA[t], TB[t], TD[t], 'k', (k * 100).toFixed(1), 'lim', (TLIM[t] * 100).toFixed(1), 'l', TL1[t].toFixed(1), TL2[t].toFixed(1), 'imp', TI_[t]);
+  }
+  for (let e = 0; e < NE; e++) if (near.has(EA[e]) || near.has(EB[e])) {
+    const g = Math.abs(Hh[EA[e]] - Hh[EB[e]]) / EL[e];
+    if (EK[e] || g > EG[e] + 0.005) console.log('  ребро', EA[e], EB[e], 'kind', EK[e], 'g', (g * 100).toFixed(1), 'lim', (EG[e] * 100).toFixed(1), 'L', EL[e].toFixed(1), 'imp', EI[e].toFixed(2));
+  }
+}
 const OUT = arg('out', ROOT + 'data/road-levels.json');
 writeFileSync(OUT, JSON.stringify(out));
 tlog('записано', OUT, (JSON.stringify(out).length / 1e6).toFixed(2), 'МБ');
