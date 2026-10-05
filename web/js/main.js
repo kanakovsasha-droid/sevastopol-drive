@@ -37,6 +37,7 @@ import { padBlocker } from './pads.js?v=d17fb321';
 import { loadSchools, prepSchools, buildSchools } from './schools.js?v=d17fb321';
 import { prepFuel } from './fuel.js?v=d17fb321';
 import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=d17fb321';
+import { Facades } from './facades.js?v=d17fb321';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -96,6 +97,7 @@ const HAZE    = new THREE.Color(0xd3d3c8);
 const FOG = HORIZON.clone().lerp(HAZE, 0.45);
 
 let renderer, scene, camera, sun, sky, hemi, env, carLights, precip;
+let facades = null;                            // объёмные детали типовых домов (facades.js)
 let water = null;
 let terrain, far = null, landmarkDefs = [], terraces = [], collider, roads, carMesh, car, carFx;
 let cityMap = null, mapCtx = null, mapOpen = false, miniOn = true, hud = null;
@@ -299,6 +301,7 @@ async function boot() {
     window.G.chunkProf = chunkProf;
     window.G.counts = counts;
     window.G.flora = floraStats;
+    window.G.facades = facades.stats;
     window.G.loopProf = loopProf;
     window.G.pad = pad;
     window.G.pause = pause;
@@ -742,6 +745,7 @@ function* buildChunk(d, key) {
   const bskip = new Set(skip);
   w.buildings.forEach((b, i) => { if (isCanopy(b)) bskip.add(i); });
   g.add(yield* buildBuildings(w, terrain, 512, bskip));
+  g.add(facades.chunk(w, bskip));                  // типовые дома: детали фасада (facades.js)
   g.add(buildSchools(w, terrain, skip));           // школы: парапет и крыльцо
   g.add(buildCanopies(w, terrain, skip));
   g.add(buildSites(w, terrain, skip));             // фриз, вывески и драйв «Eaty»
@@ -1234,6 +1238,7 @@ function initScene() {
   // пересобрало бы шейдеры всего города
   carLights = new CarLights(scene);
   precip = new Precip(scene);          // снегопад и дождь
+  facades = new Facades(scene);        // балконы и карнизы типовых домов вокруг камеры
 
   water = buildWater();
   scene.add(water);
@@ -1752,6 +1757,7 @@ function loop(now) {
   revealSome();
   cullFar();
   updateModels(camera);            // уровень подробности памятных моделей
+  facades.update(camera);          // балконы и карнизы типовых домов вокруг камеры
   lt('показ');
   // деревья: ближний и средний план вокруг камеры, ветер
   updateFlora(camera, scene, now);

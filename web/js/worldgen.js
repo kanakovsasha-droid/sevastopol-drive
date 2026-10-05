@@ -3781,7 +3781,7 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
       pushV(ax, yTop, az, nx, 0, nz, w, u0, Hb, Hb, wk);
       pushV(bx, yTop, bz, nx, 0, nz, w, u1, Hb, Hb, wk);
     }
-    if (ser) { seriesExtras(ser, yFloor, yTop, w, Hb, boxSolid); stats.series = (stats.series || 0) + 1; }
+    if (ser) { seriesExtras(ser, yFloor, yTop, w, Hb, boxSolid, yBase); stats.series = (stats.series || 0) + 1; }
     if (gate) gateLining(gate, w, pushV, gh, Hb);
 
     // Рыночный ряд: длинный сарай под двускатной ребристой кровлей, по бокам

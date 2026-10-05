@@ -128,6 +128,7 @@ function inject(mat, key, { vertHead, vertBody, fragHead, fragBody, season = '' 
     shader.uniforms.uWet = ENV.uWet;
     shader.uniforms.uLate = ENV.uLate;
     shader.uniforms.uTime = ENV.uTime;
+    shader.uniforms.uFacadeR = ENV.uFacadeR;
     // фары машины — их читает только шейдер дороги (блики на мокром)
     shader.uniforms.uHead = ENV.uHead;
     shader.uniforms.uHeadL = ENV.uHeadL;
@@ -175,7 +176,7 @@ export function buildingMaterial() {
                  vec3 wn = mat3(modelMatrix) * objectNormal;
                  vSun = 0.53 * wn.x + 0.48 * wn.z;
                }`,
-    fragHead: `varying vec3 vWall; varying float vKind; varying float vSun;
+    fragHead: `varying vec3 vWall; varying float vKind; varying float vSun; uniform float uFacadeR;
       // Линейная рампа вместо smoothstep. У откоса, подоконника и трубы край
       // ГЕОМЕТРИЧЕСКИЙ, кубическое сглаживание там не видно, а фасад — самый
       // горячий шейдер сцены: полтора десятка smoothstep стоили ~40% кадра
@@ -569,6 +570,9 @@ export function buildingMaterial() {
           float balc = (1.0 - stair) * (1.0 - blank) * step(0.55, rc) * step(1.0, fi) * (1.0 - roofZone);
           float loggia = balc * p9;
           balc *= 1.0 - p9;
+          // ближе круга facades.js балкон стоит объёмом — на стене остаётся
+          // только окно; к краю круга нарисованный возвращается
+          float solidB = step(0.5, uFacadeR) * (1.0 - lr(length(vViewPosition) - uFacadeR + 20.0, 0.067));
 
           // ---- стена ----
           float sw = max(0.018, fwidth(vWall.x) * 0.9);
@@ -630,7 +634,8 @@ export function buildingMaterial() {
                                     * (0.94 + 0.10 * fine * (abs(fract(fx * B / 0.10) - 0.5) * 2.0 - 0.5));
           else railC = vec3(0.86, 0.86, 0.84);
           // застеклённый балкон: рама на всю высоту этажа
-          float glazed = balc * step(0.6, fract(rk * 3.7)) * bxw * lr(fy - 0.33, 80.0) * (1.0 - lr(fy - 0.86, 80.0));
+          bfront *= 1.0 - solidB; slab *= 1.0 - solidB;
+          float glazed = (1.0 - solidB) * balc * step(0.6, fract(rk * 3.7)) * bxw * lr(fy - 0.33, 80.0) * (1.0 - lr(fy - 0.86, 80.0));
 
           // ---- лоджия: проём во всю ширину, глубокая тень, экран внизу ----
           float lgArea = loggia * lr(fx - 0.06, 60.0) * lr(0.94 - fx, 60.0) * (1.0 - lr(fy - 0.97, 80.0));
