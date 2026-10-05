@@ -15,6 +15,7 @@ import { buildMap, drawFull, mapUnproject } from './minimap.js?v=0021fa2c';
 import { Hud } from './hud.js?v=0021fa2c';
 import { ChunkManager } from './chunks.js?v=0021fa2c';
 import { Collider, RoadIndex } from './collision.js?v=0021fa2c';
+import { gatePolys } from './passage.js?v=0021fa2c';
 import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=0021fa2c';
 import { CarFX } from './carfx.js?v=0021fa2c';
 import { precompile } from './warm.js?v=0021fa2c';
@@ -686,7 +687,8 @@ function* buildChunk(d, key) {
   prepSites(w);
   const fuelWalls = prepFuel(w);
   // Навесы (building=roof) машину не держат — только их столбы (canopy.js)
-  collider.add(part, w.buildings.filter(b => !b.fuelBox && !isCanopy(b)).concat(fuelWalls, canopyWalls(w)));
+  // Дом с аркой-проездом — двумя половинами по бокам проезда (passage.js)
+  collider.add(part, w.buildings.filter(b => !b.fuelBox && !isCanopy(b)).flatMap(gatePolys).concat(fuelWalls, canopyWalls(w)));
   lap('дороги');
   yield; pt = performance.now();
 

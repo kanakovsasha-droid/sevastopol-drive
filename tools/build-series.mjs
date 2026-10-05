@@ -141,9 +141,12 @@ const RESIDENTIAL = /^(apartments|residential|dormitory|yes)?$/;
 const out = {}, count = { k: 0, s: 0, p: 0 };
 
 for (const b of houses.values()) {
+  // серия, названная руками (houses.json → ser), — без проверок формы:
+  // владелец знает дом лучше, чем пятно OSM
+  const forced = !b.hide && /^[ksp]$/.test(b.ser || '') ? b.ser : null;
   // памятные, вручную раскрашенные и особые дома остаются как есть
-  if (b.hand || b.hide || b.go || b.fx || b.arch || b.temple || b.school || b.wc) continue;
-  if (!RESIDENTIAL.test(b.t || '')) continue;
+  if (!forced && (b.hand || b.hide || b.go || b.fx || b.arch || b.temple || b.school || b.wc)) continue;
+  if (!forced && !RESIDENTIAL.test(b.t || '')) continue;
   const poly = b.poly, n = poly.length / 2;
   if (n < 4) continue;
   const area = Math.abs(areaOf(poly));
@@ -158,7 +161,9 @@ for (const b of houses.values()) {
   const center = ring.length && (inPoly(cxm, czm, ring) || ringDist(cxm, czm) < RING_FRONT);
 
   let code = null;
-  if (center) {
+  if (forced) {
+    code = forced;
+  } else if (center) {
     if (fl >= 3 && fl <= 7 && area >= 150) code = 's';
   } else if (b.lv && fl >= 9 && fl <= 17 && rect >= 0.85 && W >= 10 && W <= 26 && L >= 15 && area >= 250) {
     code = 'p';
