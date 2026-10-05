@@ -8,6 +8,9 @@
 //   Режим езды задаёт ESP по умолчанию: Eco / Comfort — On, Sport и Sport+ —
 //   Sport (сменил режим езды — ESP встаёт по нему, как в машине).
 //   ABS, ASR и Race Start включаются в настройках (T → «Машина»).
+//   Race Start — тормоз + газ на месте в D при любом ESP: если стоял ON, на
+//   время старта ESP сам встаёт в SPORT (как у AMG) и потом возвращается.
+//   Бёрнаут на автомате — ручник (Space) + газ (vehicle.js).
 //
 // Всё хранится в localStorage (sev.assist), обёрнуто в try/catch.
 
@@ -73,5 +76,13 @@ export class Assists {
     }
     const a = car.assist || (car.assist = {});
     a.abs = this.cfg.abs; a.asr = this.cfg.asr; a.launch = this.cfg.launch; a.esp = this.cfg.esp;
+    // Race Start взведён при ESP ON — на время старта ESP SPORT (выбор игрока
+    // не трогаем: отпустил газ или разогнался — снова ON)
+    const lc = this.cfg.launch && (car.launch === 'armed' || car.launch === 'go');
+    if (lc && this.cfg.esp === 'on') {
+      a.esp = 'sport';
+      if (!this._lcEsp) this.toast('RACE START — ESP SPORT на время старта, отпусти тормоз');
+      this._lcEsp = true;
+    } else this._lcEsp = false;
   }
 }
