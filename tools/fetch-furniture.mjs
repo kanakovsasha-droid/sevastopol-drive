@@ -32,6 +32,7 @@ const nodes = new Map();
 for (const e of j.elements) if (e.type === 'node') nodes.set(e.id, e);
 
 const R1 = v => Math.round(v * 10) / 10;
+const SKIP_PTS = [['kiosk', -771.6, 2221.7], ['kiosk', -764.1, 2223]];
 const out = { points: [], barriers: [] };
 const count = {};
 
@@ -71,6 +72,8 @@ for (const e of j.elements) {
       const v = parseInt(t.maxspeed || (t.traffic_sign || '').split('-').pop(), 10);
       o.v = (v >= 5 && v <= 130) ? v : 40;
     }
+    // руками: точки, которые мешают (киоски в проезде арки Л. Толстого, 2/16)
+    if (SKIP_PTS.some(([k, x, z]) => k === o.k && Math.abs(x - o.x) < 1.5 && Math.abs(z - o.z) < 1.5)) continue;
     out.points.push(o);
     count[kind] = (count[kind] || 0) + 1;
   } else if (e.type === 'way' && e.tags?.barrier) {
