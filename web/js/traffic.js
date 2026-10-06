@@ -388,12 +388,21 @@ export class Traffic {
       if (car) look(car.pos.x, car.pos.z, Math.sin(car.yaw), Math.cos(car.yaw), true);
       if (gap < Infinity && (gap - 2.5) * 0.7 < target) { target = Math.max(0, (gap - 2.5) * 0.7); b.wait = playerAhead ? 'игрок' : 'бот'; }
 
-      // объезд игрока: стоит или ползёт перед нами — уходим левее, пока не проедем
+      // объезд игрока: стоит или ползёт перед нами — обходим в 2.7 м от его
+      // середины, слева (на двусторонней — по встречной) или справа, где
+      // влезает в полотно; не влезает нигде — ждём. Проехали — назад в полосу.
       if (car) {
         const dx = car.pos.x - b.x, dz = car.pos.z - b.z;
         const ahead = dx * b.hx + dz * b.hz, lat = dx * rx + dz * rz;
-        if (b.shiftTo === 0 && playerAhead && pSpeed < 2 && ahead < 18 && Math.abs(lat - b.shift) < 2.2) b.shiftTo = -3;
-        else if (b.shiftTo !== 0 && (ahead < -5 || ahead > 30)) b.shiftTo = 0;
+        if (playerAhead && pSpeed < 2 && ahead < 18 && (b.shiftTo === 0 || b.v < 0.3)) {
+          const now = b.off + b.shift, edge = b.r.w / 2 - 1.0;
+          const lo = -edge, hi = edge;
+          const opts = [now + lat - 2.7, now + lat + 2.7].filter(o => o >= lo && o <= hi);
+          if (opts.length) {
+            const o = opts.reduce((a, c) => (Math.abs(c - b.off) < Math.abs(a - b.off) ? c : a));
+            b.shiftTo = o - b.off;
+          }
+        } else if (b.shiftTo !== 0 && (ahead < -5 || ahead > 30)) b.shiftTo = 0;
       }
       if (b.shift !== b.shiftTo) {
         const st = 1.4 * dt;
