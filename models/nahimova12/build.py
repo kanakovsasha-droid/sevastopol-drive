@@ -3,6 +3,11 @@
 #   blender -b --python models/nahimova12/build.py -- [glb]
 #   (или python с модулем bpy: python models/nahimova12/build.py -- glb)
 #
+# Угол 12/1 (с ул. Маяковского) переделан по описанию панорам Яндекса
+# 2020/2025 от владельца (docs/CLOUD.md, п. 38): белый дом, на углу
+# двухъярусная лоджия на белых круглых колоннах, над ней балкон с белой
+# балюстрадой, карниз с сухариками, вальма с красной кровлей — см. corner().
+#
 # Фото нет, в refs/center-models.json только план и «3 этажа; соседние дома —
 # кремовый известняк с аркадами у основания». Поэтому дом сдержанный, в духе
 # соседей: трёхэтажная послевоенная сталинка из кремового инкерманского камня,
@@ -20,11 +25,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from kit import *
 
 # ------------------------------------------------------------------ цвета
-COL['wall']  = ((0.88, 0.84, 0.74), 0.9)     # кремовый известняк (#e0d6bd)
-COL['wall2'] = ((0.83, 0.78, 0.67), 0.9)     # первый этаж — тон темнее
+COL['wall']  = ((0.92, 0.91, 0.87), 0.9)     # белый (панорамы владельца, п. 38; было #e0d6bd)
+COL['wall2'] = ((0.87, 0.85, 0.80), 0.9)     # первый этаж — тон темнее
 COL['trim']  = ((0.93, 0.90, 0.82), 0.85)    # наличники, пояса, руст, карниз
 COL['stone'] = ((0.58, 0.56, 0.52), 0.9)     # цоколь, ступени
-COL['roof']  = ((0.48, 0.48, 0.48), 0.8)     # серая кровля (#7a7a7a)
+COL['roof']  = ((0.62, 0.27, 0.19), 0.8)     # красная кровля (панорамы владельца; было #7a7a7a)
 COL['wood']  = ((0.32, 0.22, 0.14), 0.6)     # двери подъездов
 COL['metal'] = ((0.20, 0.21, 0.22), 0.5)     # козырьки, водостоки
 
@@ -146,34 +151,109 @@ def rust(Fr, u0, u1, z0, z1, d=0.0):
         z += 0.6
 
 # ================================================================== фасады
-def street(Fr, ln, bays, corner0, corner1):
-    """Уличный фасад: арки и руст внизу, окна с наличниками на 2–3 этажах."""
+def street(Fr, ln, bays, corner0, corner1, cut0=0.0, cut1=0.0):
+    """Уличный фасад: арки и руст внизу, окна с наличниками на 2–3 этажах.
+    cut0 / cut1 — у начала / конца фасада 1–2 этажи вынуты под угловую лоджию."""
     step = ln / bays
     axes = [step * (i + 0.5) for i in range(bays)]
+    lo, hi = cut0, ln - cut1                                 # где стена 1–2 этажей
+    low = [cu for cu in axes if lo < cu < hi]
     r, za, zs = 0.78, 0.95, 2.75
     h1 = []
-    for cu in axes:
+    for cu in low:
         h1.append(arch(Fr, cu, r, za, zs))
-    wall(Fr, 0, ln, PL, H1, 0, h1, m='wall2')
-    edges = [0] + [x for cu in axes for x in (cu - r - 0.18, cu + r + 0.18)] + [ln]
+    wall(Fr, lo, hi, PL, H1, 0, h1, m='wall2')
+    edges = [lo] + [x for cu in low for x in (cu - r - 0.18, cu + r + 0.18)] + [hi]
     for k in range(0, len(edges), 2):                       # руст в простенках
         a, b = edges[k], edges[k + 1]
-        if corner0 and k == 0: a += 0.95
-        if corner1 and k == len(edges) - 2: b -= 0.95
+        if corner0 and k == 0 and not cut0: a += 0.95
+        if corner1 and k == len(edges) - 2 and not cut1: b -= 0.95
         rust(Fr, a, b, PL + 0.1, zs)
-    box('stone', Fr, 0, ln, -0.25, 0.1, GR, PL)                # цоколь
-    band(Fr, 0, ln, 0, PL, PL + 0.1, 0.12)
-    band(Fr, 0, ln, 0, H1 - 0.35, H1 + 0.05, 0.14)              # межэтажный пояс
-    h2 = []
+    box('stone', Fr, lo, hi, -0.25, 0.1, GR, PL)               # цоколь
+    band(Fr, lo, hi, 0, PL, PL + 0.1, 0.12)
+    band(Fr, 0, ln, 0, H1 - 0.35, H1 + 0.05, 0.14)              # межэтажный пояс (над лоджией — антаблемент)
+    h2, h3 = [], []
     for cu in axes:
-        h2.append(win(Fr, cu, H1 + 0.85, 1.3, 2.0))
-        h2.append(win(Fr, cu, H2 + 0.75, 1.3, 1.85))
-    wall(Fr, 0, ln, H1 + 0.05, EAVE, 0, h2)
+        if lo < cu < hi: h2.append(win(Fr, cu, H1 + 0.85, 1.3, 2.0))
+        if lo < cu < hi: h3.append(win(Fr, cu, H2 + 0.75, 1.3, 1.85))
+        else: h3.append(win(Fr, cu, H2 + 0.2, 1.3, 2.4))       # дверь на угловой балкон
+    wall(Fr, lo, hi, H1 + 0.05, H2, 0, h2)
+    wall(Fr, 0, ln, H2, EAVE, 0, h3)
     band(Fr, 0, ln, 0, H2 + 0.45, H2 + 0.55, 0.06)              # пояс под окнами 3-го этажа
-    for u, s, c in ((0, 1, corner0), (ln, -1, corner1)):
-        if c: quoins(Fr, u, s, PL + 0.1, H1 - 0.35)
-        if c: quoins(Fr, u, s, H1 + 0.05, EAVE)
+    for u, s, c, cut in ((0, 1, corner0, cut0), (ln, -1, corner1, cut1)):
+        if c and not cut: quoins(Fr, u, s, PL + 0.1, H1 - 0.35)
+        if c and not cut: quoins(Fr, u, s, H1 + 0.05, EAVE)
+        if c and cut: quoins(Fr, u, s, H2, EAVE)
     cornice(Fr, 0, ln, 0, EAVE, ext=0.55)
+
+# ================================================================== угол 12/1
+# По панорамам владельца (docs/CLOUD.md, п. 38): на углу с ул. Маяковского —
+# двухъярусная лоджия на белых круглых колоннах, над ней балкон с белой
+# балюстрадой, карниз с сухариками. Лоджия — квадрат LW × LW, вынутый из угла
+# на 1–2 этажах; третий этаж над ней на колоннах.
+LW = L / 10                     # одна ось окон фасада на проспект (3.54 м)
+
+def column(Fr, u, d, z0, z1, r=0.24):
+    """Круглая колонна: база, ствол с утонением, капитель-абака."""
+    h = z1 - z0
+    box('trim', Fr, u - r - 0.08, u + r + 0.08, d - r - 0.08, d + r + 0.08, z0, z0 + 0.18, bottom=False)
+    lathe('trim_s', Fr.p(u, d, 0), [(r, z0 + 0.18), (r * 0.98, z0 + 0.18 + h * 0.4), (r * 0.86, z1 - 0.2), (r * 1.15, z1 - 0.12)],
+          seg=8, cap=False)
+    box('trim', Fr, u - r - 0.1, u + r + 0.1, d - r - 0.1, d + r + 0.1, z1 - 0.12, z1)
+
+def balustrade(Fr, u0, u1, d, z0, h=0.9, step=0.36):
+    """Балюстрада: плинт, балясины, поручень вдоль u на глубине d."""
+    box('trim', Fr, u0, u1, d - 0.12, d + 0.12, z0, z0 + 0.12, bottom=False)
+    n = max(1, int((u1 - u0 - 0.2) / step))
+    for i in range(n):
+        u = u0 + 0.1 + (u1 - u0 - 0.2) * (i + 0.5) / n
+        box('trim', Fr, u - 0.05, u + 0.05, d - 0.05, d + 0.05, z0 + 0.12, z0 + h - 0.12, bottom=False)
+    box('trim', Fr, u0, u1, d - 0.14, d + 0.14, z0 + h - 0.12, z0 + h)
+
+def dentils(Fr, u0, u1, z, step=0.5):
+    """Сухарики под венчающим карнизом."""
+    n = int((u1 - u0) / step)
+    for i in range(n):
+        u = u0 + step * (i + 0.5)
+        box('trim', Fr, u - 0.08, u + 0.08, 0, 0.2, z - 0.16, z, bottom=True)
+
+def corner(Fn, Fm, Lm):
+    # внутренние стены лоджии: задняя (параллельно проспекту) и боковая
+    Fa = Frame(F.o + F.n * -LW, F.u, F.n)                    # u 0..LW, лицом к проспекту
+    Fb = Frame(F.o + F.u * LW, -F.n, -F.u)                   # u 0..LW вглубь, лицом к ул. Маяковского
+    for Fr in (Fa, Fb):
+        holes = [lite(Fr, LW / 2, H1 + 0.85, 1.3, 2.0)]
+        if Fr is Fa:
+            holes.append(door(Fr, LW / 2, w=1.5))            # вход с лоджии
+        else:
+            holes.append(lite(Fr, LW / 2, 0.95, 1.4, 2.4))
+        wall(Fr, 0, LW, PL, H2, 0, holes, m='wall2', reveal=0.22)
+    # пол лоджии, межэтажная плита (снизу — потолок нижнего яруса), потолок верхнего
+    box('stone', F, 0, LW, -LW, 0, GR, PL)
+    box('trim', F, 0, LW, -LW, 0, H1 - 0.35, H1 + 0.05)
+    face('trim', [F.p(0, 0, H2), F.p(0, -LW, H2), F.p(LW, -LW, H2), F.p(LW, 0, H2)], -UP)
+    # колонны двух ярусов: угол, середины сторон, концы сторон
+    pts = [(0, 0), (LW / 2, 0), (LW, 0), (0, -LW / 2), (0, -LW)]
+    for u, d in pts:
+        column(F, u, d, PL, H1 - 0.35)
+        column(F, u, d, H1 + 0.05, H2)
+    # верхний ярус — балюстрада между колоннами
+    Fs = Frame(F.o, -F.n, -F.u)                              # сторона на ул. Маяковского: u 0..LW вглубь
+    balustrade(F, 0.25, LW - 0.25, 0, H1 + 0.05)
+    balustrade(Fs, 0.25, LW - 0.25, 0, H1 + 0.05)
+    # балкон третьего этажа над лоджией: плита с вылетом 1.0 м вокруг угла
+    BD = 1.0
+    box('trim', F, -BD, LW + 0.3, 0, BD, H2 - 0.1, H2 + 0.12)
+    box('trim', F, -BD, 0, -LW - 0.3, 0, H2 - 0.1, H2 + 0.12)
+    for Fr in (F, Fs):                                        # консоли под плитой
+        for u in (-BD + 0.2, LW / 2, LW):
+            Fc = Frame(Fr.o + Fr.u * u, Fr.n, -Fr.u)              # профиль в плоскости (вылет, высота)
+            prism_uz('trim', Fc, [(0, H2 - 0.1), (BD - 0.15, H2 - 0.1), (0, H2 - 0.7)], -0.09, 0.09)
+    balustrade(F, -BD + 0.12, LW + 0.25, BD - 0.14, H2 + 0.12)
+    balustrade(Fs, -BD + 0.12, LW + 0.25, BD - 0.14, H2 + 0.12)
+    # сухарики под карнизом у угла — по две оси в обе стороны
+    dentils(Fn, 0, 2 * LW, EAVE)
+    dentils(Fm, Lm - 2 * LW, Lm, EAVE)
 
 def plain(Fr, ln, bays, doors=(), rough=False):
     """Дворовый фасад или торец: простые окна без наличников, подъезды."""
@@ -197,8 +277,9 @@ def plain(Fr, ln, bays, doors=(), rough=False):
 def build():
     fr = [edge(i) for i in range(len(PLAN))]
     (Fn, Ln), (Fe, Le), (Fy1, Ly1), (Fk, Lk), (Fy2, Ly2), (Fm, Lm) = fr
-    street(Fn, Ln, 10, True, True)              # пр. Нахимова
-    street(Fm, Lm, 6, False, True)              # ул. Маяковского (лопатка у угла с проспектом)
+    street(Fn, Ln, 10, True, True, cut0=LW)     # пр. Нахимова
+    street(Fm, Lm, 6, False, True, cut1=LW)     # ул. Маяковского (лопатка у угла с проспектом)
+    corner(Fn, Fm, Lm)                          # угол 12/1: лоджия, балкон, сухарики
     plain(Fe, Le, 4)                            # СВ торец
     plain(Fy1, Ly1, 6, doors=(1, 4))            # двор
     plain(Fk, Lk, 2)                            # уступ крыла
@@ -214,7 +295,7 @@ def build():
     # трубы и водостоки
     for u, d in ((8.0, -10.0), (20.0, -9.5), (29.5, -9.5)):
         chimney(F, u, d, TOP, TOP + RISE + 0.6, 0.7)
-    for Fr, us in ((Fn, (0.35, Ln - 0.35, 14.16, 21.24)), (Fm, (Lm - 0.35,))):
+    for Fr, us in ((Fn, (Ln - 0.35, 14.16, 21.24)), (Fm, (0.35,))):     # у угла водостоков нет — лоджия
         for u in us:
             box('metal', Fr, u - 0.06, u + 0.06, 0.2, 0.32, 0.1, TOP - 0.1, bottom=False)
 
