@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом у пр. Нахимова (без адреса)",
+    "style": "model",
+    "x": -451.6,
+    "z": 466.7,
+    "file": "w91092515.glb",
+    "ox": -459,
+    "oz": 467.3,
+    "skip": [
+      "w91092515"
+    ],
+    "source": "модель models/w91092515/build.py; что видно на фото и что сделано наугад — models/w91092515/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
