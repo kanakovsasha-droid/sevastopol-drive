@@ -808,7 +808,7 @@ function* buildChunk(d, key) {
   const clearZones = defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear }));
   const makeFurn = () => {
     const f = buildFurniture(furniture, terrain, roads, props.userData.onRoad,
-                             clearZones, d.allBuildings || w.buildings);
+                             clearZones, d.allBuildings || w.buildings, w.__areasDraw);
     castShadows(f);
     farSmall(f, 450);
     return f;

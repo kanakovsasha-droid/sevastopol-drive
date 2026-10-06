@@ -311,7 +311,7 @@ function nameAtlas(names) {
   return { tex, COLS, ROWS };
 }
 
-export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones = [], buildings = null) {
+export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones = [], buildings = null, areas = null) {
   const group = new THREE.Group();
   group.name = 'furniture';
   const rand = rng(31337);
@@ -323,7 +323,28 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   const seen = (x, z) => {
     if (terrain.hasSurface && !terrain.hasSurface(terrain.surfKey(x, z))) missing.add(terrain.surfKey(x, z));
   };
-  const H = (x, z) => { seen(x, z); return surfaceTop(terrain, roadIndex, x, z); };
+  // Площадки (world.__areasDraw из buildAreas) лежат поверх земли: парковка,
+  // поле, АЗС. Плита АЗС вообще ровная — на 40-м процентиле высот своего
+  // контура, и на склоне её край на полтора метра выше грунта: киоск у АЗС
+  // (−560, 644) стоял под плитой. Отметку плиты считаем тем же правилом.
+  const AREAS = areas && areas.length
+    ? new PolyGrid(areas.filter(a => a.poly && a.poly.length >= 6).map(a => ({ poly: a.poly, a })), 90) : null;
+  const flatOf = a => {
+    if (a.__flatY !== undefined) return a.__flatY;
+    const hs = [];
+    for (let i = 0; i < a.poly.length / 2; i++) hs.push(terrain.gridHeightAt(a.poly[i * 2], a.poly[i * 2 + 1]));
+    hs.sort((p, q) => p - q);
+    return (a.__flatY = hs[Math.min(hs.length - 1, Math.round(hs.length * 0.4))]);
+  };
+  const H = (x, z) => {
+    seen(x, z);
+    const h = surfaceTop(terrain, roadIndex, x, z);
+    const it = AREAS && AREAS.find(x, z);
+    if (!it) return h;
+    const a = it.a;
+    const t = (a.k === 'fuel' ? flatOf(a) : terrain.gridHeightAt(x, z)) + (a.__lift ?? 0.13);
+    return t > h ? t : h;
+  };
   const stats = {};
 
   const byKind = {};
@@ -429,22 +450,20 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   // за тротуаром, и он висел на «ножках»; киоск на склоне одним краем висел,
   // другим тонул. Теперь щупаем все точки корпуса (те же, что FP):
   //  - мелочь (скамейка, урна, столб) садится на НИЖНЮЮ — висеть нечему,
-  //    верхний край уходит в плитку на сантиметры (скамейка — без учёта
-  //    голой земли, см. seat: иначе на тротуаре ножки уходят в плитку на 20 см);
+  //    верхний край уходит в плитку на сантиметры;
   //  - павильон и киоск садятся на ВЕРХНЮЮ (пол не тонет), а под ними —
   //    бетонная площадка до самой нижней точки (pads ниже).
-  // Тротуар surfaceTop угадывает по осевой улицы, а рисуется он по кромке
-  // растра асфальта и у площадей его бывает нет совсем: у пл. Нахимова столб
-  // знака стоял на «тротуаре» +0.2 м над голой землёй. Поэтому нижняя точка
-  // учитывает и нарисованную землю: столбу утонуть в плитке на 20 см не
-  // страшно, а площадка павильона всё равно должна доходить до грунта.
-  const seat = (x, z, a, fp, top, ground = true) => {
+  // Площадка (top) доходит и до нарисованной земли: если тротуара под
+  // павильоном на деле нет, плита закроет щель, а внутри настоящего тротуара
+  // её всё равно не видно. Мелочь садится только по surfaceTop: столб,
+  // посаженный «на землю под тротуаром», уходил в плитку на 0.2–0.8 м.
+  const seat = (x, z, a, fp, top) => {
     const ca = Math.cos(a), sa = Math.sin(a);
     let lo = Infinity, hi = -Infinity;
     for (const [lx, lz] of fp) {
       const px = x + lx * ca + lz * sa, pz = z - lx * sa + lz * ca;
       const h = H(px, pz);
-      const g = ground ? Math.min(h, terrain.gridHeightAt(px, pz)) : h;
+      const g = top ? Math.min(h, terrain.gridHeightAt(px, pz)) : h;
       if (g < lo) lo = g;
       if (h > hi) hi = h;
     }
@@ -463,7 +482,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   // place(p) → {x, z, a}. Возвращаем расставленный список: таблички остановок
   // должны сесть на ИТОГОВЫЕ места, раньше они висели по исходным точкам OSM
   // и разъезжались с павильонами.
-  const put = (kind, geo, list, place, fp = null, padKind = null, ground = true) => {
+  const put = (kind, geo, list, place, fp = null, padKind = null) => {
     if (!list?.length) return [];
     const m = new THREE.InstancedMesh(geo, mat(), list.length);
     m.castShadow = true;
@@ -477,7 +496,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
       const y0 = H(r.x, r.z);
       let y = y0;
       if (fp) {
-        const st = seat(r.x, r.z, r.a, fp, !!padKind, ground);
+        const st = seat(r.x, r.z, r.a, fp, !!padKind);
         y = st.y;
         seatStat(y0, y);
         if (padKind && st.drop > 0.06) pads.push({ x: r.x, z: r.z, a: r.a, y, drop: st.drop, k: padKind });
@@ -531,7 +550,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   if (twins) stats['остановки: дубли OSM слиты'] = twins;
   // скамейка садится лицом к ближайшей дороге ИЛИ дорожке — в сквере это аллея
   put('скамейки', benchGeo(), byKind.bench,
-    p => offRoad(p, FP.bench, (x, z) => faceRoad(x, z, 30) ?? anyAngle()), FP.bench, null, false);
+    p => offRoad(p, FP.bench, (x, z) => faceRoad(x, z, 30) ?? anyAngle()), FP.bench);
   put('урны', binGeo(), byKind.bin, p => offRoad(p, FP.pole, anyAngle), FP.pole);
   // Светофор в OSM отмечен узлом на пересечении осевых, ровно посреди
   // перекрёстка — там на асфальте стоят все 14. Выносим на бордюр и

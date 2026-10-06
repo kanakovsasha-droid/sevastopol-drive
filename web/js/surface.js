@@ -8,6 +8,9 @@
 // ниже плитки и тонула в ней ножками.
 
 const ROAD_Y = 0.14, WALK_TOP = 0.20, SIDEWALK = 2.6;
+// пешеходная дорожка (c = 4) лежит по земле на ROAD_Y − 0.025 — «Порядок
+// высот» в buildRoads; без неё скамейка у аллеи тонула ножками на 12–18 см
+const PATH_Y = 0.115;
 
 // Улице положен тротуар — то же правило, что walkRoad в buildRoads.
 const walks = r => !r.br && !r.tn && (r.c <= 2 ? r.w >= 3 : r.c === 3 && r.w >= 6);
@@ -20,5 +23,7 @@ export function surfaceTop(terrain, roadIndex, x, z) {
     const sw = hit.road.w < 5 ? 1.7 : SIDEWALK;
     if (walks(hit.road) && hit.dist < hw + sw) return terrain.driveHeightAt(x, z) + WALK_TOP;
   }
+  const path = roadIndex && roadIndex.nearest(x, z, 6, r => r.c === 4 && !r.br && !r.tn);
+  if (path && path.dist < path.road.w / 2) return terrain.gridHeightAt(x, z) + PATH_Y;
   return terrain.gridHeightAt(x, z);
 }
