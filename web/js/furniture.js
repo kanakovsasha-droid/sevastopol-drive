@@ -315,8 +315,15 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   const group = new THREE.Group();
   group.name = 'furniture';
   const rand = rng(31337);
-  // ставим на видимую поверхность: асфальт, плитку или землю (surface.js)
-  const H = (x, z) => surfaceTop(terrain, roadIndex, x, z);
+  // ставим на видимую поверхность: асфальт, плитку или землю (surface.js).
+  // Точка за швом, где земля соседнего квадрата ещё не построена, садится по
+  // сырому DEM с промахом до двух метров — такие квадраты запоминаем, и квартал
+  // пересоберёт мебель, когда они приедут (reseat.js).
+  const missing = new Set();
+  const seen = (x, z) => {
+    if (terrain.hasSurface && !terrain.hasSurface(terrain.surfKey(x, z))) missing.add(terrain.surfKey(x, z));
+  };
+  const H = (x, z) => { seen(x, z); return surfaceTop(terrain, roadIndex, x, z); };
   const stats = {};
 
   const byKind = {};
@@ -417,11 +424,46 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
     return { x: p.x, z: p.z, a: a0 };
   };
 
+  // ПОСАДКА ПО ПЯТНУ. Высота бралась в одной точке — в центре. Павильон 4 м
+  // в длину стоит у бордюра: центр на плитке, задняя стенка уже над газоном
+  // за тротуаром, и он висел на «ножках»; киоск на склоне одним краем висел,
+  // другим тонул. Теперь щупаем все точки корпуса (те же, что FP):
+  //  - мелочь (скамейка, урна, столб) садится на НИЖНЮЮ — висеть нечему,
+  //    верхний край уходит в плитку на сантиметры (скамейка — без учёта
+  //    голой земли, см. seat: иначе на тротуаре ножки уходят в плитку на 20 см);
+  //  - павильон и киоск садятся на ВЕРХНЮЮ (пол не тонет), а под ними —
+  //    бетонная площадка до самой нижней точки (pads ниже).
+  // Тротуар surfaceTop угадывает по осевой улицы, а рисуется он по кромке
+  // растра асфальта и у площадей его бывает нет совсем: у пл. Нахимова столб
+  // знака стоял на «тротуаре» +0.2 м над голой землёй. Поэтому нижняя точка
+  // учитывает и нарисованную землю: столбу утонуть в плитке на 20 см не
+  // страшно, а площадка павильона всё равно должна доходить до грунта.
+  const seat = (x, z, a, fp, top, ground = true) => {
+    const ca = Math.cos(a), sa = Math.sin(a);
+    let lo = Infinity, hi = -Infinity;
+    for (const [lx, lz] of fp) {
+      const px = x + lx * ca + lz * sa, pz = z - lx * sa + lz * ca;
+      const h = H(px, pz);
+      const g = ground ? Math.min(h, terrain.gridHeightAt(px, pz)) : h;
+      if (g < lo) lo = g;
+      if (h > hi) hi = h;
+    }
+    return { y: top ? hi : lo, drop: hi - lo };
+  };
+  // площадки под павильонами и киосками: { x, z, a, y, drop, w, d, oz }
+  const pads = [];
+  const PAD = { shelter: [4.2, 1.6, -0.55], kiosk: [2.5, 2.1, 0] };
+  stats['посадка'] = { висело: 0, тонуло: 0 };
+  const seatStat = (y0, y) => {
+    if (y0 - y > 0.15) stats['посадка'].висело++;
+    else if (y - y0 > 0.15) stats['посадка'].тонуло++;
+  };
+
   let movedTotal = 0, movedMax = 0;
   // place(p) → {x, z, a}. Возвращаем расставленный список: таблички остановок
   // должны сесть на ИТОГОВЫЕ места, раньше они висели по исходным точкам OSM
   // и разъезжались с павильонами.
-  const put = (kind, geo, list, place) => {
+  const put = (kind, geo, list, place, fp = null, padKind = null, ground = true) => {
     if (!list?.length) return [];
     const m = new THREE.InstancedMesh(geo, mat(), list.length);
     m.castShadow = true;
@@ -432,10 +474,18 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
       const r = place(p0) || { x: p0.x, z: p0.z, a: rand() * 6.283 };
       const dm = Math.hypot(r.x - p0.x, r.z - p0.z);
       if (dm > 0.05) { movedTotal++; if (dm > movedMax) movedMax = dm; }
-      pv.set(r.x, H(r.x, r.z), r.z);
+      const y0 = H(r.x, r.z);
+      let y = y0;
+      if (fp) {
+        const st = seat(r.x, r.z, r.a, fp, !!padKind, ground);
+        y = st.y;
+        seatStat(y0, y);
+        if (padKind && st.drop > 0.06) pads.push({ x: r.x, z: r.z, a: r.a, y, drop: st.drop, k: padKind });
+      }
+      pv.set(r.x, y, r.z);
       q.setFromAxisAngle(up, r.a);
       m.setMatrixAt(i, mx.compose(pv, q, sv));
-      out.push({ ...p0, x: r.x, z: r.z, a: r.a });
+      out.push({ ...p0, x: r.x, z: r.z, a: r.a, y });
     });
     m.instanceMatrix.needsUpdate = true;
     group.add(m);
@@ -477,12 +527,12 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
     }
     placedStops.push({ ...p, r });
   }
-  const stops = put('остановки', shelterGeo(), placedStops, p => p.r);
+  const stops = put('остановки', shelterGeo(), placedStops, p => p.r, FP.shelter, 'shelter');
   if (twins) stats['остановки: дубли OSM слиты'] = twins;
   // скамейка садится лицом к ближайшей дороге ИЛИ дорожке — в сквере это аллея
   put('скамейки', benchGeo(), byKind.bench,
-    p => offRoad(p, FP.bench, (x, z) => faceRoad(x, z, 30) ?? anyAngle()));
-  put('урны', binGeo(), byKind.bin, p => offRoad(p, FP.pole, anyAngle));
+    p => offRoad(p, FP.bench, (x, z) => faceRoad(x, z, 30) ?? anyAngle()), FP.bench, null, false);
+  put('урны', binGeo(), byKind.bin, p => offRoad(p, FP.pole, anyAngle), FP.pole);
   // Светофор в OSM отмечен узлом на пересечении осевых, ровно посреди
   // перекрёстка — там на асфальте стоят все 14. Выносим на бордюр и
   // разворачиваем ВДОЛЬ улицы, навстречу потоку: линзами поперёк дороги,
@@ -528,7 +578,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
       const mx = new THREE.Matrix4(), q = new THREE.Quaternion(),
             up = new THREE.Vector3(0, 1, 0), pv = new THREE.Vector3(), sv = new THREE.Vector3(1, 1, 1);
       list.forEach((r, i) => {
-        pv.set(r.x, H(r.x, r.z), r.z);
+        pv.set(r.x, seat(r.x, r.z, r.a, FP.pole, false).y, r.z);
         q.setFromAxisAngle(up, r.a);
         m.setMatrixAt(i, mx.compose(pv, q, sv));
       });
@@ -543,13 +593,37 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   // стену: 74 из 94 лежат внутри контура дома, где коробка просто тонет.
   // Выталкиваем наружу и разворачиваем ОТ стены, лицом на улицу.
   put('киоски', kioskGeo(), byKind.kiosk,
-    p => offRoad(p, FP.kiosk, (x, z, out) => out ?? faceRoad(x, z, 45) ?? anyAngle()));
+    p => offRoad(p, FP.kiosk, (x, z, out) => out ?? faceRoad(x, z, 45) ?? anyAngle()), FP.kiosk, 'kiosk');
   put('павильоны', shelterGeo(), byKind.shelter,
-    p => offRoad(p, FP.shelter, (x, z) => faceRoad(x, z, 40) ?? anyAngle()));
-  put('почта', binGeo(), byKind.postbox, p => offRoad(p, FP.pole, anyAngle));
+    p => offRoad(p, FP.shelter, (x, z) => faceRoad(x, z, 40) ?? anyAngle()), FP.shelter, 'shelter');
+  put('почта', binGeo(), byKind.postbox, p => offRoad(p, FP.pole, anyAngle), FP.pole);
   put('флагштоки', poleGeo(8.5, 0.09, [0.78, 0.78, 0.76]), byKind.flagpole,
-    p => offRoad(p, FP.pole, anyAngle));
-  put('фонари OSM', poleGeo(7.5, 0.10, STEEL), byKind.lamp, p => offRoad(p, FP.pole, anyAngle));
+    p => offRoad(p, FP.pole, anyAngle), FP.pole);
+  put('фонари OSM', poleGeo(7.5, 0.10, STEEL), byKind.lamp, p => offRoad(p, FP.pole, anyAngle), FP.pole);
+
+  // Площадки под павильонами и киосками на перепаде: бетонная плита от пола
+  // корпуса до нижней точки земли под ним (+15 см в грунт). Один инстанс-меш
+  // на квартал — плюс один вызов отрисовки, только если площадки есть.
+  if (pads.length) {
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    box.translate(0, -0.5, 0);                       // верх — на y = 0, растёт вниз
+    const geo = merge([{ geo: box, color: [0.60, 0.59, 0.56] }]);
+    const m = new THREE.InstancedMesh(geo, mat(), pads.length);
+    m.receiveShadow = true;
+    const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+    pads.forEach((p, i) => {
+      const [w, d, oz] = PAD[p.k];
+      // центр плиты сдвинут вдоль локальной оси z корпуса (у павильона — под крышу)
+      const ca = Math.cos(p.a), sa = Math.sin(p.a);
+      q.setFromAxisAngle(up, p.a);
+      m.setMatrixAt(i, mx.compose(new THREE.Vector3(p.x + oz * sa, p.y + 0.02, p.z + oz * ca), q,
+                                  new THREE.Vector3(w, p.drop + 0.17, d)));
+    });
+    m.instanceMatrix.needsUpdate = true;
+    m.name = 'площадки павильонов';
+    group.add(m);
+    stats['площадки под павильонами'] = pads.length;
+  }
 
   // ---------------- замер: остановки на асфальте до и после ----------------
   // Растр тот же самый, что у дорог, деревьев и аудита (world.__coverage →
@@ -577,7 +651,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
     named.forEach((p, i) => {
       const a = p.a;                                   // тот же угол, что у павильона
       const ux = Math.cos(a), uz = -Math.sin(a);       // вдоль таблички
-      const y = H(p.x, p.z) + Y;
+      const y = p.y + Y;                               // высота павильона (посадка по пятну)
       const base = P.length / 3;
       const cu = (i % COLS) / COLS, cv = 1 - Math.floor(i / COLS) / ROWS;
       for (const [sx, sy] of [[-1, 0], [1, 0], [1, 1], [-1, 1]]) {
@@ -630,6 +704,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
         const x0 = ax + dx * t0, z0 = az + dz * t0, x1 = ax + dx * t1, z1 = az + dz * t1;
         if (inClear((x0 + x1) / 2, (z0 + z1) / 2)) continue;
         const nx = -dz / L * sp.t / 2, nz = dx / L * sp.t / 2;
+        seen(x0, z0); seen(x1, z1);
         const g0 = terrain.gridHeightAt(x0, z0), g1 = terrain.gridHeightAt(x1, z1);
         const q = [
           [x0 + nx, g0, z0 + nz], [x1 + nx, g1, z1 + nz],
@@ -658,6 +733,8 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
     stats['заборы и стены'] = furniture.barriers.length;
   }
 
+  if (missing.size) stats['ждёт землю соседа'] = [...missing].join(' ');
+  group.userData.missing = [...missing];
   group.userData.stats = stats;
   return group;
 }

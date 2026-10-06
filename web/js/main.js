@@ -7,6 +7,7 @@ import { updateFlora, floraStats, warmFlora } from './flora.js?v=5ecfe1f7';
 import { buildYards, buildStructures } from './yards.js?v=5ecfe1f7';
 import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=5ecfe1f7';
 import { buildFurniture } from './furniture.js?v=5ecfe1f7';
+import { waitGround, groundReady } from './reseat.js';
 import { buildLandmarks, setModelWarm, updateModels } from './landmarks.js?v=5ecfe1f7';
 import { buildSigns } from './signs.js?v=5ecfe1f7';
 import { loadStreet, buildStreet, streetFurniture } from './street.js?v=5ecfe1f7';
@@ -454,6 +455,8 @@ class TerrainTiles {
           // а не пачкой при первом взгляде в его сторону (см. revealSome)
           if (r.value.frustumCulled) { r.value.frustumCulled = false; unculled.push(r.value); }
           this.mesh.set(j.key, r.value);
+          // мебель соседних кварталов, стоявшая на этом квадрате по сырому DEM
+          groundReady(j.key, g => g.traverse(o => { if (o.geometry || o.material) junk.push(o); }));
         }
         this.job = null;
         this.stats.built++; this.stats.ms += ms;
@@ -802,13 +805,18 @@ function* buildChunk(d, key) {
   lap('улица');
   yield; pt = performance.now();
   at('мебель');
-  const furn = buildFurniture(furniture, terrain, roads,
-                              props.userData.onRoad,
-                              defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear })),
-                              d.allBuildings || w.buildings);
-  castShadows(furn);
-  farSmall(furn, 450);
+  const clearZones = defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear }));
+  const makeFurn = () => {
+    const f = buildFurniture(furniture, terrain, roads, props.userData.onRoad,
+                             clearZones, d.allBuildings || w.buildings);
+    castShadows(f);
+    farSmall(f, 450);
+    return f;
+  };
+  const furn = makeFurn();
   g.add(furn);
+  // за швом соседняя земля ещё не построена — пересадим, когда приедет (reseat.js)
+  waitGround(furn, makeFurn);
   lap('мебель');
   yield; pt = performance.now();
   at('вывески');
