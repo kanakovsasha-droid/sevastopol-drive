@@ -11,7 +11,8 @@
 //
 //   node tools/build-terraces.mjs
 //
-// Формат: { v, items: [{ id, k: 'park'|'square', poly: [x,z,…] (0.5 м), a: м² }] }
+// Формат: { v, items: [{ id, k: 'park'|'square', poly: [x,z,…] (0.5 м), a: м², by? }] }
+// (by — id улиц, по которым сквер ровняется сам, см. BY ниже)
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { project } from './config.mjs';
@@ -68,6 +69,16 @@ for (const e of raw) {
   }
   put('w' + e.id, 'square', poly);
 }
+
+// ---- руками: сквер ровняется по ОДНОЙ улице (поле by — её id в world.json).
+// Сквер-клин между верхней и нижней улицей по общей плоскости улиц выходил
+// наклонным газоном поперёк; в натуре он — терраса вровень с верхней улицей
+// (отметка ближайшей её точки: вдоль — уклон улицы, поперёк — ровно) и
+// откос-стенка к нижней. Владелец, п. 37 CLOUD.md.
+const BY = {
+  w93691819: ['w27718361', 'w24799410'],    // сквер им. Бузина: ул. Пушкина, Красный спуск; к Троллейбусному — откос
+};
+for (const [id, by] of Object.entries(BY)) if (items.has(id)) items.get(id).by = by;
 
 const list = [...items.values()].sort((a, b) => (a.id < b.id ? -1 : 1));
 const out = { v: 1, items: list };

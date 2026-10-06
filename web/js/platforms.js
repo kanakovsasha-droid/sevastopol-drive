@@ -451,6 +451,31 @@ export function* terracesGen(ext, ne, ox, oz, step, cw, cap, list, keep, roads =
     LEVEL.set(key, pl);
     return pl;
   };
+  // СКВЕР ПО ОДНОЙ УЛИЦЕ (поле by, руками в build-terraces.mjs). Клин между
+  // верхней и нижней улицей общая плоскость клала наклонным газоном поперёк;
+  // в натуре это терраса вровень с верхней улицей: в каждой точке — отметка
+  // ближайшей точки её осевой, вдоль сквер идёт её уклоном, поперёк ровный,
+  // к нижней улице — откос (коридор дорог его не пускает на полотно).
+  const byR = new Map();
+  const byRoads = it => {
+    if (!it.by) return null;
+    if (!byR.has(it)) byR.set(it, roads.filter(r => it.by.includes(r.id) && hasLevels(r.id)));
+    return byR.get(it).length ? byR.get(it) : null;
+  };
+  const byLevel = (rs, x, z) => {
+    let best = null, bd = Infinity;
+    for (const r of rs) {
+      const q = r.pts;
+      for (let t = 0; t + 3 < q.length; t += 2) {
+        const ax = q[t], az = q[t + 1], vx = q[t + 2] - ax, vz = q[t + 3] - az, L2 = vx * vx + vz * vz;
+        let u = L2 > 0 ? ((x - ax) * vx + (z - az) * vz) / L2 : 0;
+        u = u < 0 ? 0 : u > 1 ? 1 : u;
+        const d = Math.hypot(ax + vx * u - x, az + vz * u - z);
+        if (d < bd) { bd = d; best = r; }
+      }
+    }
+    return best ? levelAt(best.id, best.pts, x, z) : null;
+  };
   const ix = tIndex(list);
   const seen = new Set(), mine = [];
   for (let j = Math.floor((keep[1] - T_FEATHER) / 512); j <= Math.floor((keep[3] + T_FEATHER) / 512); j++)
@@ -476,10 +501,11 @@ export function* terracesGen(ext, ne, ox, oz, step, cw, cap, list, keep, roads =
   let made = 0;
   for (const it of mine) {
     const p = it.poly, n = p.length / 2;
-    const pl = planeOf(it);
-    const small = it.a <= T_SMALL || !!pl;
+    const rs = byRoads(it);
+    const pl = rs ? null : planeOf(it);
+    const small = it.a <= T_SMALL || !!pl || !!rs;
     let P = null;
-    if (pl) P = 0;
+    if (pl || rs) P = 0;
     else if (small) {
       P = LEVEL.get('t:' + it.id);
       if (P === undefined) {
@@ -525,6 +551,7 @@ export function* terracesGen(ext, ne, ox, oz, step, cw, cap, list, keep, roads =
         w *= roadFactor(x, z);
         if (w <= 0) continue;
         let tgt = pl ? pl.a + pl.bx * (x - pl.cx) + pl.bz * (z - pl.cz) : P;
+        if (rs) { tgt = byLevel(rs, x, z); if (tgt === null) continue; }
         if (!small) {                     // сглаживание: среднее по окну
           let s = 0, c = 0;
           for (let dj = -T_SMOOTH; dj <= T_SMOOTH; dj++)
@@ -533,7 +560,7 @@ export function* terracesGen(ext, ne, ox, oz, step, cw, cap, list, keep, roads =
           w *= 0.75;
         }
         acc[k] += w * tgt; accW[k] += w;
-        if (pl) byPl[k] = 1;
+        if (pl || rs) byPl[k] = 1;
         if (w > wmax[k]) wmax[k] = w;
       }
     }
