@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Угловой дом с лоджией, Б. Морская 33 / ул. Суворова",
+    "style": "model",
+    "x": -172.3,
+    "z": 1380,
+    "file": "bmorskaya33.glb",
+    "ox": -183,
+    "oz": 1402.2,
+    "skip": [
+      "w92707334"
+    ],
+    "source": "модель models/bmorskaya33/build.py; что видно на фото и что сделано наугад — models/bmorskaya33/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
