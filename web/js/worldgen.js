@@ -6,6 +6,7 @@ import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfiel
 import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt, centerWeight } from './roadlevels.js?v=5ecfe1f7';
 import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=5ecfe1f7';
 import { resolveAreas, sportSkipIds } from './sport.js?v=5ecfe1f7';
+import { applyFieldFlats, fieldLevel } from './fields.js?v=5ecfe1f7';
 import { planParking, roadSegIndex } from './parking.js?v=5ecfe1f7';
 import { seriesOf, seriesWall, seriesExtras } from './series.js?v=5ecfe1f7';
 import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=5ecfe1f7';
@@ -1492,6 +1493,9 @@ export function* buildTerrainTile(terrain, index, opts) {
   const plat = yield* platformsGen(ext, ne, ex0, ez0, step, cwE, capE, world.buildings,
                                    [gx0 - 0.01, gz0 - 0.01, gx0 + (n - 1) * step + 0.01, gz0 + (n - 1) * step + 0.01], mlev);
   applySiteCuts(ext, ne, ex0, ez0, step);
+  // спортполя — снова на свою отметку: открытие, террасы и откосы площадок
+  // домов их сминали (fields.js)
+  applyFieldFlats(ext, ne, ex0, ez0, step, corrAt, world.buildings);
   // ДОРОГИ ПЕРВИЧНЫ (roadlevels.js): под самой проезжей частью центра земля
   // не ниже полотна, что бы с ней ни сделали площадки домов, террасы и
   // срезы. Срезанная под площадку земля у кромки опускала профиль езды на
@@ -4422,6 +4426,10 @@ export function* buildAreas(world, terrain) {
       hs.sort((p, q) => p - q);
       flatY = hs[Math.min(hs.length - 1, Math.round(hs.length * 0.4))];
       liftOf.set(a, { flat: flatY, lift: LIFT });
+    } else if (layer > 0 && (flatY = fieldLevel(a.id)) !== null) {
+      // поле на ровной площадке (fields.js) — ровно на её отметке
+      liftOf.set(a, { flat: flatY, lift: LIFT });
+      a.__flatY = flatY;
     }
 
     // Контур way в OSM замкнут: последняя точка совпадает с первой. Оставлять

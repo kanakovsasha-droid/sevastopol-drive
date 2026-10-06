@@ -35,6 +35,7 @@ import { loadFootprints, monumentTest } from './footprints.js?v=5ecfe1f7';
 import { loadSquares, addFarSquares, addSquares } from './squares.js?v=5ecfe1f7';
 import { loadSkateparks, buildSkateparks } from './skatepark.js?v=5ecfe1f7';
 import { padBlocker } from './pads.js?v=5ecfe1f7';
+import { buildFieldWalls } from './fields.js?v=5ecfe1f7';
 import { loadSchools, prepSchools, buildSchools } from './schools.js?v=5ecfe1f7';
 import { prepFuel } from './fuel.js?v=5ecfe1f7';
 import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=5ecfe1f7';
@@ -743,6 +744,7 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
   at('спорт');
   g.add(buildSport(w, terrain));
+  g.add(buildFieldWalls(w, terrain));               // подпорные стенки ровных полей
   g.add(buildSkateparks(w, terrain));                // фигуры скейт-парков
   lap('спорт');
   yield; pt = performance.now();
