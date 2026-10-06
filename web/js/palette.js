@@ -144,6 +144,9 @@ export function farColors(b) {
   const w = b.wc ? hexRGB(b.wc) : ser ? ser.color : wallColor(b);
   const flat = b.rs === 'flat' || b.fx === 'glass' || (b.h || 0) > 22;
   const r = b.rc ? hexRGB(b.rc) : (ser && ser.roof && !flat) ? ser.roof : roofColor(b, flat);
-  return [[s2l(w[0]) * 0.94, s2l(w[1]) * 0.94, s2l(w[2]) * 0.94], r];
+  // издали крашеная жесть пестрит и зелёная кровля читается как роща, а к
+  // серому — мутнеет: кровли дальнего слоя наполовину к прежней терракоте
+  return [[s2l(w[0]) * 0.94, s2l(w[1]) * 0.94, s2l(w[2]) * 0.94],
+          [(r[0] + 0.55) / 2, (r[1] + 0.33) / 2, (r[2] + 0.24) / 2]];
 }
 const hexRGB = h => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
