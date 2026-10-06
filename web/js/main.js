@@ -32,7 +32,7 @@ import { buildModelPlinths } from './plinth.js?v=5ecfe1f7';
 import { CarCam } from './carcam.js?v=5ecfe1f7';
 import { Precip } from './precip.js?v=5ecfe1f7';
 import { loadFootprints, monumentTest } from './footprints.js?v=5ecfe1f7';
-import { loadSquares, addFarSquares, addSquares } from './squares.js?v=5ecfe1f7';
+import { loadSquares, addFarSquares, addSquares, squareFurniture } from './squares.js?v=5ecfe1f7';
 import { loadSkateparks, buildSkateparks } from './skatepark.js?v=5ecfe1f7';
 import { padBlocker } from './pads.js?v=5ecfe1f7';
 import { loadSchools, prepSchools, buildSchools } from './schools.js?v=5ecfe1f7';
@@ -682,6 +682,7 @@ function* buildChunk(d, key) {
   w.allBuildings = d.allBuildings || w.buildings;   // парковкам и оградам: дома соседа на шве
   const furniture = fill(d.furniture, ['points', 'barriers']);
   furniture.points = streetFurniture(furniture.points);   // Большая Морская ставит своё (street.js)
+  furniture.points = squareFurniture(furniture.points, w); // скамейки скверов без OSM (squares.js)
   const part = d.key || key;
   // ?prof=1 — разбивка сборки по этапам: без неё непонятно, что именно
   // стоит те самые полтораста миллисекунд на плотном квартале.
