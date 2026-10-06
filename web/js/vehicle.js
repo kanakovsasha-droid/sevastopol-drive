@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '../lib/GLTFLoader.js?v=b67046f1';
-import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=b67046f1';
-import { atlasCarModel } from './caratlas.js?v=b67046f1';
+import { GLTFLoader } from '../lib/GLTFLoader.js?v=8c71f0ed';
+import { RoomEnvironment } from '../lib/RoomEnvironment.js?v=8c71f0ed';
+import { atlasCarModel } from './caratlas.js?v=8c71f0ed';
 
 // Физика машины. Третий заход.
 //

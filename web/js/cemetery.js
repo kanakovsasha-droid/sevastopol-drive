@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { plantFlora } from './flora.js?v=b67046f1';
+import { plantFlora } from './flora.js?v=8c71f0ed';
 
 // Кладбища. Старое городское кладбище на улице Пожарова (вокруг церкви Всех
 // Святых), Караимское и Еврейское рядом с ним.
