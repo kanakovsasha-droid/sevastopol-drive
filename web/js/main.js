@@ -1352,7 +1352,7 @@ function bindInput() {
   // Геймпад: кнопки он сам шлёт как клавиши, оси забирает цикл (loop).
   pad = new Gamepad({
     mode: () => mode,
-    overlay: () => document.querySelector('#pause.on') || document.querySelector('#settings.on') || document.querySelector('#menu.on'),
+    overlay: () => document.querySelector('#pause.on') || document.querySelector('#races.on') || document.querySelector('#settings.on') || document.querySelector('#menu.on'),
     toast: t => hud?.toast(t),
   });
 }
