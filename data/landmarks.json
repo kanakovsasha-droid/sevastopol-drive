@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "ТЦ «Диалог» (Большая Морская, 23)",
+    "style": "model",
+    "x": -218.1,
+    "z": 1201.6,
+    "file": "tc_dialog.glb",
+    "ox": -214.1,
+    "oz": 1204.2,
+    "skip": [
+      "w166878757"
+    ],
+    "source": "модель models/tc_dialog/build.py; что видно на фото и что сделано наугад — models/tc_dialog/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
