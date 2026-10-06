@@ -151,7 +151,7 @@ export class Races {
     this.stop();
     const [x, z] = r.start;
     this.jumpTo(x, z);
-    this.run = { r, state: 'load', wait: 0, gate: 0, t: 0, splits: [], best: loadBest(r.id), lx: x, lz: z };
+    this.run = { r, state: 'load', wait: 0, gate: 0, t: 0, splits: [], best: loadBest(r.id), lx: x, lz: z, fixed: -1 };
     this._show(0); this._show(1);
     this.hud.n.textContent = r.name;
     this.hud.t.textContent = fmt(0);
@@ -214,6 +214,9 @@ export class Races {
     if (run.state === 'go') run.t += dt;
 
     const gs = run.r.gates, g = gs[run.gate];
+    // арку через одну ставили по грубому рельефу (точные высоты квадрата
+    // приезжают, когда он рядом) — подъехали на 250 м, перекладываем
+    if (run.fixed !== run.gate && Math.hypot(px - g[0], pz - g[1]) < 250) { run.fixed = run.gate; this._show(run.gate); }
     const fx = Math.sin(g[2]), fz = Math.cos(g[2]);
     const along = (x, z) => (x - g[0]) * fx + (z - g[1]) * fz;
     const across = Math.abs((px - g[0]) * fz - (pz - g[1]) * fx);
