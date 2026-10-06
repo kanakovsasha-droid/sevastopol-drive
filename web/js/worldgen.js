@@ -7,6 +7,7 @@ import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoad
 import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=5ecfe1f7';
 import { resolveAreas, sportSkipIds } from './sport.js?v=5ecfe1f7';
 import { planParking, roadSegIndex } from './parking.js?v=5ecfe1f7';
+import { pathDupIndex, densePath } from './pathdup.js';
 import { seriesOf, seriesWall, seriesExtras } from './series.js?v=5ecfe1f7';
 import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=5ecfe1f7';
 import { castleExtras } from './castle.js?v=5ecfe1f7';
@@ -4640,43 +4641,48 @@ export function* buildAreas(world, terrain) {
   // повороте аллея рвётся или наезжает сама на себя.
   {
     const LIFT = LIFT0 + 7 * 0.035;
+    // Пролёты, которые уже рисует дорожка OSM или полотно, выкидываем, а
+    // остаток сгущаем до 4 м (pathdup.js): иначе вторая лента висела над землёй.
+    const DUP = (pl.paths || []).length ? pathDupIndex(allRoads) : null;
     for (const pa of pl.paths || []) {
-      const q = pa.pts, m = q.length / 2;
-      if (m < 2) continue;
       const hw = Math.max(0.9, (pa.w || 3) / 2);
-      const kind = KIND.path;
-      const col = pa.s === 'ground' ? [0.412, 0.353, 0.271] : BASE.path;
-      let prev = null, along = 0;
-      if ((work += m) > 400) { work = 0; yield; }
-      for (let i = 0; i < m; i++) {
-        let nx = 0, nz = 0, cnt = 0;
-        if (i > 0) {
-          const dx = q[i * 2] - q[i * 2 - 2], dz = q[i * 2 + 1] - q[i * 2 - 1];
-          const l = Math.hypot(dx, dz);
-          if (l > 1e-6) { nx += -dz / l; nz += dx / l; cnt++; along += l; }
+      for (const q of densePath(pa.pts, hw, DUP)) {
+        const m = q.length / 2;
+        if (m < 2) continue;
+        const kind = KIND.path;
+        const col = pa.s === 'ground' ? [0.412, 0.353, 0.271] : BASE.path;
+        let prev = null, along = 0;
+        if ((work += m) > 400) { work = 0; yield; }
+        for (let i = 0; i < m; i++) {
+          let nx = 0, nz = 0, cnt = 0;
+          if (i > 0) {
+            const dx = q[i * 2] - q[i * 2 - 2], dz = q[i * 2 + 1] - q[i * 2 - 1];
+            const l = Math.hypot(dx, dz);
+            if (l > 1e-6) { nx += -dz / l; nz += dx / l; cnt++; along += l; }
+          }
+          if (i < m - 1) {
+            const dx = q[i * 2 + 2] - q[i * 2], dz = q[i * 2 + 3] - q[i * 2 + 1];
+            const l = Math.hypot(dx, dz);
+            if (l > 1e-6) { nx += -dz / l; nz += dx / l; cnt++; }
+          }
+          let len = Math.hypot(nx, nz);
+          if (!cnt || len < 1e-6) { nx = 1; nz = 0; len = 1; cnt = 1; }
+          const sc = Math.min(1.6, cnt / len);
+          nx /= len; nz /= len;
+          const cur = [];
+          for (const sg of [-1, 1]) {
+            const x = q[i * 2] + nx * sg * hw * sc, z = q[i * 2 + 1] + nz * sg * hw * sc;
+            P.push(x, H(x, z) + LIFT, z);
+            C.push(enc(col[0]), enc(col[1]), enc(col[2]));
+            U.push(along, sg * hw, hw * 2, 0);
+            K.push(kind); S.push(0);
+            cur.push(base++);
+          }
+          if (prev) I.push(prev[0], prev[1], cur[0], prev[1], cur[1], cur[0]);
+          prev = cur;
         }
-        if (i < m - 1) {
-          const dx = q[i * 2 + 2] - q[i * 2], dz = q[i * 2 + 3] - q[i * 2 + 1];
-          const l = Math.hypot(dx, dz);
-          if (l > 1e-6) { nx += -dz / l; nz += dx / l; cnt++; }
-        }
-        let len = Math.hypot(nx, nz);
-        if (!cnt || len < 1e-6) { nx = 1; nz = 0; len = 1; cnt = 1; }
-        const sc = Math.min(1.6, cnt / len);
-        nx /= len; nz /= len;
-        const cur = [];
-        for (const sg of [-1, 1]) {
-          const x = q[i * 2] + nx * sg * hw * sc, z = q[i * 2 + 1] + nz * sg * hw * sc;
-          P.push(x, H(x, z) + LIFT, z);
-          C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-          U.push(along, sg * hw, hw * 2, 0);
-          K.push(kind); S.push(0);
-          cur.push(base++);
-        }
-        if (prev) I.push(prev[0], prev[1], cur[0], prev[1], cur[1], cur[0]);
-        prev = cur;
+        drawn++;
       }
-      drawn++;
     }
   }
 
