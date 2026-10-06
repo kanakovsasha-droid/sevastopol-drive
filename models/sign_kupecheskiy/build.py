@@ -30,8 +30,11 @@ ug = (W(GATE[0], GATE[1]) - F.o).dot(F.u)
 # (worldgen.js, yFloor = gmax); модель же ставится на землю в своём начале.
 # Замер в игре: gmax 76.19, земля у начала 73.11 — этаж на 3.08 м выше.
 FLOOR = 76.19 - 73.11
-FH = 10.7 / 2                      # высота этажа у сталинки в два этажа (facades.js)
-ZS = FLOOR + FH + 0.14             # низ букв — на тяге над первым этажом, под окнами второго
+# этаж — как в facades.js (stalinka): fh0 = 3.6 м, число этажей округляется
+import math as _m
+NF = max(1, _m.floor(10.7 / 3.6 + 0.35))
+FH = 10.7 / NF
+ZS = FLOOR + FH + 0.13             # низ букв — на тяге над первым этажом, под окнами второго
 
 mat('yellow', (0.93, 0.86, 0.12), 0.45)
 mat('dkgreen', (0.07, 0.30, 0.12), 0.5)
@@ -42,17 +45,17 @@ lod_keep('blue')               # вдали — только короб, бук�
 
 d = 0.12
 # «КУПЕЧЕСКИЙ»: жёлтые буквы и тёмно-зелёная обводка за ними
-text('dkgreen', F, 'КУПЕЧЕСКИЙ', us, ZS - 0.06, 0.92, d, depth=0.06, fnt='Georgia Bold.ttf', width=8.9, res=1)
-text('yellow', F, 'КУПЕЧЕСКИЙ', us, ZS, 0.8, d + 0.06, depth=0.08, fnt='Georgia Bold.ttf', width=8.6, res=1)
+text('dkgreen', F, 'КУПЕЧЕСКИЙ', us, ZS - 0.05, 0.62, d, depth=0.06, fnt='Georgia Bold.ttf', width=7.9, res=1)
+text('yellow', F, 'КУПЕЧЕСКИЙ', us, ZS, 0.52, d + 0.06, depth=0.08, fnt='Georgia Bold.ttf', width=7.6, res=1)
 # табличка слева от входа (к арке): «КУПЕЧЕСКИЙ / МАРКЕТ»
 ul = max(us - 4.2, ug + GATE[2] / 2 + 2.0 + 0.9)
-board(F, ul - 0.9, ul + 0.9, FLOOR + 2.55, FLOOR + 3.35, d, 'olive', depth=0.08)
-text('white', F, 'КУПЕЧЕСКИЙ', ul, FLOOR + 3.0, 0.2, d + 0.08, depth=0.03, width=1.55)
-text('white', F, 'МАРКЕТ', ul, FLOOR + 2.68, 0.14, d + 0.08, depth=0.03, width=0.75)
+board(F, ul - 0.9, ul + 0.9, FLOOR + 2.05, FLOOR + 2.85, d, 'olive', depth=0.08)
+text('white', F, 'КУПЕЧЕСКИЙ', ul, FLOOR + 2.5, 0.2, d + 0.08, depth=0.03, width=1.55)
+text('white', F, 'МАРКЕТ', ul, FLOOR + 2.18, 0.14, d + 0.08, depth=0.03, width=0.75)
 # справа — «АВИАКАССА»
 ur = us + 4.6
-board(F, ur - 1.1, ur + 1.1, FLOOR + 2.55, FLOOR + 3.15, d, 'blue', depth=0.08)
-text('white', F, 'АВИАКАССА', ur, FLOOR + 2.72, 0.26, d + 0.08, depth=0.03, width=1.9)
+board(F, ur - 1.1, ur + 1.1, FLOOR + 2.15, FLOOR + 2.75, d, 'blue', depth=0.08)
+text('white', F, 'АВИАКАССА', ur, FLOOR + 2.32, 0.26, d + 0.08, depth=0.03, width=1.9)
 
 print('НАЧАЛО', round(X0, 2), round(Z0, 2), 'арка u', round(ug - us, 2))
 finish('sign_kupecheskiy', __file__)
