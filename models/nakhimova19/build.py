@@ -3,6 +3,10 @@
 #
 #   blender -b --python models/nakhimova19/build.py -- [glb]
 #
+# Главный фасад переделан по описанию панорам владельца (docs/CLOUD.md,
+# п. 38): белый П-портал на два этажа со сплошным витражом и вывеской O'KEY —
+# см. portal().
+#
 # Фото нет: описание в refs/center-models.json — «3 этажа, ширина до 18 м,
 # ломаный план; на 1 этаже магазин «Окей»», стены кремовые #e0d6bd, кровля
 # #7a7a7a. Поэтому план — ровно контур OSM (16 рёбер, вогнутый), а фасад
@@ -13,7 +17,7 @@
 # поднимается до 24.5 м — первый этаж там уходит в склон, окна, которые
 # оказались бы в земле, не ставим. Ноль высоты — тротуар у середины главного
 # фасада. Что наугад — NOTES.md.
-import sys, os
+import sys, os, math, bpy
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from kit import *
 
@@ -34,7 +38,12 @@ COL['stone'] = ((0.56, 0.54, 0.50), 0.9)      # цоколь
 COL['roof'] = ((0.48, 0.48, 0.48), 0.9)       # кровля #7a7a7a
 COL['glass'] = ((0.10, 0.13, 0.16), 0.15)
 COL['metal'] = ((0.20, 0.21, 0.22), 0.5)
-COL['wall2'] = ((0.80, 0.76, 0.66), 0.9)      # фриз под вывеской — тоном темнее
+# шторы и рама портала — материалами wall2 / wall3: они остаются в дальнем
+# уровне (LOD_KEEP в kit.py), иначе издали в портале была бы дыра
+COL['wall2'] = ((0.86, 0.83, 0.76), 0.6)      # светлые шторы за витражом
+COL['wall3'] = ((0.95, 0.94, 0.91), 0.85)     # белая рама портала
+COL['sign'] = ((0.27, 0.12, 0.36), 0.5)       # фон вывески O'KEY — тёмно-фиолетовый
+COL['signtxt'] = ((0.97, 0.97, 0.97), 0.4)
 
 GROUND = -3.0
 PL = 0.4                       # цоколь
@@ -83,6 +92,62 @@ def sill(F, cu, w, za):
     face('trim', [F.p(cu - w / 2 - 0.05, -0.2, za), F.p(cu + w / 2 + 0.05, -0.2, za),
                   F.p(cu + w / 2 + 0.05, 0.07, za), F.p(cu - w / 2 - 0.05, 0.07, za)], UP)
 
+# ------------------------------------------------------------------ портал «О'КЕЙ»
+# По панорамам владельца (docs/CLOUD.md, п. 38): белая П-образная рама-портал
+# на два этажа, внутри сплошной стеклянный витраж с тонкой сеткой рам и
+# светлыми шторами, слева в витраже большая вывеска O'KEY — тёмно-фиолетовый
+# фон, белые буквы. Третий этаж над порталом — прежняя стена с окнами.
+PIER = 1.1                     # ширина опор рамы
+ZT = PL + F1 + FH              # верх витража = низ ригеля рамы, 8.0
+GD = -0.35                     # глубина витража от лица фасада
+# u рамки идёт справа налево, если смотреть с проспекта: «слева» — у конца
+LM = math.dist(POLY[MAIN], POLY[(MAIN + 1) % len(POLY)])   # длина главного фасада, 39.2
+SIGN = (LM - PIER - 0.9 - 8.4, LM - PIER - 0.9, PL + F1 + 0.35, PL + F1 + 2.75)   # u0, u1, z0, z1
+
+def letters(F, text, u0, u1, z0, z1, d, m='signtxt'):
+    """Буквы вывески: шрифт Blender в сетку, по центру прямоугольника."""
+    cu = bpy.data.curves.new('t', 'FONT'); cu.body = text; cu.align_x = 'CENTER'; cu.align_y = 'CENTER'
+    ob = bpy.data.objects.new('t', cu); bpy.context.scene.collection.objects.link(ob)
+    me = ob.evaluated_get(bpy.context.evaluated_depsgraph_get()).to_mesh()
+    xs = [v.co.x for v in me.vertices]; ys = [v.co.y for v in me.vertices]
+    k = min((u1 - u0) * 0.86 / (max(xs) - min(xs)), (z1 - z0) * 0.62 / (max(ys) - min(ys)))
+    mx, my = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+    for poly in me.polygons:
+        pts = [F.p((u0 + u1) / 2 - (me.vertices[j].co.x - mx) * k, d,      # u — справа налево
+                   (z0 + z1) / 2 + (me.vertices[j].co.y - my) * k) for j in poly.vertices]
+        face(m, pts, F.N())
+    bpy.data.objects.remove(ob)
+
+def portal(F, L):
+    # рама: две опоры и ригель с вылетом 0.45 м, белые
+    box('wall3', F, 0, PIER, 0, 0.45, GROUND, ZT + 0.9)
+    box('wall3', F, L - PIER, L, 0, 0.45, GROUND, ZT + 0.9)
+    box('wall3', F, PIER, L - PIER, 0, 0.45, ZT, ZT + 0.9)
+    # витраж: нижний ярус — стекло, верхний — светлые шторы за стеклом
+    u0, u1 = PIER, L - PIER
+    z1 = PL + F1                                   # межэтажная плита
+    face('glass', [F.p(u0, GD, PL + 0.1), F.p(u1, GD, PL + 0.1), F.p(u1, GD, z1), F.p(u0, GD, z1)], F.N())
+    face('wall2', [F.p(u0, GD, z1), F.p(u1, GD, z1), F.p(u1, GD, ZT), F.p(u0, GD, ZT)], F.N())
+    # тонкая сетка рам: стойки через ~1.3 м, ригели по ярусам, плита — шире
+    n = round((u1 - u0) / 1.3)
+    for k in range(n + 1):
+        u = u0 + (u1 - u0) * k / n
+        box('metal', F, u - 0.03, u + 0.03, GD, GD + 0.08, PL + 0.1, ZT, bottom=False)
+    for z in (PL + 0.1, PL + 2.9, PL + F1 + 1.7):
+        box('metal', F, u0, u1, GD, GD + 0.08, z - 0.03, z + 0.03, bottom=False)
+    box('trim', F, u0, u1, GD, GD + 0.1, z1 - 0.15, z1 + 0.15, bottom=False)
+    box('stone', F, u0, u1, GD - 0.05, GD + 0.12, GROUND, PL + 0.1)     # цоколь витража
+    # вывеска слева в витраже
+    box('sign', F, SIGN[0], SIGN[1], GD, GD + 0.18, SIGN[2], SIGN[3])
+    letters(F, "O'KEY", SIGN[0], SIGN[1], SIGN[2], SIGN[3], GD + 0.19)
+    # вход по середине: двери в тёмной раме, козырёк, крыльцо
+    cu, w = L / 2, 2.6
+    box('metal', F, cu - w / 2, cu + w / 2, GD, GD + 0.12, PL + 2.7, PL + 2.9, bottom=False)
+    for uu in (cu - w / 2, cu, cu + w / 2):
+        box('metal', F, uu - 0.06, uu + 0.06, GD, GD + 0.12, PL + 0.1, PL + 2.7, bottom=False)
+    box('metal', F, cu - w / 2 - 0.6, cu + w / 2 + 0.6, 0, 1.5, PL + 3.45, PL + 3.6)        # козырёк
+    box('stone', F, cu - w / 2 - 0.4, cu + w / 2 + 0.4, 0, 1.2, GROUND, PL)                # крыльцо
+
 def side(i):
     F, L = edge_frame(i)
     g0, g1 = GH[i], GH[(i + 1) % len(POLY)]
@@ -94,9 +159,9 @@ def side(i):
         for k in range(n):
             cu = step * (k + 0.5)
             for f in range(NF):
+                if i == MAIN and f < 2:
+                    continue                      # 1–2 этажи главного фасада — витраж портала
                 if f == 0:
-                    if i == MAIN:
-                        continue                  # витрины — отдельно
                     za, h, w = PL + 1.2, 1.7, 1.5
                 else:
                     za, h, w = PL + F1 + (f - 1) * FH + 0.9, 1.5, 1.5
@@ -104,32 +169,14 @@ def side(i):
                     continue                      # окно ушло бы в склон
                 holes.append((cu - w / 2, cu + w / 2, za, za + h))
                 wins.append((cu, w, za, h))
-    shop = []
     if i == MAIN:
-        n = 10
-        step = L / n
-        for k in range(n):
-            cu = step * (k + 0.5)
-            w = step - 0.7
-            holes.append((cu - w / 2, cu + w / 2, PL + 0.45, PL + 3.3))
-            shop.append((cu, w, k == n // 2))
+        holes.append((PIER, L - PIER, PL + 0.1, ZT))
     wall(F, 0, L, GROUND, TOP, 0, holes, reveal=0.2)
     for cu, w, za, h in wins:
         pane(F, cu, w, za, h)
         sill(F, cu, w, za)
-    for cu, w, door in shop:
-        za, h = PL + 0.45, 2.85
-        if door:                                  # двери магазина: стекло в тёмной раме
-            pane(F, cu, w, za, h, mull=1)
-            box('metal', F, cu - w / 2 - 0.4, cu + w / 2 + 0.4, 0, 1.4, PL + 3.45, PL + 3.6)  # козырёк
-            for s in (-1, 1):
-                beam('metal', F.p(cu + s * (w / 2 + 0.2), 0, PL + 4.1), F.p(cu + s * (w / 2 + 0.2), 1.35, PL + 3.6), 0.04)
-            box('stone', F, cu - w / 2 - 0.3, cu + w / 2 + 0.3, 0, 1.2, GROUND, PL)        # крыльцо
-        else:
-            pane(F, cu, w, za, h, mull=2)
-            quad('stone', F, cu - w / 2, cu + w / 2, PL, za, -0.1)
-    if i == MAIN:                                 # фриз над витринами под вывеску
-        box('wall2', F, 0, L, -0.02, 0.12, PL + 3.45, PL + 4.0)
+    if i == MAIN:
+        portal(F, L)
     # цоколь по своему краю земли
     gm = max(g0, g1)
     box('stone', F, 0, L, -0.05, 0.08, GROUND, max(PL, gm + 0.35))
