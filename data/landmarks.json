@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом, улица Маяковского, 3",
+    "style": "model",
+    "x": -491.1,
+    "z": 506.8,
+    "file": "may3.glb",
+    "ox": -485.3,
+    "oz": 504.25,
+    "skip": [
+      "w91092537"
+    ],
+    "source": "модель models/may3/build.py; что видно на фото и что сделано наугад — models/may3/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
