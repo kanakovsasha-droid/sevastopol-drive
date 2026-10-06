@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Главпочтамт Севастополя",
+    "style": "model",
+    "x": -221.4,
+    "z": 1146.8,
+    "file": "pochtamt.glb",
+    "ox": -249,
+    "oz": 1178.8,
+    "skip": [
+      "w92723182"
+    ],
+    "source": "модель models/pochtamt/build.py; что видно на фото и что сделано наугад — models/pochtamt/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
