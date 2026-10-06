@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "ЦКБ «Черноморец»",
+    "style": "model",
+    "x": -377.6,
+    "z": 540.6,
+    "file": "tsk_chernomorets.glb",
+    "ox": -385.19,
+    "oz": 567.38,
+    "skip": [
+      "w166764281"
+    ],
+    "source": "модель models/tsk_chernomorets/build.py; что видно на фото и что сделано наугад — models/tsk_chernomorets/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
