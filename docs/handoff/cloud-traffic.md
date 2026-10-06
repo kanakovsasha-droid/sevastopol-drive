@@ -1,6 +1,6 @@
 # cloud/traffic — трафик (п. 21 очереди, часть 3)
 
-От `origin/hospital` (a4c1fed).
+От `origin/hospital` (6c5d517).
 
 ## Что сделано
 
