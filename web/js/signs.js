@@ -151,17 +151,27 @@ export function buildSigns(world, terrain, roadIndex) {
     }
     if (!best) continue;
 
-    let gmin = Infinity, gmax = -Infinity;
+    // Отметка первого этажа — как в buildBuildings (worldgen.js): самая
+    // высокая земля у стен с шагом 2 м; ниже неё у дома каменный цоколь.
+    // От неё и считаем вывеску с витриной: от земли у самой вывески на
+    // склоне витрина вставала перед цоколем, а вывеска уходила под этаж.
+    let gmax = -Infinity;
     for (let i = 0; i < n; i++) {
-      const h = terrain.gridHeightAt(p[i * 2], p[i * 2 + 1]);
-      if (h < gmin) gmin = h; if (h > gmax) gmax = h;
+      const j = (i + 1) % n;
+      const ax = p[i * 2], az = p[i * 2 + 1];
+      const ex = p[j * 2] - ax, ez = p[j * 2 + 1] - az;
+      const k = Math.max(1, Math.ceil(Math.hypot(ex, ez) / 2));
+      for (let s = 0; s < k; s++) {
+        const h = terrain.gridHeightAt(ax + ex * s / k, az + ez * s / k);
+        if (h > gmax) gmax = h;
+      }
     }
     const top = gmax + b.h;
     const k = Math.min(b.sg.length, Math.max(1, Math.floor(best.len / 4.2)));
     for (let i = 0; i < k; i++) {
       const t = (i + 0.5) / k;
       const cx = best.ax + best.dx * t, cz = best.az + best.dz * t;
-      const g = terrain.gridHeightAt(cx, cz);
+      const g = gmax;
       // Вывеска, прибитая к стене руками, — это имя здания, а не ларёк:
       // делаем её крупнее, иначе с улицы её просто не прочесть.
       let w = Math.min(b.sw ? 8.4 : 5.4, best.len * 0.88 / k);
@@ -171,7 +181,7 @@ export function buildSigns(world, terrain, roadIndex) {
       if (top - g < 4.6) { y = g + (top - g) * 0.70; w = Math.min(w, 4.2); h = w / 8; }
       if (y + h / 2 > top - 0.35) y = top - 0.35 - h / 2;
       if (y - h / 2 < g + 1.9) continue;           // на цоколь вывеску не вешаем
-      items.push({ s: b.sg[i], cx, cz, y, w, h, hand: !!b.sw,
+      items.push({ s: b.sg[i], cx, cz, y, w, h, hand: !!b.sw, floor: g,
                    dx: best.dx / best.len, dz: best.dz / best.len,
                    nx: best.nx, nz: best.nz });
     }
@@ -224,7 +234,7 @@ export function buildSigns(world, terrain, roadIndex) {
     group.add(new THREE.Mesh(geo, mat));
   }
   // витрины и маркизы под вывесками (shopfronts.js) — одна сетка на квартал
-  const fronts = buildShopfronts(items, terrain, signColors);
+  const fronts = buildShopfronts(items, signColors);
   if (fronts) group.add(fronts);
   group.userData.count = items.length;
   return group;

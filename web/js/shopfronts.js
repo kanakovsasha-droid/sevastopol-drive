@@ -7,6 +7,7 @@ import { ENV } from './env.js?v=8c71f0ed';
 // Ставим только там, где висит вывеска из data/shops.json: ничего не
 // выдумано, просто у магазина есть витрина. Весь квартал — одна сетка с
 // цветами вершин, один вызов отрисовки; ночью витрина светится (uNight).
+// Низ — отметка первого этажа дома, как у окон в шейдере фасада.
 
 // где бывает витрина: торговля, общепит, аптека, банк, спорт
 const VITRINE = new Set(['shop', 'food', 'food_shop', 'pharmacy', 'bank', 'sport']);
@@ -41,9 +42,10 @@ function material() {
 let MAT = null;
 
 // items — то, что расставил signs.js: центр вывески на стене (cx, cz, y),
-// ширина w, высота h, направление стены (dx, dz), наружу (nx, nz), s = {n, c}.
+// ширина w, высота h, направление стены (dx, dz), наружу (nx, nz), s = {n, c},
+// floor — отметка первого этажа, hand — именная табличка (без витрины).
 // colorOf(s) — [фон, текст] вывески, чтобы маркиза была в цвет заведения.
-export function buildShopfronts(items, terrain, colorOf) {
+export function buildShopfronts(items, colorOf) {
   const P = [], C = [], G = [], I = [];
   let v = 0;
   // квад по четырём точкам [x, y, z], обход — лицом наружу (по нормали)
@@ -62,27 +64,24 @@ export function buildShopfronts(items, terrain, colorOf) {
     // точка на стене: t — вдоль стены от центра вывески, off — от стены наружу
     const pt = (t, y, off) => [o.cx + dx * t + nx * off, y, o.cz + dz * t + nz * off];
     const half = o.w / 2;
-    const gA = terrain.gridHeightAt(o.cx - dx * half, o.cz - dz * half);
-    const gB = terrain.gridHeightAt(o.cx + dx * half, o.cz + dz * half);
+    // от отметки первого этажа дома (signs.js, floor): ниже — цоколь
+    const fl = o.floor;
     const top = o.y - o.h / 2 - 0.18;              // под вывеской
-    const bA = gA + 0.28, bB = gB + 0.28;          // низ по рельефу у каждого края
-    if (top - Math.max(bA, bB) < 1.6) continue;    // на крутом склоне витрина не влезает
+    const bot = fl + 0.28;
+    if (top - bot < 1.6) continue;                 // низкий первый этаж — витрина не влезает
 
     // рама: чуть шире стекла
     const fw = half + 0.12;
-    const fA = terrain.gridHeightAt(o.cx - dx * fw, o.cz - dz * fw) + 0.12;
-    const fB = terrain.gridHeightAt(o.cx + dx * fw, o.cz + dz * fw) + 0.12;
-    quad(pt(-fw, fA, 0.07), pt(fw, fB, 0.07), pt(fw, top + 0.12, 0.07), pt(-fw, top + 0.12, 0.07),
+    quad(pt(-fw, fl + 0.12, 0.07), pt(fw, fl + 0.12, 0.07), pt(fw, top + 0.12, 0.07), pt(-fw, top + 0.12, 0.07),
          FRAME, [0, 0]);
     // стекло: внизу темнее (прилавок, тень), вверху светлее (лампы зала)
-    quad(pt(-half, bA, 0.10), pt(half, bB, 0.10), pt(half, top, 0.10), pt(-half, top, 0.10),
+    quad(pt(-half, bot, 0.10), pt(half, bot, 0.10), pt(half, top, 0.10), pt(-half, top, 0.10),
          [0.05, 0.055, 0.06], [0.03, 0.55], [0.20, 0.21, 0.20]);
     // импосты через ~1.8 м и фрамуга под вывеской
     const nm = Math.max(0, Math.round(o.w / 1.8) - 1);
     for (let k = 1; k <= nm; k++) {
       const t = -half + o.w * k / (nm + 1);
-      const g = terrain.gridHeightAt(o.cx + dx * t, o.cz + dz * t) + 0.28;
-      quad(pt(t - 0.04, g, 0.12), pt(t + 0.04, g, 0.12), pt(t + 0.04, top, 0.12), pt(t - 0.04, top, 0.12),
+      quad(pt(t - 0.04, bot, 0.12), pt(t + 0.04, bot, 0.12), pt(t + 0.04, top, 0.12), pt(t - 0.04, top, 0.12),
            FRAME, [0, 0]);
     }
     const tr = top - 0.42;
@@ -91,7 +90,7 @@ export function buildShopfronts(items, terrain, colorOf) {
 
     if (!AWNING.has(o.s.c)) continue;
     // маркиза: от стены над витриной наружу и вниз, полосами в цвет вывески
-    const ground = Math.max(gA, gB);
+    const ground = fl;
     const yw = top + 0.14;                          // крепление к стене
     const out = 1.25;
     let drop = 0.55;
