@@ -477,7 +477,8 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null)
   const forest = forestPlanter({ SX0, SZ0, SX1, SZ1, inSq, H, pointIn, edge, onRoad, free, hasMeasured });
   // деревья в парках и на склонах — там, где OSM отметил зелень
   for (const g of (ctx.green || world.green)) {
-    const dens = { wood: 105, park: 130, scrub: 260, grass: 620 }[g.kind];
+    // у сквера без OSM (squares.js) плотность может быть своя — поле dens
+    const dens = g.dens || { wood: 105, park: 130, scrub: 260, grass: 620 }[g.kind];
     const q = g.poly;
     let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity, a = 0;
     for (let i = 0; i < q.length; i += 2) {
