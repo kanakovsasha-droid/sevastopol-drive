@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Большая Морская, 32 — угловой дом с балконом на консолях",
+    "style": "model",
+    "x": -289.9,
+    "z": 1177.7,
+    "file": "bm32.glb",
+    "ox": -275.2,
+    "oz": 1185,
+    "skip": [
+      "w166878764"
+    ],
+    "source": "модель models/bm32/build.py; что видно на фото и что сделано наугад — models/bm32/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
