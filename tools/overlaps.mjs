@@ -302,7 +302,7 @@ export function plan(blds, roads) {
   }
   const roadWhy = { cut: 0, thru: 0, locked: 0, roof: 0, holes: 0, big: 0, bad: 0 };
   for (const { b, rs, thru } of byB.values()) {
-    if (thru.length) roadWhy.thru++;
+    if (thru.length) { roadWhy.thru++; left.road.push({ ...thru[0], w: 'ось' }); }
     if (!rs.length) continue;
     const no = w => { roadWhy[w]++; left.road.push({ ...rs[0], w }); };
     if (locked(b)) { no('locked'); continue; }
