@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Маяковского 5 (магазин «Угол»)",
+    "style": "model",
+    "x": -529.1,
+    "z": 511.1,
+    "file": "m-w92028127.glb",
+    "ox": -533.6,
+    "oz": 475,
+    "skip": [
+      "w92028127"
+    ],
+    "source": "модель models/m-w92028127/build.py; что видно на фото и что сделано наугад — models/m-w92028127/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
