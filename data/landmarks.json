@@ -1266,5 +1266,187 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом, пр. Нахимова, 10 («Медоборы»)",
+    "style": "model",
+    "x": -402.4,
+    "z": 443.5,
+    "file": "nahimova10.glb",
+    "ox": -392.95,
+    "oz": 457.7,
+    "skip": [
+      "w92028137"
+    ],
+    "source": "модель models/nahimova10/build.py; что видно на фото и что сделано наугад — models/nahimova10/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом, пр. Нахимова, 12",
+    "style": "model",
+    "x": -435.2,
+    "z": 493.7,
+    "file": "nahimova12.glb",
+    "ox": -423.75,
+    "oz": 499.75,
+    "skip": [
+      "w92028133"
+    ],
+    "source": "модель models/nahimova12/build.py; что видно на фото и что сделано наугад — models/nahimova12/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом у пр. Нахимова (без адреса)",
+    "style": "model",
+    "x": -451.6,
+    "z": 466.7,
+    "file": "w91092515.glb",
+    "ox": -459,
+    "oz": 467.3,
+    "skip": [
+      "w91092515"
+    ],
+    "source": "модель models/w91092515/build.py; что видно на фото и что сделано наугад — models/w91092515/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Улица Воронина, 11",
+    "style": "model",
+    "x": -318.9,
+    "z": 572.5,
+    "file": "voronina11.glb",
+    "ox": -325.25,
+    "oz": 574.2,
+    "skip": [
+      "w195694375"
+    ],
+    "source": "модель models/voronina11/build.py; что видно на фото и что сделано наугад — models/voronina11/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Нахимова 19 («Окей»)",
+    "style": "model",
+    "x": -340.3,
+    "z": 484.1,
+    "file": "nakhimova19.glb",
+    "ox": -359.85,
+    "oz": 470.55,
+    "skip": [
+      "w166764282"
+    ],
+    "source": "модель models/nakhimova19/build.py; что видно на фото и что сделано наугад — models/nakhimova19/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Дом Большая Морская, 2 («Черноморочка»)",
+    "style": "model",
+    "x": -433.8,
+    "z": 621.5,
+    "file": "bmorskaya2.glb",
+    "ox": -426.6,
+    "oz": 620.35,
+    "skip": [
+      "w95119639"
+    ],
+    "source": "модель models/bmorskaya2/build.py; что видно на фото и что сделано наугад — models/bmorskaya2/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Большая Морская, 8 — дом с эркером-ротондой",
+    "style": "model",
+    "x": -384.7,
+    "z": 784.6,
+    "file": "w92718640.glb",
+    "ox": -377.5,
+    "oz": 760.2,
+    "skip": [
+      "w92718640"
+    ],
+    "source": "модель models/w92718640/build.py; что видно на фото и что сделано наугад — models/w92718640/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Воронина 10",
+    "style": "model",
+    "x": -308.1,
+    "z": 498,
+    "file": "voronina10.glb",
+    "ox": -315.01,
+    "oz": 517.6,
+    "skip": [
+      "w92717226"
+    ],
+    "source": "модель models/voronina10/build.py; что видно на фото и что сделано наугад — models/voronina10/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Большая Морская, 10 — угловой дом с фронтоном и лоджией",
+    "style": "model",
+    "x": -373.1,
+    "z": 858,
+    "file": "bm10.glb",
+    "ox": -368.1,
+    "oz": 828.6,
+    "skip": [
+      "w90821982"
+    ],
+    "source": "модель models/bm10/build.py; что видно на фото и что сделано наугад — models/bm10/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "ТЦ «Диалог» (Большая Морская, 23)",
+    "style": "model",
+    "x": -218.1,
+    "z": 1201.6,
+    "file": "tc_dialog.glb",
+    "ox": -214.1,
+    "oz": 1204.2,
+    "skip": [
+      "w166878757"
+    ],
+    "source": "модель models/tc_dialog/build.py; что видно на фото и что сделано наугад — models/tc_dialog/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Угловой дом с ионической лоджией, Б. Морская 48",
+    "style": "model",
+    "x": -199.3,
+    "z": 1494.1,
+    "file": "bmorskaya48.glb",
+    "ox": -193.47,
+    "oz": 1486.86,
+    "skip": [
+      "w91740348"
+    ],
+    "source": "модель models/bmorskaya48/build.py; что видно на фото и что сделано наугад — models/bmorskaya48/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Одесская улица, 5 (школьный корпус)",
+    "style": "model",
+    "x": -561.8,
+    "z": 566.4,
+    "file": "odesskaya5.glb",
+    "ox": -588.15,
+    "oz": 556.25,
+    "skip": [
+      "w91092545"
+    ],
+    "source": "модель models/odesskaya5/build.py; что видно на фото и что сделано наугад — models/odesskaya5/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом, улица Маяковского, 3",
+    "style": "model",
+    "x": -491.1,
+    "z": 506.8,
+    "file": "may3.glb",
+    "ox": -485.3,
+    "oz": 504.25,
+    "skip": [
+      "w91092537"
+    ],
+    "source": "модель models/may3/build.py; что видно на фото и что сделано наугад — models/may3/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]

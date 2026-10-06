@@ -29,7 +29,7 @@ const SUBFIELDS = {
 // бордюры сходящихся улиц полезут поперёк проезжей части.
 const CONTEXT = ['junctions'];
 
-import { seriesPrep } from './series.js?v=86fd2580';
+import { seriesPrep } from './series.js?v=b4c97018';
 
 export class ChunkManager {
   constructor(base, opts = {}) {

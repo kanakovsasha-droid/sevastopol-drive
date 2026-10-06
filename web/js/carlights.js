@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ENV } from './env.js?v=86fd2580';
+import { ENV } from './env.js?v=b4c97018';
 
 // Свет машины: выкл · габариты · ближний · дальний · авто (клавиша L).
 //
