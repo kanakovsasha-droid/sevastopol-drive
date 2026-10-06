@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Центральный шахматный клуб (Б. Морская, 50)",
+    "style": "model",
+    "x": -208,
+    "z": 1552.5,
+    "file": "shahmat_klub.glb",
+    "ox": -188.46,
+    "oz": 1548.04,
+    "skip": [
+      "w166878776"
+    ],
+    "source": "модель models/shahmat_klub/build.py; что видно на фото и что сделано наугад — models/shahmat_klub/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
