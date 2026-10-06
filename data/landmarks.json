@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Воронина 10",
+    "style": "model",
+    "x": -308.1,
+    "z": 498,
+    "file": "voronina10.glb",
+    "ox": -315.01,
+    "oz": 517.6,
+    "skip": [
+      "w92717226"
+    ],
+    "source": "модель models/voronina10/build.py; что видно на фото и что сделано наугад — models/voronina10/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
