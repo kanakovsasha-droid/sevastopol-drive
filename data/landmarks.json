@@ -1184,5 +1184,87 @@
     ],
     "source": "модель models/sevgu_main/build.py; что видно на фото и что сделано наугад — models/sevgu_main/NOTES.md",
     "checked": "2026-10-05"
+  },
+  {
+    "name": "ТЦ «Мандарин» (ул. Генерала Хрюкина, 2)",
+    "style": "model",
+    "x": -25.6,
+    "z": 5573.1,
+    "file": "mall_mandarin.glb",
+    "ox": -30.25,
+    "oz": 5535.9,
+    "skip": [
+      "w131487189"
+    ],
+    "source": "модель models/mall_mandarin/build.py; что видно на фото и что сделано наугад — models/mall_mandarin/NOTES.md",
+    "checked": "2026-10-05"
+  },
+  {
+    "name": "ТРЦ «Муссон» (ул. Вакуленчука, 29)",
+    "style": "model",
+    "x": -2848.2,
+    "z": 3054.7,
+    "file": "mall_musson.glb",
+    "ox": -2869.8,
+    "oz": 3053.6,
+    "skip": [
+      "w93081676"
+    ],
+    "source": "модель models/mall_musson/build.py; что видно на фото и что сделано наугад — models/mall_musson/NOTES.md",
+    "checked": "2026-10-05"
+  },
+  {
+    "name": "ТЦ Sea Mall («Симол», пр. Генерала Острякова, 260)",
+    "style": "model",
+    "x": 362.3,
+    "z": 7116.6,
+    "file": "mall_seamall.glb",
+    "ox": 371.84,
+    "oz": 7117.02,
+    "skip": [
+      "w218816081"
+    ],
+    "source": "модель models/mall_seamall/build.py; что видно на фото и что сделано наугад — models/mall_seamall/NOTES.md",
+    "checked": "2026-10-05"
+  },
+  {
+    "name": "ТРЦ «Апельсин» (пр. Героев Сталинграда, 27)",
+    "style": "model",
+    "x": -6972.6,
+    "z": 3565.3,
+    "file": "mall_apelsin.glb",
+    "ox": -6997.2,
+    "oz": 3585.3,
+    "skip": [
+      "w225264146"
+    ],
+    "source": "модель models/mall_apelsin/build.py; что видно на фото и что сделано наугад — models/mall_apelsin/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "ТЦ Lavanda Mall (ул. Вакуленчука, 33А)",
+    "style": "model",
+    "x": -3218.5,
+    "z": 2968.2,
+    "file": "mall_lavanda.glb",
+    "ox": -3233.32,
+    "oz": 2950.34,
+    "skip": [
+      "w238412739"
+    ],
+    "source": "модель models/mall_lavanda/build.py; что видно на фото и что сделано наугад — models/mall_lavanda/NOTES.md",
+    "checked": "2026-10-06"
+  },
+  {
+    "name": "Вывески магазина «Купеческий» (ул. Льва Толстого, 2/16)",
+    "style": "model",
+    "x": -761.2,
+    "z": 2214.7,
+    "file": "sign_kupecheskiy.glb",
+    "ox": -761.24,
+    "oz": 2214.71,
+    "skip": [],
+    "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
