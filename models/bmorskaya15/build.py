@@ -298,8 +298,7 @@ top_dressing(FC, 0, LC, 0.0)
 FN, LN = frame_from(C, D, (-262, 1015))
 for k, (u0, u1, base) in enumerate(STEPS):
     axes = [u for u in (2.5 + 4.0 * i for i in range(12)) if u0 + 1.2 < u < u1 - 1.2]
-    ground = {axes[0]: 'door'} if k == 1 else {}
-    street_floors(FN, u0, u1, base, axes, ground)
+    street_floors(FN, u0, u1, base, axes, {})          # входы со стороны лестницы не видны — не ставим
     upper_floor(FN, u0, u1, base, axes)
     top_dressing(FN, u0, u1, base, dentils=(k == 0), rail=True)
 corner_rust(FN, 0, 0.9, 0.0)
