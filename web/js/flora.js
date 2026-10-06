@@ -766,11 +766,13 @@ function nearMaterial() {
 // шейдере (полуоси — из масштаба матрицы экземпляра), всё, что ближе uLodR к
 // точке последней пересборки, сворачивается в точку за экраном — там уже
 // стоит подробная модель.
-function farMaterial() {
+// lodR — радиус, внутри которого импостор прячется: у городских кварталов
+// общий FAR_R, у леса (forest.js) свой, короче.
+function farMaterial(lodR = U.uLodR) {
   const m = new THREE.MeshLambertMaterial({ vertexColors: false });
   m.customProgramCacheKey = () => 'flora-far-2';
   m.onBeforeCompile = sh => {
-    sh.uniforms.uLodC = U.uLodC; sh.uniforms.uLodR = U.uLodR; sh.uniforms.uSeason = ENV.uSeason;
+    sh.uniforms.uLodC = U.uLodC; sh.uniforms.uLodR = lodR; sh.uniforms.uSeason = ENV.uSeason;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nuniform vec3 uLodC;\nuniform float uLodR;\nvarying vec3 vImp;\nvarying float vDec;')
       // листопадность едет в красном канале цвета экземпляра: +4 — листопадное
@@ -871,8 +873,12 @@ const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), qt = new THREE.Quat
 // Сажает набор в квартал: считает матрицы и тон, строит дальнюю сетку
 // импосторов (одну на все породы) и записывает квартал в общий учёт.
 // parent — группа квартала: по ней учёт узнаёт, что квартал выгрузили.
-export function plantFlora(parent, sets) {
-  const ent = { parent, sets: {}, x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity, n: 0 };
+// rng — [ближний, средний] план деревьев этого набора вместо RANGE (лес,
+// forest.js: деревьев в кадре в разы больше, подробность раньше уступает
+// импостору).
+const FAR_LOD = {};      // радиус → общий uniform (материал свой у квартала, как и у городских)
+export function plantFlora(parent, sets, rng = null) {
+  const ent = { parent, sets: {}, x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity, n: 0, rng };
   let farN = 0;
   for (const k of KEYS) {
     const arr = sets[k];
@@ -915,7 +921,7 @@ export function plantFlora(parent, sets) {
   if (!ent.n) return null;
   // дальний план — один InstancedMesh на квартал
   if (farN) {
-    const fm = new THREE.InstancedMesh(farGeo(), farMaterial(), farN);
+    const fm = new THREE.InstancedMesh(farGeo(), rng ? farLod(rng[1]) : farMaterial(), farN);
     fm.name = 'flora:far';
     const FC = new Float32Array(farN * 3);
     let j = 0;
@@ -936,6 +942,11 @@ export function plantFlora(parent, sets) {
   entries.push(ent);
   dirty = true;
   return ent;
+}
+
+function farLod(r) {
+  const f = FAR_LOD[r] || (FAR_LOD[r] = { u: { value: r }, r });
+  return farMaterial(f.u);
 }
 
 // ------------------------------------------------------------ общий учёт
@@ -1039,7 +1050,7 @@ export function updateFlora(camera, scene, now) {
     const dx = Math.max(e.x0 - c.x, 0, c.x - e.x1), dz = Math.max(e.z0 - c.z, 0, c.z - e.z1);
     if (dx * dx + dz * dz > FAR_R * FAR_R && floraDebug.force < 0) continue;
     for (const k in e.sets) {
-      const s = e.sets[k], [rn, rm] = RANGE[k];
+      const s = e.sets[k], [rn, rm] = e.rng && TREES.includes(k) ? e.rng : RANGE[k];
       const rn2 = rn * rn, rm2 = rm * rm;
       const L = s.L;
       for (let i = 0; i < s.n; i++) {
@@ -1081,6 +1092,7 @@ export function updateFlora(camera, scene, now) {
   }
   U.uLodC.value.copy(c);
   U.uLodR.value = floraDebug.force === 2 ? 0 : floraDebug.force >= 0 ? 1e9 : FAR_R;
+  for (const r in FAR_LOD) FAR_LOD[r].u.value = floraDebug.force === 2 ? 0 : floraDebug.force >= 0 ? 1e9 : FAR_LOD[r].r;
   floraStats.near = nn; floraStats.mid = nm; floraStats.rebuilds++;
   floraStats.ms = +(performance.now() - t0).toFixed(2);
 }

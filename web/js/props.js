@@ -3,6 +3,7 @@ import { lampGlow, registerLamps } from './env.js?v=8c71f0ed';
 import { PolyGrid } from './worldgen.js?v=8c71f0ed';
 import { plantFlora, crownRadius, ST } from './flora.js?v=8c71f0ed';
 import { streetOwnsRoad } from './street.js?v=8c71f0ed';
+import { forestPlanter, isForest } from './forest.js?v=8c71f0ed';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,
@@ -472,6 +473,8 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null)
 
   const hedges = [];
   let bushes = 0;
+  // большие лесные массивы — куртинами и со своей подробностью (forest.js)
+  const forest = forestPlanter({ SX0, SZ0, SX1, SZ1, inSq, H, pointIn, edge, onRoad, free, hasMeasured });
   // деревья в парках и на склонах — там, где OSM отметил зелень
   for (const g of (ctx.green || world.green)) {
     const dens = { wood: 105, park: 130, scrub: 260, grass: 620 }[g.kind];
@@ -545,6 +548,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null)
     }
 
     if (!dens) continue;
+    if (isForest(g, area)) { forest.add(q, x0, z0, x1, z1); continue; }
     // Деревья — по дрожащей сетке с шагом под плотность: у каждой ячейки
     // одна попытка, место и жребий — от координат. Так соседние квадраты
     // засаживают общий парк одинаково, каждый — свою часть, без стыка и без
@@ -605,6 +609,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null)
   for (const k in sets) counts[k] = sets[k].length / ST;
   for (const k of ['platan', 'chestnut', 'acacia', 'poplar', 'pine', 'olive', 'cypress', 'thuja', 'spruce']) nT += counts[k] || 0;
   plantFlora(group, sets);
+  const fc = forest.plant(group);
 
   const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(),
         sv = new THREE.Vector3(), pv = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -653,6 +658,7 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null)
 
   group.userData.counts = { деревья: nT, 'из них обмеренных': measured, 'снято с асфальта': onAsphalt,
                             'не сели у дороги': rejected, кусты: bushes, изгороди: counts.hedge || 0, фонари: nL };
+  if (fc) Object.assign(group.userData.counts, { лес: fc.forest, подлесок: fc['forest-bush'] });
   group.userData.species = counts;
   return group;
 }
