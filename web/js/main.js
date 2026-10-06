@@ -39,6 +39,7 @@ import { loadSchools, prepSchools, buildSchools } from './schools.js?v=b67046f1'
 import { prepFuel } from './fuel.js?v=b67046f1';
 import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=b67046f1';
 import { Facades } from './facades.js?v=b67046f1';
+import { loadGuardrail, prepGuardrail, buildGuardrail } from './guardrail.js?v=b67046f1';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -178,6 +179,7 @@ async function boot() {
     await loadSquares(V);
     await loadSkateparks(V);
     await loadSchools(V);
+    await loadGuardrail(V);               // осевая трассы на Ялту — под отбойники
     terraces = await fetch(`../data/terraces.json${V ? '?v=' + V : ''}`).then(r => r.json()).then(d => d.items).catch(() => []);
 
     await step('строю рельеф…', 26);
@@ -693,9 +695,11 @@ function* buildChunk(d, key) {
   // Места, описанные руками (canopy.js), — до АЗС: павильон «Eaty» у «Атана»
   prepSites(w);
   const fuelWalls = prepFuel(w);
+  // отбойники и блоки на мостах трассы на Ялту тоже держат машину (guardrail.js)
+  const railWalls = prepGuardrail(w, terrain, d, S);
   // Навесы (building=roof) машину не держат — только их столбы (canopy.js)
   // Дом с аркой-проездом — двумя половинами по бокам проезда (passage.js)
-  collider.add(part, w.buildings.filter(b => !b.fuelBox && !isCanopy(b)).flatMap(gatePolys).concat(fuelWalls, canopyWalls(w)));
+  collider.add(part, w.buildings.filter(b => !b.fuelBox && !isCanopy(b)).flatMap(gatePolys).concat(fuelWalls, canopyWalls(w), railWalls));
   lap('дороги');
   yield; pt = performance.now();
 
@@ -709,6 +713,7 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
   at('сооружения');
   g.add(buildStructures(w, terrain));
+  g.add(buildGuardrail(w));                        // отбойники трассы на Ялту
   lap('сооружения');
   yield; pt = performance.now();
   at('спорт');
