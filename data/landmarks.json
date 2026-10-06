@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом, Большая Морская, 14 (угловой балкон на консолях)",
+    "style": "model",
+    "x": -354.5,
+    "z": 916.5,
+    "file": "bm14.glb",
+    "ox": -347.55,
+    "oz": 914.8,
+    "skip": [
+      "w90821948"
+    ],
+    "source": "модель models/bm14/build.py; что видно на фото и что сделано наугад — models/bm14/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
