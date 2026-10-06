@@ -158,8 +158,9 @@ export class Traffic {
   }
 
   get stats() {
-    return { bots: this.bots.length, roads: this.list.length, lights: this.lights.length,
-             stopped: this.bots.filter(b => b.v < 0.3).length };
+    const st = { bots: this.bots.length, roads: this.list.length, lights: this.lights.length, stopped: 0 };
+    for (const b of this.bots) if (b.v < 0.3) { st.stopped++; if (b.wait) st[b.wait] = (st[b.wait] || 0) + 1; }
+    return st;
   }
 
   // Сеть улиц пересобираем, когда в индексе дорог что-то приехало или уехало.
@@ -286,6 +287,17 @@ export class Traffic {
     return straight;
   }
 
+  // Положение на улице: метры от её первой точки
+  _arc(b) {
+    const r = b.r;
+    if (!r._cum) {
+      const p = r.pts, n = p.length / 2, c = new Float32Array(n);
+      for (let j = 1; j < n; j++) c[j] = c[j - 1] + Math.hypot(p[j * 2] - p[j * 2 - 2], p[j * 2 + 1] - p[j * 2 - 1]);
+      r._cum = c;
+    }
+    return r._cum[b.from] + b.dir * b.s;
+  }
+
   // Мировое положение по звену и смещению. k — доля сглаживания.
   _place(b, k) {
     const rx = -b.uz, rz = b.ux;                     // вправо по ходу (x — восток, z — юг)
@@ -316,12 +328,15 @@ export class Traffic {
     for (let n = 0; n < (first ? 6 : 1) && this.bots.length < WANT; n++)
       if (!this._spawn(px, pz, first ? 40 : R_SPAWN_MIN)) break;
 
-    const car = driving ? this.car() : null;
+    // игрок — препятствие всегда (и пустая машина, пока ходим пешком или
+    // летаем), а толкается только за рулём
+    const car = this.car();
     const pvx = car ? car._v[0] : 0, pvz = car ? car._v[2] : 0;
     const pSpeed = Math.hypot(pvx, pvz);
 
     for (const b of this.bots) {
       let target = b.vmax;
+      b.wait = '';
       // поворот впереди — сбросить скорость заранее
       const left = b.len - b.s;
       if (left < 22 && !b.next) b.next = this._choose(b) || { dead: true };
@@ -337,14 +352,41 @@ export class Traffic {
         if (ahead <= 0 || ahead > 40) return;
         const lat = Math.abs(dx * rx + dz * rz);
         if (lat > 2.0) return;
-        // поперёк едущего на перекрёстке не ждём бесконечно — только вплотную
-        if (!isPlayer && ohx * b.hx + ohz * b.hz < 0.3 && ahead > 7) return;
+        if (!isPlayer) {
+          const dot = ohx * b.hx + ohz * b.hz;
+          // поперёк едущего на перекрёстке не ждём бесконечно — только вплотную
+          if (dot < 0.3 && ahead > 7) return;
+          // слияние под углом: каждый видит другого впереди и оба встают.
+          // Уступает тот, кто дальше от точки встречи: если мы впереди
+          // соседа сильнее, чем он впереди нас, — едем
+          if (dot > 0.3 && -(dx * ohx + dz * ohz) > ahead) return;
+          // застрявший перестаёт замечать только поперечных, попутных — никогда
+          if (b.ghost > 0 && dot < 0.7) return;
+        }
         const g = ahead - 2 * HALF;
         if (g < gap) { gap = g; playerAhead = isPlayer; }
       };
-      if (b.ghost <= 0) for (const o of this.bots) if (o !== b) look(o.x, o.z, o.hx, o.hz, false);
+      const pos = this._arc(b);
+      for (const o of this.bots) {
+        if (o === b) continue;
+        // попутный на той же улице — по длине пути, а не по прямой: на
+        // повороте передний уходит вбок от курса и прямой взгляд его теряет
+        if (o.r === b.r && o.dir === b.dir && Math.abs(o.off + o.shift - b.off - b.shift) < 2) {
+          const along = (this._arc(o) - pos) * b.dir;
+          if (along > 0 && along < 40) { if (along - 2 * HALF < gap) { gap = along - 2 * HALF; playerAhead = false; } continue; }
+          if (along <= 0 && along > -40) continue;
+        }
+        // уже свернул туда, куда собираемся мы: путь — остаток звена и его ход по новой улице
+        const nx = b.next;
+        if (nx && !nx.dead && o.r === nx.r && o.dir === nx.dir) {
+          const cum = o.r._cum || (this._arc(o), o.r._cum);
+          const along = (b.len - b.s) + (this._arc(o) - cum[nx.from]) * nx.dir;
+          if (along > 0 && along < 40) { if (along - 2 * HALF < gap) { gap = along - 2 * HALF; playerAhead = false; } continue; }
+        }
+        look(o.x, o.z, o.hx, o.hz, false);
+      }
       if (car) look(car.pos.x, car.pos.z, Math.sin(car.yaw), Math.cos(car.yaw), true);
-      if (gap < Infinity) target = Math.min(target, Math.max(0, (gap - 2.5) * 0.7));
+      if (gap < Infinity && (gap - 2.5) * 0.7 < target) { target = Math.max(0, (gap - 2.5) * 0.7); b.wait = playerAhead ? 'игрок' : 'бот'; }
 
       // объезд игрока: стоит или ползёт перед нами — уходим левее, пока не проедем
       if (car) {
@@ -371,7 +413,8 @@ export class Traffic {
         const stopD = ahead - 1.5;
         // на жёлтом, если уже не остановиться, — проезжаем
         if (st === 'amber' && b.v * b.v / (2 * DEC) > stopD) continue;
-        target = Math.min(target, Math.max(0, stopD * 0.6 - 0.5));
+        const tl = Math.max(0, stopD * 0.6 - 0.5);
+        if (tl < target) { target = tl; b.wait = 'светофор'; }
       }
 
       if (b.stun > 0) { b.stun -= dt; target = 0; }
@@ -398,7 +441,7 @@ export class Traffic {
       b.fresh = false;
     }
 
-    if (car) this._hit(car);
+    if (driving) this._hit(car);
     this._draw();
   }
 
