@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Большая Морская, 20 — жилой дом с рустованным низом и магазинами",
+    "style": "model",
+    "x": -321.8,
+    "z": 1045.8,
+    "file": "bm20.glb",
+    "ox": -313.3,
+    "oz": 1042,
+    "skip": [
+      "w90821942"
+    ],
+    "source": "модель models/bm20/build.py; что видно на фото и что сделано наугад — models/bm20/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
