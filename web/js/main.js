@@ -42,6 +42,7 @@ import { Facades } from './facades.js?v=8c71f0ed';
 import { Traffic } from './traffic.js?v=8c71f0ed';
 import { loadGuardrail, prepGuardrail, buildGuardrail } from './guardrail.js?v=8c71f0ed';
 import { Peds } from './peds.js?v=8c71f0ed';
+import { Races } from './races.js?v=8c71f0ed';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -139,6 +140,7 @@ let driveModes = null;                         // Eco / Comfort / Sport / Sport+
 let assists = null;                            // ABS, ASR, ESP, Race Start (assists.js)
 let traffic = null;                            // машины-боты на главных улицах (traffic.js)
 let peds = null;                               // пешеходы на тротуарах и дорожках (peds.js)
+let races = null;                              // заезды на время (races.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -272,9 +274,10 @@ async function boot() {
     pause = new Pause({
       openGarage: () => carFx.garage?.open(),
       openPlaces: () => $('menu').classList.add('on'),
+      openRaces: () => races?.open(),
       openSettings: () => settings.open(),
       toggleHelp: () => hud.toggleHelp(),
-      isBusy: () => mapOpen || $('menu').classList.contains('on') || settings.isOpen(),
+      isBusy: () => mapOpen || $('menu').classList.contains('on') || settings.isOpen() || !!races?.isOpen(),
       audio: () => carFx,
     });
     // режимы езды: 1–4 или Y (drivemodes.js)
@@ -282,6 +285,9 @@ async function boot() {
     // ABS, ASR, ESP (U, держать — OFF), Race Start; настройки — T → «Машина»
     assists = new Assists({ car: () => car, toast: t => hud.toast(t) });
     settings.assists = assists;
+    // заезды на время: меню — из паузы, арки и таймер (races.js)
+    races = new Races({ scene, terrain, car: () => car, mode: () => mode, jumpTo, settled: () => !wantJump,
+      place: (x, z, yaw) => { car.reset(x, z, yaw); carCam.snap(car); }, toast: t => hud.toast(t), v: V });
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam: carCam, get mode() { return mode; } };
@@ -314,6 +320,7 @@ async function boot() {
     window.G.loopProf = loopProf;
     window.G.pad = pad;
     window.G.pause = pause;
+    window.G.races = races;
     window.G.env = env;
     window.G.traffic = traffic;
     window.G.peds = peds;
@@ -1358,7 +1365,7 @@ function bindInput() {
   // Геймпад: кнопки он сам шлёт как клавиши, оси забирает цикл (loop).
   pad = new Gamepad({
     mode: () => mode,
-    overlay: () => document.querySelector('#pause.on') || document.querySelector('#settings.on') || document.querySelector('#menu.on'),
+    overlay: () => document.querySelector('#pause.on') || document.querySelector('#races.on') || document.querySelector('#settings.on') || document.querySelector('#menu.on'),
     toast: t => hud?.toast(t),
   });
 }
@@ -1743,6 +1750,7 @@ function loop(now) {
   chunks.update(sx, sz);
   lt('сборка');
   settleJump();
+  races?.update(dt);
   // Детальные высоты под собой квадраты земли просят сами; здесь только
   // выгружаем дальние, иначе за поездку через город наберётся весь охват.
   if (terrain.prune && Math.hypot(sx - lastPruneX, sz - lastPruneZ) > 320) {
