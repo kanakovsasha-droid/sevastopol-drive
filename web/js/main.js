@@ -39,6 +39,7 @@ import { loadSchools, prepSchools, buildSchools } from './schools.js?v=8c71f0ed'
 import { prepFuel } from './fuel.js?v=8c71f0ed';
 import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=8c71f0ed';
 import { Facades } from './facades.js?v=8c71f0ed';
+import { Traffic } from './traffic.js?v=8c71f0ed';
 import { loadGuardrail, prepGuardrail, buildGuardrail } from './guardrail.js?v=8c71f0ed';
 
 const $ = id => document.getElementById(id);
@@ -135,6 +136,7 @@ let pad = null;                                // геймпад (gamepad.js)
 let pause = null;                              // меню паузы (pause.js)
 let driveModes = null;                         // Eco / Comfort / Sport / Sport+ (drivemodes.js)
 let assists = null;                            // ABS, ASR, ESP, Race Start (assists.js)
+let traffic = null;                            // машины-боты на главных улицах (traffic.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -223,6 +225,7 @@ async function boot() {
     carCam = new CarCam({ terrain, collider });
     carMesh = createCarMesh();
     scene.add(carMesh);
+    traffic = new Traffic({ scene, terrain, roads, car: () => car });
     // настоящая модель приезжает позже, коробочная стоит до неё. Меняем их,
     // только когда шейдеры модели собраны в фоне: у E63 их с десяток (лак с
     // клиркоутом, фары, текстуры), и сборка прямо в кадре — полсекунды стоп-кадра.
@@ -309,6 +312,7 @@ async function boot() {
     window.G.pad = pad;
     window.G.pause = pause;
     window.G.env = env;
+    window.G.traffic = traffic;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
     console.log(`до старта ${window.G.boot} мс, чанков в манифесте ${chunks.cells.size}`);
@@ -1743,6 +1747,8 @@ function loop(now) {
   }
 
   lt('высоты');
+  traffic.update(dt, sx, sz, mode === 'car');
+  lt('трафик');
   // кузов по крену и клевку, колёса — ход подвески, руль и прокрутка
   placeCarMesh(carMesh, car);
   carLights.update(dt, carMesh, car, env.night, env.day);
