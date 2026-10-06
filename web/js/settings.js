@@ -5,9 +5,10 @@
 // Всё хранится в localStorage (env.js — sev.env, gamepad.js — sev.pad):
 // после перезагрузки тот же вечер, та же погода, та же раскладка.
 
-import { WEATHER, SEASONS, sunDirection } from './env.js?v=8c71f0ed';
-import { ACTIONS } from './gamepad.js?v=8c71f0ed';
-import { VIEWS, FOLLOW } from './carcam.js?v=8c71f0ed';
+import { WEATHER, SEASONS, sunDirection } from './env.js?v=86fd2580';
+import { ACTIONS } from './gamepad.js?v=86fd2580';
+import { VIEWS, FOLLOW } from './carcam.js?v=86fd2580';
+import { LEVELS } from './quality.js?v=86fd2580';
 
 const CSS = `
 #settings{position:fixed;inset:0;z-index:22;display:none;align-items:center;justify-content:center;
@@ -60,8 +61,8 @@ export class Settings {
     el.id = 'settings';
     el.innerHTML = `<div id="setbox" class="panel">
       <h2>Настройки <small>T · Esc</small></h2>
-      <div class="tabs"><button data-tab="time">Время и погода</button><button data-tab="season">Сезон</button><button data-tab="cam">Камера</button><button data-tab="ctl">Управление</button><button data-tab="car">Машина</button></div>
-      <section data-s="time"></section><section data-s="season"></section><section data-s="cam"></section><section data-s="ctl"></section><section data-s="car"></section>
+      <div class="tabs"><button data-tab="time">Время и погода</button><button data-tab="season">Сезон</button><button data-tab="cam">Камера</button><button data-tab="ctl">Управление</button><button data-tab="car">Машина</button><button data-tab="gfx">Графика</button></div>
+      <section data-s="time"></section><section data-s="season"></section><section data-s="cam"></section><section data-s="ctl"></section><section data-s="car"></section><section data-s="gfx"></section>
     </div>`;
     document.body.appendChild(el);
     this.el = el;
@@ -123,6 +124,24 @@ export class Settings {
     if (this.tab === 'ctl') this._ctl();
     if (this.tab === 'cam') this._cam();
     if (this.tab === 'car') this._car();
+    if (this.tab === 'gfx') this._gfx();
+  }
+
+  // Качество графики (quality.js): «Высокое» / «Низкое» и автопонижение
+  _gfx() {
+    const s = this.box.querySelector('[data-s=gfx]'), q = this.quality;
+    if (!q) { s.innerHTML = '<div class="sub">Ещё загружается.</div>'; return; }
+    if (!this._qHooked) { this._qHooked = true; q.onChange(() => { if (this.isOpen()) this.render(); }); }
+    const st = q.stats();
+    s.innerHTML = `
+      <h3>Качество</h3>
+      <div class="row">${Object.entries(LEVELS).map(([k, n]) => `<button data-q="${k}" class="${q.level === k ? 'sel' : ''}">${n}</button>`).join('')}</div>
+      <div class="sub">Низкое — для слабых ноутбуков: разрешение не выше 1×, тени легче и ближе, город грузится до 1,6 км вместо 2,6 км,
+        фонари и кусты гаснут раньше. Цвета и свет те же.</div>
+      <label><span>Само понижать, если кадров меньше 30 в секунду</span><input type="checkbox" data-k="auto" ${q.cfg.auto ? 'checked' : ''}></label>
+      <div class="sub">Сейчас: разрешение ${st.pr ? st.pr.toFixed(2) + '×' : '—'} · карта теней ${st.shadow}² · кварталы до ${st.radius} м</div>`;
+    s.querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', () => { q.set(b.dataset.q); this.render(); }));
+    s.querySelector('[data-k=auto]').addEventListener('change', e => q.setAuto(e.target.checked));
   }
 
   // Электронные помощники (assists.js): ESP, ABS, ASR, Race Start

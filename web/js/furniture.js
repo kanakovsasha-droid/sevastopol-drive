@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=8c71f0ed';
-import { surfaceTop } from './surface.js?v=8c71f0ed';
-import { buildTrafficLights, placeTrafficLights } from './trafficlights.js?v=8c71f0ed';
+import { PolyGrid } from './worldgen.js?v=86fd2580';
+import { surfaceTop } from './surface.js?v=86fd2580';
+import { buildTrafficLights, placeTrafficLights } from './trafficlights.js?v=86fd2580';
 
 // Настоящие объекты из OSM: остановки с их именами, скамейки, урны, светофоры,
 // киоски, заборы и подпорные стены. Ничего не выдумано — координаты как в карте.
@@ -368,7 +368,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
   // полширины полотна плюс бордюр, лицом к дороге. Если корпус не влезает —
   // отодвигаем дальше от бордюра, потом едем вдоль улицы и лишь в крайнем
   // случае переходим на другую обочину: остановка обязана остаться у дороги.
-  const snapToKerb = (p, fp, base, along = false) => {
+  const snapToKerb = (p, fp, base, along = false, busy = null) => {
     const hit = roadIndex.nearest(p.x, p.z, 45, DRIVE) || roadIndex.nearest(p.x, p.z, 120, DRIVE);
     if (!hit) return null;
     const road = hit.road;
@@ -391,7 +391,7 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
           // поперёк — лицом на осевую; вдоль — навстречу потоку своей стороны
           const a = along ? Math.atan2(-s * h.dirX, -s * h.dirZ)
                           : Math.atan2(-s * nx, -s * nz);
-          if (clear(x, z, a, fp)) return { x, z, a };
+          if (clear(x, z, a, fp) && !(busy && busy(x, z, a))) return { x, z, a };
         }
       }
     return null;
@@ -445,9 +445,40 @@ export function buildFurniture(furniture, terrain, roadIndex, onRoad, clearZones
 
   const anyAngle = () => rand() * 6.283;
 
-  const stops = put('остановки', shelterGeo(), byKind.bus_stop,
-    p => snapToKerb(p, FP.shelter, 1.2)
-      || offRoad(p, FP.shelter, (x, z) => faceRoad(x, z, 60) ?? anyAngle()));
+  // Одна и та же остановка в OSM часто отмечена дважды: узлом bus_stop у
+  // дороги и узлом platform в паре метров от него (за городом так у каждой
+  // десятой). После привязки к бордюру оба павильона садятся в одно место и
+  // прорастают друг в друга. Ставим по очереди: павильон на ТОЙ ЖЕ обочине
+  // ближе SHELTER_GAP к уже поставленному — либо дубль (то же имя, имени нет
+  // или вместо имени номер маршрута) и сливается с ним, либо другая остановка
+  // и отъезжает вдоль бордюра.
+  const SHELTER_GAP = 5.2;
+  const ROUTE = /^(маршрут|автобус|троллейбус|трамвай)\b|^fly&bus/i;
+  const placedStops = [];
+  const twinOf = (x, z, a) => placedStops.find(s =>
+    (s.r.x - x) ** 2 + (s.r.z - z) ** 2 < SHELTER_GAP ** 2 && Math.cos(s.r.a - a) > 0);
+  const sameStop = (s, p) => !s.n || !p.n || ROUTE.test(s.n) || ROUTE.test(p.n)
+    || s.n.toLowerCase() === p.n.toLowerCase();
+  let twins = 0;
+  for (const p of byKind.bus_stop || []) {
+    let r = snapToKerb(p, FP.shelter, 1.2);
+    let twin = r && twinOf(r.x, r.z, r.a);
+    if (twin && !sameStop(twin, p)) {
+      r = snapToKerb(p, FP.shelter, 1.2, false, twinOf);
+      twin = null;
+    }
+    r ||= offRoad(p, FP.shelter, (x, z) => faceRoad(x, z, 60) ?? anyAngle());
+    twin ||= twinOf(r.x, r.z, r.a);
+    if (twin && sameStop(twin, p)) {
+      // табличке — настоящее имя, а не «Маршрут 1А»
+      if (p.n && (!twin.n || (ROUTE.test(twin.n) && !ROUTE.test(p.n)))) twin.n = p.n;
+      twins++;
+      continue;
+    }
+    placedStops.push({ ...p, r });
+  }
+  const stops = put('остановки', shelterGeo(), placedStops, p => p.r);
+  if (twins) stats['остановки: дубли OSM слиты'] = twins;
   // скамейка садится лицом к ближайшей дороге ИЛИ дорожке — в сквере это аллея
   put('скамейки', benchGeo(), byKind.bench,
     p => offRoad(p, FP.bench, (x, z) => faceRoad(x, z, 30) ?? anyAngle()));

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { PolyGrid } from './worldgen.js?v=8c71f0ed';
-import { buildFuelStations } from './fuel.js?v=8c71f0ed';
+import { PolyGrid } from './worldgen.js?v=86fd2580';
+import { buildFuelStations } from './fuel.js?v=86fd2580';
 
 // Оборудование детских площадок и машины на парковках. Места берутся из OSM
 // (data/areas.json -> world.areas): качели и горки ставим только там, где в
@@ -476,8 +476,9 @@ export function buildStructures(world, terrain) {
           beam.translate(mx + uz * off, my - 0.9, mz - ux * off);
           parts.push({ geo: beam, color: CONCRETE_D });
         }
-        // перила по кромкам
-        for (const sg of [-1, 1]) {
+        // перила по кромкам; на мостах трассы на Ялту вместо них бетонные
+        // блоки (guardrail.js)
+        for (const sg of d.blocks ? [] : [-1, 1]) {
           const off = sg * (w / 2 + 0.2);
           const nPost = Math.max(2, Math.round(L / 2.2));
           for (let k = 0; k <= nPost; k++) {

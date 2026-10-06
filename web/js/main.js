@@ -1,44 +1,50 @@
 import * as THREE from 'three';
-import { Terrain, SEA_FLOOR } from './terrain.js?v=8c71f0ed';
-import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=8c71f0ed';
-import { levelsReady } from './roadlevels.js?v=8c71f0ed';
-import { buildStreetProps } from './props.js?v=8c71f0ed';
-import { updateFlora, floraStats, warmFlora } from './flora.js?v=8c71f0ed';
-import { buildYards, buildStructures } from './yards.js?v=8c71f0ed';
-import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=8c71f0ed';
-import { buildFurniture } from './furniture.js?v=8c71f0ed';
-import { buildLandmarks, setModelWarm, updateModels } from './landmarks.js?v=8c71f0ed';
-import { buildSigns } from './signs.js?v=8c71f0ed';
-import { loadStreet, buildStreet, streetFurniture } from './street.js?v=8c71f0ed';
-import { buildCemeteries } from './cemetery.js?v=8c71f0ed';
-import { audit } from './audit.js?v=8c71f0ed';
-import { buildMap, drawFull, mapUnproject } from './minimap.js?v=8c71f0ed';
-import { MapNav } from './mapnav.js?v=8c71f0ed';
-import { Hud } from './hud.js?v=8c71f0ed';
-import { ChunkManager } from './chunks.js?v=8c71f0ed';
-import { Collider, RoadIndex } from './collision.js?v=8c71f0ed';
-import { gatePolys } from './passage.js?v=8c71f0ed';
-import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=8c71f0ed';
-import { CarFX } from './carfx.js?v=8c71f0ed';
-import { precompile } from './warm.js?v=8c71f0ed';
-import { Gamepad } from './gamepad.js?v=8c71f0ed';
-import { Environment, ENV } from './env.js?v=8c71f0ed';
-import { CarLights } from './carlights.js?v=8c71f0ed';
-import { Settings } from './settings.js?v=8c71f0ed';
-import { Pause } from './pause.js?v=8c71f0ed';
-import { DriveModes } from './drivemodes.js?v=8c71f0ed';
-import { Assists } from './assists.js?v=8c71f0ed';
-import { buildModelPlinths } from './plinth.js?v=8c71f0ed';
-import { CarCam } from './carcam.js?v=8c71f0ed';
-import { Precip } from './precip.js?v=8c71f0ed';
-import { loadFootprints, monumentTest } from './footprints.js?v=8c71f0ed';
-import { loadSquares, addFarSquares, addSquares } from './squares.js?v=8c71f0ed';
-import { loadSkateparks, buildSkateparks } from './skatepark.js?v=8c71f0ed';
-import { padBlocker } from './pads.js?v=8c71f0ed';
-import { loadSchools, prepSchools, buildSchools } from './schools.js?v=8c71f0ed';
-import { prepFuel } from './fuel.js?v=8c71f0ed';
-import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=8c71f0ed';
-import { Facades } from './facades.js?v=8c71f0ed';
+import { Terrain, SEA_FLOOR } from './terrain.js?v=86fd2580';
+import { buildTerrainTile, FarIndex, coarseSeaMask, tileProf, buildRoads, buildBuildings, buildWater, buildAreas } from './worldgen.js?v=86fd2580';
+import { levelsReady } from './roadlevels.js?v=86fd2580';
+import { buildStreetProps } from './props.js?v=86fd2580';
+import { updateFlora, floraStats, warmFlora } from './flora.js?v=86fd2580';
+import { buildYards, buildStructures } from './yards.js?v=86fd2580';
+import { loadSport, installFlats, buildSport, sportSkipIds, landmarkHidden } from './sport.js?v=86fd2580';
+import { buildFurniture } from './furniture.js?v=86fd2580';
+import { buildLandmarks, setModelWarm, updateModels } from './landmarks.js?v=86fd2580';
+import { buildSigns } from './signs.js?v=86fd2580';
+import { loadStreet, buildStreet, streetFurniture } from './street.js?v=86fd2580';
+import { buildCemeteries } from './cemetery.js?v=86fd2580';
+import { audit } from './audit.js?v=86fd2580';
+import { buildMap, drawFull, mapUnproject } from './minimap.js?v=86fd2580';
+import { MapNav } from './mapnav.js?v=86fd2580';
+import { Hud } from './hud.js?v=86fd2580';
+import { ChunkManager } from './chunks.js?v=86fd2580';
+import { Collider, RoadIndex } from './collision.js?v=86fd2580';
+import { gatePolys } from './passage.js?v=86fd2580';
+import { Car, CARS, createCarMesh, loadCarModel, placeCarMesh } from './vehicle.js?v=86fd2580';
+import { CarFX } from './carfx.js?v=86fd2580';
+import { precompile } from './warm.js?v=86fd2580';
+import { Gamepad } from './gamepad.js?v=86fd2580';
+import { Environment, ENV } from './env.js?v=86fd2580';
+import { CarLights } from './carlights.js?v=86fd2580';
+import { Settings } from './settings.js?v=86fd2580';
+import { Pause } from './pause.js?v=86fd2580';
+import { DriveModes } from './drivemodes.js?v=86fd2580';
+import { Assists } from './assists.js?v=86fd2580';
+import { buildModelPlinths } from './plinth.js?v=86fd2580';
+import { CarCam } from './carcam.js?v=86fd2580';
+import { Precip } from './precip.js?v=86fd2580';
+import { loadFootprints, monumentTest } from './footprints.js?v=86fd2580';
+import { loadSquares, addFarSquares, addSquares } from './squares.js?v=86fd2580';
+import { loadSkateparks, buildSkateparks } from './skatepark.js?v=86fd2580';
+import { padBlocker } from './pads.js?v=86fd2580';
+import { loadSchools, prepSchools, buildSchools } from './schools.js?v=86fd2580';
+import { prepFuel } from './fuel.js?v=86fd2580';
+import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=86fd2580';
+import { Facades } from './facades.js?v=86fd2580';
+import { Traffic } from './traffic.js?v=86fd2580';
+import { loadGuardrail, prepGuardrail, buildGuardrail } from './guardrail.js?v=86fd2580';
+import { Peds } from './peds.js?v=86fd2580';
+import { Races } from './races.js?v=86fd2580';
+import { Quality, QUALITY } from './quality.js?v=86fd2580';
+import { farColors } from './palette.js?v=86fd2580';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -134,6 +140,10 @@ let pad = null;                                // геймпад (gamepad.js)
 let pause = null;                              // меню паузы (pause.js)
 let driveModes = null;                         // Eco / Comfort / Sport / Sport+ (drivemodes.js)
 let assists = null;                            // ABS, ASR, ESP, Race Start (assists.js)
+let traffic = null;                            // машины-боты на главных улицах (traffic.js)
+let peds = null;                               // пешеходы на тротуарах и дорожках (peds.js)
+let races = null;                              // заезды на время (races.js)
+let quality = null;                            // «Высокое» / «Низкое» и автопонижение (quality.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -178,10 +188,14 @@ async function boot() {
     await loadSquares(V);
     await loadSkateparks(V);
     await loadSchools(V);
+    await loadGuardrail(V);               // осевая трассы на Ялту — под отбойники
     terraces = await fetch(`../data/terraces.json${V ? '?v=' + V : ''}`).then(r => r.json()).then(d => d.items).catch(() => []);
 
     await step('строю рельеф…', 26);
     initScene();
+    // качество графики — до первых кварталов: в «Низком» и грузим ближе (quality.js)
+    quality = new Quality({ renderer, sun, chunks, toast: t => hud?.toast(t),
+      busy: () => mapOpen || !!document.querySelector('#pause.on, #settings.on, #menu.on') });
     // warmCarEnv(renderer) здесь (cloud/e63-atlas) останавливал сборку чанков:
     // первый квартал не достраивался, город вокруг машины пустой. Убран при
     // сборке волны — отражения строятся при загрузке модели, как раньше.
@@ -221,6 +235,8 @@ async function boot() {
     carCam = new CarCam({ terrain, collider });
     carMesh = createCarMesh();
     scene.add(carMesh);
+    traffic = new Traffic({ scene, terrain, roads, car: () => car });
+    peds = new Peds({ scene, terrain, roads, collider, car: () => car, walker: () => (mode === 'walk' ? walk : null) });
     // настоящая модель приезжает позже, коробочная стоит до неё. Меняем их,
     // только когда шейдеры модели собраны в фоне: у E63 их с десяток (лак с
     // клиркоутом, фары, текстуры), и сборка прямо в кадре — полсекунды стоп-кадра.
@@ -264,9 +280,10 @@ async function boot() {
     pause = new Pause({
       openGarage: () => carFx.garage?.open(),
       openPlaces: () => $('menu').classList.add('on'),
+      openRaces: () => races?.open(),
       openSettings: () => settings.open(),
       toggleHelp: () => hud.toggleHelp(),
-      isBusy: () => mapOpen || $('menu').classList.contains('on') || settings.isOpen(),
+      isBusy: () => mapOpen || $('menu').classList.contains('on') || settings.isOpen() || !!races?.isOpen(),
       audio: () => carFx,
     });
     // режимы езды: 1–4 или Y (drivemodes.js)
@@ -274,6 +291,10 @@ async function boot() {
     // ABS, ASR, ESP (U, держать — OFF), Race Start; настройки — T → «Машина»
     assists = new Assists({ car: () => car, toast: t => hud.toast(t) });
     settings.assists = assists;
+    // заезды на время: меню — из паузы, арки и таймер (races.js)
+    races = new Races({ scene, terrain, car: () => car, mode: () => mode, jumpTo, settled: () => !wantJump,
+      place: (x, z, yaw) => { car.reset(x, z, yaw); carCam.snap(car); }, toast: t => hud.toast(t), v: V });
+    settings.quality = quality;
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam: carCam, get mode() { return mode; } };
@@ -306,7 +327,11 @@ async function boot() {
     window.G.loopProf = loopProf;
     window.G.pad = pad;
     window.G.pause = pause;
+    window.G.races = races;
     window.G.env = env;
+    window.G.traffic = traffic;
+    window.G.peds = peds;
+    window.G.quality = quality;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
     console.log(`до старта ${window.G.boot} мс, чанков в манифесте ${chunks.cells.size}`);
@@ -536,7 +561,8 @@ function buildFarCity() {
   // Цвета берём близкими к тому, что строит детальный слой: серые коробки
   // рядом с терракотовыми крышами читались как отдельный «другой город»,
   // и граница детальной загрузки бросалась в глаза сменой цвета.
-  const WALL = [0.74, 0.70, 0.62], ROOF = [0.55, 0.33, 0.24], ROAD = [0.34, 0.33, 0.32];
+  // Стены и кровли — свои у каждого дома, как в детальном слое (palette.js).
+  const ROAD = [0.34, 0.33, 0.32];
 
   for (const b of far.buildings || []) {
     const p = b.poly;
@@ -548,6 +574,7 @@ function buildFarCity() {
     for (let i = 0; i < n; i++) { sx += p[i * 2]; sz += p[i * 2 + 1]; }
     sx /= n; sz /= n;
     const a = at(cellOf(sx, sz));
+    const [WALL, ROOF] = farColors(b);
     const y0 = terrain.gridHeightAt(sx, sz) - 1.2;
     const y1 = y0 + (b.h || 9) + 1.2;
     for (let i = 0; i < n; i++) {
@@ -693,9 +720,11 @@ function* buildChunk(d, key) {
   // Места, описанные руками (canopy.js), — до АЗС: павильон «Eaty» у «Атана»
   prepSites(w);
   const fuelWalls = prepFuel(w);
+  // отбойники и блоки на мостах трассы на Ялту тоже держат машину (guardrail.js)
+  const railWalls = prepGuardrail(w, terrain, d, S);
   // Навесы (building=roof) машину не держат — только их столбы (canopy.js)
   // Дом с аркой-проездом — двумя половинами по бокам проезда (passage.js)
-  collider.add(part, w.buildings.filter(b => !b.fuelBox && !isCanopy(b)).flatMap(gatePolys).concat(fuelWalls, canopyWalls(w)));
+  collider.add(part, w.buildings.filter(b => !b.fuelBox && !isCanopy(b)).flatMap(gatePolys).concat(fuelWalls, canopyWalls(w), railWalls));
   lap('дороги');
   yield; pt = performance.now();
 
@@ -709,6 +738,7 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
   at('сооружения');
   g.add(buildStructures(w, terrain));
+  g.add(buildGuardrail(w));                        // отбойники трассы на Ялту
   lap('сооружения');
   yield; pt = performance.now();
   at('спорт');
@@ -842,7 +872,7 @@ function cullFar() {
       const bs = c.o.isInstancedMesh ? c.o.boundingSphere : (g.boundingSphere || (g.computeBoundingSphere(), g.boundingSphere));
       c.s = _sph.copy(bs).applyMatrix4(c.o.matrixWorld).clone();
     }
-    c.o.visible = cp.distanceTo(c.s.center) - c.s.radius < c.o.userData.far;
+    c.o.visible = cp.distanceTo(c.s.center) - c.s.radius < c.o.userData.far * QUALITY.far;
   }
   // Дальний силуэт — по вызову отрисовки на квадрат 1 км, и с земли в кадре
   // их под сотню, большей частью там, где туман уже съел всё. Туман FogExp2:
@@ -1345,7 +1375,7 @@ function bindInput() {
   // Геймпад: кнопки он сам шлёт как клавиши, оси забирает цикл (loop).
   pad = new Gamepad({
     mode: () => mode,
-    overlay: () => document.querySelector('#pause.on') || document.querySelector('#settings.on') || document.querySelector('#menu.on'),
+    overlay: () => document.querySelector('#pause.on') || document.querySelector('#races.on') || document.querySelector('#settings.on') || document.querySelector('#menu.on'),
     toast: t => hud?.toast(t),
   });
 }
@@ -1618,6 +1648,7 @@ function hudView() {
 
 function updateHUD(dt) {
   tunePixelRatio(dt);
+  quality?.tick(dt);
   fpsAcc += dt; fpsN++;
   // прибор и карта — каждый кадр: плавная стрелка и поворот карты; что
   // перерисовать, hud решает сам
@@ -1730,6 +1761,7 @@ function loop(now) {
   chunks.update(sx, sz);
   lt('сборка');
   settleJump();
+  races?.update(dt);
   // Детальные высоты под собой квадраты земли просят сами; здесь только
   // выгружаем дальние, иначе за поездку через город наберётся весь охват.
   if (terrain.prune && Math.hypot(sx - lastPruneX, sz - lastPruneZ) > 320) {
@@ -1738,6 +1770,10 @@ function loop(now) {
   }
 
   lt('высоты');
+  traffic.update(dt, sx, sz, mode === 'car');
+  lt('трафик');
+  peds.update(dt, sx, sz);
+  lt('пешеходы');
   // кузов по крену и клевку, колёса — ход подвески, руль и прокрутка
   placeCarMesh(carMesh, car);
   carLights.update(dt, carMesh, car, env.night, env.day);
