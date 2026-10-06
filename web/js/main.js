@@ -41,6 +41,7 @@ import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './c
 import { Facades } from './facades.js?v=8c71f0ed';
 import { Traffic } from './traffic.js?v=8c71f0ed';
 import { loadGuardrail, prepGuardrail, buildGuardrail } from './guardrail.js?v=8c71f0ed';
+import { Peds } from './peds.js?v=8c71f0ed';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -137,6 +138,7 @@ let pause = null;                              // меню паузы (pause.js)
 let driveModes = null;                         // Eco / Comfort / Sport / Sport+ (drivemodes.js)
 let assists = null;                            // ABS, ASR, ESP, Race Start (assists.js)
 let traffic = null;                            // машины-боты на главных улицах (traffic.js)
+let peds = null;                               // пешеходы на тротуарах и дорожках (peds.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -226,6 +228,7 @@ async function boot() {
     carMesh = createCarMesh();
     scene.add(carMesh);
     traffic = new Traffic({ scene, terrain, roads, car: () => car });
+    peds = new Peds({ scene, terrain, roads, collider, car: () => car, walker: () => (mode === 'walk' ? walk : null) });
     // настоящая модель приезжает позже, коробочная стоит до неё. Меняем их,
     // только когда шейдеры модели собраны в фоне: у E63 их с десяток (лак с
     // клиркоутом, фары, текстуры), и сборка прямо в кадре — полсекунды стоп-кадра.
@@ -313,6 +316,7 @@ async function boot() {
     window.G.pause = pause;
     window.G.env = env;
     window.G.traffic = traffic;
+    window.G.peds = peds;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
     console.log(`до старта ${window.G.boot} мс, чанков в манифесте ${chunks.cells.size}`);
@@ -1749,6 +1753,8 @@ function loop(now) {
   lt('высоты');
   traffic.update(dt, sx, sz, mode === 'car');
   lt('трафик');
+  peds.update(dt, sx, sz);
+  lt('пешеходы');
   // кузов по крену и клевку, колёса — ход подвески, руль и прокрутка
   placeCarMesh(carMesh, car);
   carLights.update(dt, carMesh, car, env.night, env.day);
