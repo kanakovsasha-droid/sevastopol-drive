@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Большая Морская, 10 — угловой дом с фронтоном и лоджией",
+    "style": "model",
+    "x": -373.1,
+    "z": 858,
+    "file": "bm10.glb",
+    "ox": -368.1,
+    "oz": 828.6,
+    "skip": [
+      "w90821982"
+    ],
+    "source": "модель models/bm10/build.py; что видно на фото и что сделано наугад — models/bm10/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
