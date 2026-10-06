@@ -23,7 +23,7 @@ function hex(c) {
 }
 
 function material() {
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.05,
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.1,
                                               side: THREE.DoubleSide });
   m.customProgramCacheKey = () => 'shopfront';
   m.onBeforeCompile = sh => {
@@ -47,6 +47,7 @@ let MAT = null;
 // colorOf(s) — [фон, текст] вывески, чтобы маркиза была в цвет заведения.
 export function buildShopfronts(items, colorOf) {
   const P = [], C = [], G = [], I = [];
+  const spots = [];                                // для отладки и снимков: где стоят витрины
   let v = 0;
   // квад по четырём точкам [x, y, z], обход — лицом наружу (по нормали)
   const quad = (a, b, c, d, col, glow, colTop) => {
@@ -76,7 +77,7 @@ export function buildShopfronts(items, colorOf) {
          FRAME, [0, 0]);
     // стекло: внизу темнее (прилавок, тень), вверху светлее (лампы зала)
     quad(pt(-half, bot, 0.10), pt(half, bot, 0.10), pt(half, top, 0.10), pt(-half, top, 0.10),
-         [0.05, 0.055, 0.06], [0.03, 0.55], [0.20, 0.21, 0.20]);
+         [0.025, 0.03, 0.035], [0.05, 0.40], [0.13, 0.16, 0.19]);
     // импосты через ~1.8 м и фрамуга под вывеской
     const nm = Math.max(0, Math.round(o.w / 1.8) - 1);
     for (let k = 1; k <= nm; k++) {
@@ -88,6 +89,7 @@ export function buildShopfronts(items, colorOf) {
     quad(pt(-half, tr - 0.04, 0.12), pt(half, tr - 0.04, 0.12), pt(half, tr + 0.04, 0.12), pt(-half, tr + 0.04, 0.12),
          FRAME, [0, 0]);
 
+    spots.push({ x: o.cx, z: o.cz, y: fl, nx: o.nx, nz: o.nz, n: o.s.n, awn: AWNING.has(o.s.c) });
     if (!AWNING.has(o.s.c)) continue;
     // маркиза: от стены над витриной наружу и вниз, полосами в цвет вывески
     const ground = fl;
@@ -121,6 +123,7 @@ export function buildShopfronts(items, colorOf) {
   MAT = MAT || material();
   const mesh = new THREE.Mesh(geo, MAT);
   mesh.name = 'витрины';
+  mesh.userData.spots = spots;
   mesh.receiveShadow = true;
   return mesh;
 }
