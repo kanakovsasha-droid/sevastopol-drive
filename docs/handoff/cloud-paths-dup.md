@@ -1,6 +1,6 @@
 # cloud/paths-dup — висящие и двойные дорожки (п. 33, 06.10.2026)
 
-От `origin/hospital` (b/о `a67eeeb`-эпохи, см. `git log`). Звук, `stamp.mjs`, `main` не трогал.
+От `origin/hospital` (ed3a49e). Звук, `stamp.mjs`, `main` не трогал.
 
 ## Что было
 
