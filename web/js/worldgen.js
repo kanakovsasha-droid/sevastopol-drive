@@ -1,16 +1,16 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=5ecfe1f7';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=5ecfe1f7';
-import { buildCoverage } from './coverage.js?v=5ecfe1f7';
-import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=5ecfe1f7';
-import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt, centerWeight } from './roadlevels.js?v=5ecfe1f7';
-import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=5ecfe1f7';
-import { resolveAreas, sportSkipIds } from './sport.js?v=5ecfe1f7';
-import { planParking, roadSegIndex } from './parking.js?v=5ecfe1f7';
-import { seriesOf, seriesWall, seriesExtras } from './series.js?v=5ecfe1f7';
-import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=5ecfe1f7';
-import { castleExtras } from './castle.js?v=5ecfe1f7';
-import { wallColor, roofColor } from './palette.js?v=5ecfe1f7';
+import { SEA_FLOOR } from './terrain.js?v=90d69937';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=90d69937';
+import { buildCoverage } from './coverage.js?v=90d69937';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=90d69937';
+import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt, centerWeight } from './roadlevels.js?v=90d69937';
+import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=90d69937';
+import { resolveAreas, sportSkipIds } from './sport.js?v=90d69937';
+import { planParking, roadSegIndex } from './parking.js?v=90d69937';
+import { seriesOf, seriesWall, seriesExtras } from './series.js?v=90d69937';
+import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=90d69937';
+import { castleExtras } from './castle.js?v=90d69937';
+import { wallColor, roofColor } from './palette.js?v=90d69937';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
