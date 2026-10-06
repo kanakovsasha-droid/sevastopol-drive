@@ -1,5 +1,6 @@
 // Пауза: Esc (и Options / Menu на геймпаде) — мир, физика, время суток и
-// звук замирают, поверх — меню: продолжить, гараж, места, настройки, клавиши.
+// звук замирают, поверх — меню: продолжить, гараж, места, заезды, настройки,
+// клавиши.
 //
 // Как замирает: main.js в цикле видит paused и не двигает ничего — только
 // рисует кадр (картинка остаётся живой под меню и не гаснет). Звук — через
@@ -29,7 +30,7 @@ const CSS = `
 export class Pause {
   // open* — что делают пункты меню; isBusy — открыто ли что-то своё
   // (тогда Esc закрывает его, а паузу не трогает); audio — () => CarFX
-  constructor({ openGarage, openPlaces, openSettings, toggleHelp, isBusy, audio }) {
+  constructor({ openGarage, openPlaces, openRaces, openSettings, toggleHelp, isBusy, audio }) {
     this.paused = false;
     this.isBusy = isBusy; this.audio = audio;
     const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
@@ -40,6 +41,7 @@ export class Pause {
       <button data-a="resume"><span>Продолжить</span><small>Esc</small></button>
       <button data-a="garage"><span>Гараж</span><small>O</small></button>
       <button data-a="places"><span>Места</span><small>M</small></button>
+      ${openRaces ? '<button data-a="races"><span>Заезды</span><small>на время</small></button>' : ''}
       <button data-a="settings"><span>Настройки</span><small>T</small></button>
       <button data-a="keys"><span>Клавиши</span><small>?</small></button>
       <div class="sub">Мир, время суток и звук стоят, пока открыто это меню.</div>
@@ -50,6 +52,7 @@ export class Pause {
       resume: () => this.set(false),
       garage: () => { this.set(false); openGarage(); },
       places: () => { this.set(false); openPlaces(); },
+      races: () => { this.set(false); openRaces?.(); },
       settings: () => { this.set(false); openSettings(); },
       keys: () => { this.set(false); toggleHelp(); },
     };
