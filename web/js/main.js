@@ -46,6 +46,7 @@ import { Races } from './races.js?v=90d69937';
 import { Quality, QUALITY } from './quality.js?v=90d69937';
 import { farColors } from './palette.js?v=90d69937';
 import { buildFieldWalls } from './fields.js?v=5ecfe1f7';
+import { waitGround, groundReady } from './reseat.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -455,6 +456,8 @@ class TerrainTiles {
           // а не пачкой при первом взгляде в его сторону (см. revealSome)
           if (r.value.frustumCulled) { r.value.frustumCulled = false; unculled.push(r.value); }
           this.mesh.set(j.key, r.value);
+          // мебель соседних кварталов, стоявшая на этом квадрате по сырому DEM
+          groundReady(j.key, g => g.traverse(o => { if (o.geometry || o.material) junk.push(o); }));
         }
         this.job = null;
         this.stats.built++; this.stats.ms += ms;
@@ -805,13 +808,18 @@ function* buildChunk(d, key) {
   lap('улица');
   yield; pt = performance.now();
   at('мебель');
-  const furn = buildFurniture(furniture, terrain, roads,
-                              props.userData.onRoad,
-                              defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear })),
-                              d.allBuildings || w.buildings);
-  castShadows(furn);
-  farSmall(furn, 450);
+  const clearZones = defs.filter(x => x.clear).map(x => ({ x: x.x, z: x.z, r: x.clear }));
+  const makeFurn = () => {
+    const f = buildFurniture(furniture, terrain, roads, props.userData.onRoad,
+                             clearZones, d.allBuildings || w.buildings, w.__areasDraw);
+    castShadows(f);
+    farSmall(f, 450);
+    return f;
+  };
+  const furn = makeFurn();
   g.add(furn);
+  // за швом соседняя земля ещё не построена — пересадим, когда приедет (reseat.js)
+  waitGround(furn, makeFurn);
   lap('мебель');
   yield; pt = performance.now();
   at('вывески');
