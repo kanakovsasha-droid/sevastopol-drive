@@ -2641,9 +2641,26 @@ export function* buildRoads(world, terrain, chunk = 500) {
   // пешеходные дорожки идут следом и уступают.
   const walkOwn = new Int32Array(COV.W * COV.H).fill(-1);
   const claimWalk = (x, z, own) => { const c = cellOf(x, z); if (c >= 0 && walkOwn[c] < 0) walkOwn[c] = own; };
-  const onWalkOther = (x, z, own) => {
+  // С направлением пролёта (dx, dz) чужая дорожка мешает, только если идёт
+  // ВДОЛЬ (до 25°): поперечная или косая развилка аллей выбивала пролёт целиком, а
+  // сама закрывала лишь свою ширину — дыра до газона по обе стороны от неё
+  // (Комсомольский парк; раньше её прятал второй слой аллей places).
+  const onWalkOther = (x, z, own, dx = 0, dz = 0) => {
     const c = cellOf(x, z);
-    return c >= 0 && walkOwn[c] >= 0 && walkOwn[c] !== own;
+    if (!(c >= 0 && walkOwn[c] >= 0 && walkOwn[c] !== own)) return false;
+    const dl = Math.hypot(dx, dz), o = ALL[walkOwn[c]];
+    if (dl < 1e-6 || !o) return true;
+    const q = o.pts;
+    let bd = Infinity, cos = 1;
+    for (let t = 0; t + 3 < q.length; t += 2) {
+      const ax = q[t], az = q[t + 1], vx = q[t + 2] - ax, vz = q[t + 3] - az, L2 = vx * vx + vz * vz;
+      if (L2 < 1e-9) continue;
+      let u = ((x - ax) * vx + (z - az) * vz) / L2;
+      u = u < 0 ? 0 : u > 1 ? 1 : u;
+      const d = Math.hypot(ax + vx * u - x, az + vz * u - z);
+      if (d < bd) { bd = d; cos = Math.abs(vx * dx + vz * dz) / (Math.sqrt(L2) * dl); }
+    }
+    return cos > 0.9;
   };
   // Тротуар теперь идёт вдоль общей кромки, и «занято ли место тротуаром»
   // отвечает само поле: полоса от бордюра наружу у улицы, которой он положен.
@@ -2766,7 +2783,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
           for (const t of [-1, -0.5, 0, 0.5, 1]) {
             const o = t * hq * sc;
             const qx = bx + nx * o, qz = bz + nz * o;
-            if (onOtherRoad(qx, qz, ri) || onWalkOther(qx, qz, ri) || onSidewalk(qx, qz) || onLot(qx, qz)
+            if (onOtherRoad(qx, qz, ri) || onWalkOther(qx, qz, ri, ext[i * 2 + 2] - ext[i * 2], ext[i * 2 + 3] - ext[i * 2 + 1]) || onSidewalk(qx, qz) || onLot(qx, qz)
                 || (FLD && FLD.at(qx, qz) < -0.4)) { hit = true; break; }
           }
           if (hit) break;
