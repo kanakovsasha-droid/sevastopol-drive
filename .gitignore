@@ -24,3 +24,6 @@ shots-audio/
 # автопроверка (tools/qa.mjs): снимки и отчёты не в git, набор мест qa/spots.json — в git
 qa/runs/
 qa/report.html
+
+# сырые референсы фасадов (права авторов): не коммитить
+refs/center/
