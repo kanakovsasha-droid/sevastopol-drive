@@ -27,6 +27,18 @@ const LENS = [[0.78, 0.10, 0.08], [0.95, 0.62, 0.06], [0.10, 0.75, 0.32]];
 const WIDE = 12;                    // с этой ширины полотна — консоль над полосами
 const REACH = 4.4;                  // вынос головки на консоли от стойки, м
 
+// Стоящие светофоры — для трафика (traffic.js): ключ — место, по нему же
+// дубль из соседнего квартала не заводится второй раз. Старые записи
+// вычищает сам трафик по расстоянию до игрока.
+export const LIGHTS = new Map();
+
+// Можно ли ехать на этой головке сейчас: та же арифметика, что в шейдере.
+// 'go' — зелёный (и мигающий), 'amber' — жёлтый, 'stop' — красный.
+export function lightState(phase, time = ENV.uTime.value) {
+  const t = ((time + phase) % C + C) % C;
+  return t <= GREEN ? 'go' : t <= GREEN + YELLOW ? 'amber' : 'stop';
+}
+
 const s2l = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 
 function merge(parts) {
@@ -241,6 +253,7 @@ export function buildTrafficLights(list, y) {
       s.set(r.flip ? -1 : 1, 1, 1);
       mesh.setMatrixAt(i, m4.compose(p, q, s));
       mesh.setColorAt(i, col.setRGB(r.phase, 0, 0));
+      LIGHTS.set(Math.round(r.x) + ',' + Math.round(r.z), r);
     });
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
