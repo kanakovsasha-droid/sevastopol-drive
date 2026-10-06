@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { ENV } from './env.js?v=8c71f0ed';
+import { buildShopfronts } from './shopfronts.js?v=8c71f0ed';
 
 // Вывески заведений на фасадах. Названия — из OSM (data/shops.json), ничего
 // не выдумано. Каждая вывеска — один квад с ячейкой атласа: в ячейке уже
@@ -30,6 +32,25 @@ const COLORS = {
   civic:     ['#2f3a2b', '#f2efe4'],
 };
 
+// Сети — узнаваемыми фирменными цветами. Ищем по началу названия из OSM
+// (тег name), логотипов не рисуем: только подложка и буквы в цвет сети.
+// Записаны лишь федеральные сети с общеизвестными цветами. Местные (ПУД,
+// Яблоко, РНКБ, Генбанк, Атан-маркет) — пока цветом своего типа: их цвета
+// владелец сверит по панорамам и впишет сюда же.
+const BRANDS = [
+  [/^(пвз )?wildberries/i, ['#8b1fa9', '#ffffff']],
+  [/^ozon\b/i,              ['#005bff', '#ffffff']],
+  [/^сдэк/i,                ['#1ab248', '#ffffff']],
+  [/^(dns|днс)\b/i,         ['#f07d00', '#ffffff']],
+  [/^сбер/i,                ['#21a038', '#ffffff']],
+  [/^мтс\b/i,               ['#e30611', '#ffffff']],
+  [/^магнит\b/i,            ['#e30613', '#ffffff']],
+];
+export function signColors(s) {
+  for (const [re, col] of BRANDS) if (re.test(s.n)) return col;
+  return COLORS[s.c] || COLORS.shop;
+}
+
 // Высота листа — по числу занятых строк (степень двойки), а не всегда 2048:
 // в квартале обычно десяток-другой вывесок, это три строки из шестидесяти
 // четырёх, а лист 2048² с мипмапами — 21 МБ видеопамяти на квартал и долгая
@@ -49,7 +70,7 @@ function sheetTexture(names, from, count) {
   for (let i = 0; i < count; i++) {
     const s = names[from + i];
     const cx = (i % COLS) * CELL_W, cy = ((i / COLS) | 0) * CELL_H;
-    const [bg, fg] = COLORS[s.c] || COLORS.shop;
+    const [bg, fg] = signColors(s);
     // подложка со скруглением и светлой рамкой
     g.fillStyle = bg;
     g.beginPath();
@@ -74,6 +95,15 @@ function sheetTexture(names, from, count) {
   t.minFilter = THREE.LinearMipmapLinearFilter;
   return t;
 }
+
+// Ночью вывеска подсвечена: днём 0.30 свечения (чтобы читалась в тени),
+// к ночи — вчетверо ярче, как короб с лампами внутри.
+const SIGN_NIGHT = sh => {
+  sh.uniforms.uNight = ENV.uNight;
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nuniform float uNight;')
+    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance *= 1.0 + 3.0 * uNight;');
+};
 
 export function buildSigns(world, terrain, roadIndex) {
   const group = new THREE.Group();
@@ -141,7 +171,7 @@ export function buildSigns(world, terrain, roadIndex) {
       if (top - g < 4.6) { y = g + (top - g) * 0.70; w = Math.min(w, 4.2); h = w / 8; }
       if (y + h / 2 > top - 0.35) y = top - 0.35 - h / 2;
       if (y - h / 2 < g + 1.9) continue;           // на цоколь вывеску не вешаем
-      items.push({ s: b.sg[i], cx, cz, y, w, h,
+      items.push({ s: b.sg[i], cx, cz, y, w, h, hand: !!b.sw,
                    dx: best.dx / best.len, dz: best.dz / best.len,
                    nx: best.nx, nz: best.nz });
     }
@@ -189,8 +219,13 @@ export function buildSigns(world, terrain, roadIndex) {
       roughness: 0.55, metalness: 0.0,
       emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.30,
     });
+    mat.onBeforeCompile = SIGN_NIGHT;
+    mat.customProgramCacheKey = () => 'sign';
     group.add(new THREE.Mesh(geo, mat));
   }
+  // витрины и маркизы под вывесками (shopfronts.js) — одна сетка на квартал
+  const fronts = buildShopfronts(items, terrain, signColors);
+  if (fronts) group.add(fronts);
   group.userData.count = items.length;
   return group;
 }
