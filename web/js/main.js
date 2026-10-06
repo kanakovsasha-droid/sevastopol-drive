@@ -45,6 +45,7 @@ import { Peds } from './peds.js?v=90d69937';
 import { Races } from './races.js?v=90d69937';
 import { Quality, QUALITY } from './quality.js?v=90d69937';
 import { farColors } from './palette.js?v=90d69937';
+import { buildFieldWalls } from './fields.js?v=5ecfe1f7';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -744,6 +745,7 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
   at('спорт');
   g.add(buildSport(w, terrain));
+  g.add(buildFieldWalls(w, terrain));               // подпорные стенки ровных полей
   g.add(buildSkateparks(w, terrain));                // фигуры скейт-парков
   lap('спорт');
   yield; pt = performance.now();

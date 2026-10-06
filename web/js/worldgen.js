@@ -12,6 +12,7 @@ import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=90d69937';
 import { castleExtras } from './castle.js?v=90d69937';
 import { wallColor, roofColor } from './palette.js?v=90d69937';
 import { pathDupIndex, densePath } from './pathdup.js';
+import { applyFieldFlats, fieldLevel } from './fields.js?v=5ecfe1f7';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -1493,6 +1494,9 @@ export function* buildTerrainTile(terrain, index, opts) {
   const plat = yield* platformsGen(ext, ne, ex0, ez0, step, cwE, capE, world.buildings,
                                    [gx0 - 0.01, gz0 - 0.01, gx0 + (n - 1) * step + 0.01, gz0 + (n - 1) * step + 0.01], mlev);
   applySiteCuts(ext, ne, ex0, ez0, step);
+  // спортполя — снова на свою отметку: открытие, террасы и откосы площадок
+  // домов их сминали (fields.js)
+  applyFieldFlats(ext, ne, ex0, ez0, step, corrAt, world.buildings);
   // ДОРОГИ ПЕРВИЧНЫ (roadlevels.js): под самой проезжей частью центра земля
   // не ниже полотна, что бы с ней ни сделали площадки домов, террасы и
   // срезы. Срезанная под площадку земля у кромки опускала профиль езды на
@@ -4440,6 +4444,10 @@ export function* buildAreas(world, terrain) {
       hs.sort((p, q) => p - q);
       flatY = hs[Math.min(hs.length - 1, Math.round(hs.length * 0.4))];
       liftOf.set(a, { flat: flatY, lift: LIFT });
+    } else if (layer > 0 && (flatY = fieldLevel(a.id)) !== null) {
+      // поле на ровной площадке (fields.js) — ровно на её отметке
+      liftOf.set(a, { flat: flatY, lift: LIFT });
+      a.__flatY = flatY;
     }
 
     // Контур way в OSM замкнут: последняя точка совпадает с первой. Оставлять

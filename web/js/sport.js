@@ -326,7 +326,8 @@ export function buildSport(world, terrain) {
   const COV = world.__coverage;
   const onRoad = COV ? (x, z) => COV.onRoad(x, z) : () => false;
   const G = (x, z) => terrain.gridHeightAt(x, z);
-  const top = (a, x, z) => G(x, z) + (a.__lift || 0.2);
+  // поле на ровной площадке рисуется на её отметке (fields.js) — снаряжение тоже
+  const top = (a, x, z) => (a.__flatY ?? G(x, z)) + (a.__lift || 0.2);
   const B = world.meta && world.meta.bounds;
   // Чанк строит только то, что стоит в его квадрате (без запаса в 260 м),
   // иначе трибуну на шве построили бы оба соседа.
@@ -335,6 +336,7 @@ export function buildSport(world, terrain) {
 
   // ограда по контуру: стойки и верхняя труба в общую сетку, полотно рабицы —
   // отдельной полупрозрачной сеткой
+  let lev = null;
   const fence = (poly, h, inset = 0.25) => {
     const n = poly.length / 2;
     let closed = n;
@@ -352,7 +354,7 @@ export function buildSport(world, terrain) {
         const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
         // через проезжую часть и сквозь дом ограду не ведём
         if (onRoad(mx, mz) || (blds && blds.find(mx, mz))) continue;
-        const g0 = G(x0, z0), g1 = G(x1, z1);
+        const g0 = lev ?? G(x0, z0), g1 = lev ?? G(x1, z1);
         const q = fenceP.length / 3;
         fenceP.push(x0, g0, z0, x1, g1, z1, x1, g1 + h, z1, x0, g0 + h, z0);
         fenceI.push(q, q + 1, q + 2, q, q + 2, q + 3);
@@ -369,6 +371,7 @@ export function buildSport(world, terrain) {
   for (const a of world.__areasDraw || []) {
     const s = a.__s, f = a.__f;
     if (!s || !f) continue;
+    lev = a.__flatY ?? null;        // ограда ровного поля — на его отметке
     const F = fieldFrame(f);
     const { FL, FW, lx, lz, wx, wz, at } = F;
     const ang = (dx, dz) => Math.atan2(dx, dz);
