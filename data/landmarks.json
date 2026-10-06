@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом, ул. Генерала Петрова, 2",
+    "style": "model",
+    "x": -502.5,
+    "z": 596.4,
+    "file": "gen_petrova2.glb",
+    "ox": -493.1,
+    "oz": 612.25,
+    "skip": [
+      "w92028623"
+    ],
+    "source": "модель models/gen_petrova2/build.py; что видно на фото и что сделано наугад — models/gen_petrova2/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
