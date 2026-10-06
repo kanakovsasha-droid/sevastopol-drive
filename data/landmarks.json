@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Дом Большая Морская, 2 («Черноморочка»)",
+    "style": "model",
+    "x": -433.8,
+    "z": 621.5,
+    "file": "bmorskaya2.glb",
+    "ox": -426.6,
+    "oz": 620.35,
+    "skip": [
+      "w95119639"
+    ],
+    "source": "модель models/bmorskaya2/build.py; что видно на фото и что сделано наугад — models/bmorskaya2/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
