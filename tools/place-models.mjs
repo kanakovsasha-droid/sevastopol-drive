@@ -46,7 +46,8 @@ for (const n of names) {
   const home = Math.floor(cx / 1024) + '_' + Math.floor(cz / 1024) + '.json';
   for (const f of chunkFiles) {
     const c = chunk(f);
-    if (!Array.isArray(c.j.landmarks)) continue;
+    // квадрат без памятных зданий: массива ещё нет — заводим его в родном
+    if (!Array.isArray(c.j.landmarks)) { if (f !== home) continue; c.j.landmarks = []; }
     const before = c.j.landmarks.length;
     c.j.landmarks = c.j.landmarks.filter(d =>
       d.name !== P.name && !old.some(o => o.name === d.name && Math.hypot(o.x - d.x, o.z - d.z) < 1));
