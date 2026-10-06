@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Караимская кенасса (школа бокса)",
+    "style": "model",
+    "x": -314.1,
+    "z": 887.4,
+    "file": "kenassa.glb",
+    "ox": -308.65,
+    "oz": 909.25,
+    "skip": [
+      "w90821892"
+    ],
+    "source": "модель models/kenassa/build.py; что видно на фото и что сделано наугад — models/kenassa/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
