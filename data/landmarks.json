@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Большая Морская, 3 (дом с аркадой)",
+    "style": "model",
+    "x": -344,
+    "z": 709.8,
+    "file": "bm3.glb",
+    "ox": -357.9,
+    "oz": 709.15,
+    "skip": [
+      "w92717224"
+    ],
+    "source": "модель models/bm3/build.py; что видно на фото и что сделано наугад — models/bm3/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
