@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { ENV } from './env.js?v=8c71f0ed';
+import { buildShopfronts } from './shopfronts.js?v=8c71f0ed';
 
 // Вывески заведений на фасадах. Названия — из OSM (data/shops.json), ничего
 // не выдумано. Каждая вывеска — один квад с ячейкой атласа: в ячейке уже
@@ -30,6 +32,25 @@ const COLORS = {
   civic:     ['#2f3a2b', '#f2efe4'],
 };
 
+// Сети — узнаваемыми фирменными цветами. Ищем по началу названия из OSM
+// (тег name), логотипов не рисуем: только подложка и буквы в цвет сети.
+// Записаны лишь федеральные сети с общеизвестными цветами. Местные (ПУД,
+// Яблоко, РНКБ, Генбанк, Атан-маркет) — пока цветом своего типа: их цвета
+// владелец сверит по панорамам и впишет сюда же.
+const BRANDS = [
+  [/^(пвз )?wildberries/i, ['#8b1fa9', '#ffffff']],
+  [/^ozon\b/i,              ['#005bff', '#ffffff']],
+  [/^сдэк/i,                ['#1ab248', '#ffffff']],
+  [/^(dns|днс)\b/i,         ['#f07d00', '#ffffff']],
+  [/^сбер/i,                ['#21a038', '#ffffff']],
+  [/^мтс\b/i,               ['#e30611', '#ffffff']],
+  [/^магнит\b/i,            ['#e30613', '#ffffff']],
+];
+export function signColors(s) {
+  for (const [re, col] of BRANDS) if (re.test(s.n)) return col;
+  return COLORS[s.c] || COLORS.shop;
+}
+
 // Высота листа — по числу занятых строк (степень двойки), а не всегда 2048:
 // в квартале обычно десяток-другой вывесок, это три строки из шестидесяти
 // четырёх, а лист 2048² с мипмапами — 21 МБ видеопамяти на квартал и долгая
@@ -49,7 +70,7 @@ function sheetTexture(names, from, count) {
   for (let i = 0; i < count; i++) {
     const s = names[from + i];
     const cx = (i % COLS) * CELL_W, cy = ((i / COLS) | 0) * CELL_H;
-    const [bg, fg] = COLORS[s.c] || COLORS.shop;
+    const [bg, fg] = signColors(s);
     // подложка со скруглением и светлой рамкой
     g.fillStyle = bg;
     g.beginPath();
@@ -74,6 +95,15 @@ function sheetTexture(names, from, count) {
   t.minFilter = THREE.LinearMipmapLinearFilter;
   return t;
 }
+
+// Ночью вывеска подсвечена: днём 0.30 свечения (чтобы читалась в тени),
+// к ночи — вчетверо ярче, как короб с лампами внутри.
+const SIGN_NIGHT = sh => {
+  sh.uniforms.uNight = ENV.uNight;
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nuniform float uNight;')
+    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance *= 1.0 + 3.0 * uNight;');
+};
 
 export function buildSigns(world, terrain, roadIndex) {
   const group = new THREE.Group();
@@ -121,17 +151,27 @@ export function buildSigns(world, terrain, roadIndex) {
     }
     if (!best) continue;
 
-    let gmin = Infinity, gmax = -Infinity;
+    // Отметка первого этажа — как в buildBuildings (worldgen.js): самая
+    // высокая земля у стен с шагом 2 м; ниже неё у дома каменный цоколь.
+    // От неё и считаем вывеску с витриной: от земли у самой вывески на
+    // склоне витрина вставала перед цоколем, а вывеска уходила под этаж.
+    let gmax = -Infinity;
     for (let i = 0; i < n; i++) {
-      const h = terrain.gridHeightAt(p[i * 2], p[i * 2 + 1]);
-      if (h < gmin) gmin = h; if (h > gmax) gmax = h;
+      const j = (i + 1) % n;
+      const ax = p[i * 2], az = p[i * 2 + 1];
+      const ex = p[j * 2] - ax, ez = p[j * 2 + 1] - az;
+      const k = Math.max(1, Math.ceil(Math.hypot(ex, ez) / 2));
+      for (let s = 0; s < k; s++) {
+        const h = terrain.gridHeightAt(ax + ex * s / k, az + ez * s / k);
+        if (h > gmax) gmax = h;
+      }
     }
     const top = gmax + b.h;
     const k = Math.min(b.sg.length, Math.max(1, Math.floor(best.len / 4.2)));
     for (let i = 0; i < k; i++) {
       const t = (i + 0.5) / k;
       const cx = best.ax + best.dx * t, cz = best.az + best.dz * t;
-      const g = terrain.gridHeightAt(cx, cz);
+      const g = gmax;
       // Вывеска, прибитая к стене руками, — это имя здания, а не ларёк:
       // делаем её крупнее, иначе с улицы её просто не прочесть.
       let w = Math.min(b.sw ? 8.4 : 5.4, best.len * 0.88 / k);
@@ -141,7 +181,7 @@ export function buildSigns(world, terrain, roadIndex) {
       if (top - g < 4.6) { y = g + (top - g) * 0.70; w = Math.min(w, 4.2); h = w / 8; }
       if (y + h / 2 > top - 0.35) y = top - 0.35 - h / 2;
       if (y - h / 2 < g + 1.9) continue;           // на цоколь вывеску не вешаем
-      items.push({ s: b.sg[i], cx, cz, y, w, h,
+      items.push({ s: b.sg[i], cx, cz, y, w, h, hand: !!b.sw, floor: g,
                    dx: best.dx / best.len, dz: best.dz / best.len,
                    nx: best.nx, nz: best.nz });
     }
@@ -189,8 +229,13 @@ export function buildSigns(world, terrain, roadIndex) {
       roughness: 0.55, metalness: 0.0,
       emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.30,
     });
+    mat.onBeforeCompile = SIGN_NIGHT;
+    mat.customProgramCacheKey = () => 'sign';
     group.add(new THREE.Mesh(geo, mat));
   }
+  // витрины и маркизы под вывесками (shopfronts.js) — одна сетка на квартал
+  const fronts = buildShopfronts(items, signColors);
+  if (fronts) group.add(fronts);
   group.userData.count = items.length;
   return group;
 }
