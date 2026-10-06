@@ -11,6 +11,7 @@ import { seriesOf, seriesWall, seriesExtras } from './series.js?v=90d69937';
 import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=90d69937';
 import { castleExtras } from './castle.js?v=90d69937';
 import { wallColor, roofColor } from './palette.js?v=90d69937';
+import { pathDupIndex, densePath } from './pathdup.js';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -2640,9 +2641,26 @@ export function* buildRoads(world, terrain, chunk = 500) {
   // пешеходные дорожки идут следом и уступают.
   const walkOwn = new Int32Array(COV.W * COV.H).fill(-1);
   const claimWalk = (x, z, own) => { const c = cellOf(x, z); if (c >= 0 && walkOwn[c] < 0) walkOwn[c] = own; };
-  const onWalkOther = (x, z, own) => {
+  // С направлением пролёта (dx, dz) чужая дорожка мешает, только если идёт
+  // ВДОЛЬ (до 25°): поперечная или косая развилка аллей выбивала пролёт целиком, а
+  // сама закрывала лишь свою ширину — дыра до газона по обе стороны от неё
+  // (Комсомольский парк; раньше её прятал второй слой аллей places).
+  const onWalkOther = (x, z, own, dx = 0, dz = 0) => {
     const c = cellOf(x, z);
-    return c >= 0 && walkOwn[c] >= 0 && walkOwn[c] !== own;
+    if (!(c >= 0 && walkOwn[c] >= 0 && walkOwn[c] !== own)) return false;
+    const dl = Math.hypot(dx, dz), o = ALL[walkOwn[c]];
+    if (dl < 1e-6 || !o) return true;
+    const q = o.pts;
+    let bd = Infinity, cos = 1;
+    for (let t = 0; t + 3 < q.length; t += 2) {
+      const ax = q[t], az = q[t + 1], vx = q[t + 2] - ax, vz = q[t + 3] - az, L2 = vx * vx + vz * vz;
+      if (L2 < 1e-9) continue;
+      let u = ((x - ax) * vx + (z - az) * vz) / L2;
+      u = u < 0 ? 0 : u > 1 ? 1 : u;
+      const d = Math.hypot(ax + vx * u - x, az + vz * u - z);
+      if (d < bd) { bd = d; cos = Math.abs(vx * dx + vz * dz) / (Math.sqrt(L2) * dl); }
+    }
+    return cos > 0.9;
   };
   // Тротуар теперь идёт вдоль общей кромки, и «занято ли место тротуаром»
   // отвечает само поле: полоса от бордюра наружу у улицы, которой он положен.
@@ -2765,7 +2783,7 @@ export function* buildRoads(world, terrain, chunk = 500) {
           for (const t of [-1, -0.5, 0, 0.5, 1]) {
             const o = t * hq * sc;
             const qx = bx + nx * o, qz = bz + nz * o;
-            if (onOtherRoad(qx, qz, ri) || onWalkOther(qx, qz, ri) || onSidewalk(qx, qz) || onLot(qx, qz)
+            if (onOtherRoad(qx, qz, ri) || onWalkOther(qx, qz, ri, ext[i * 2 + 2] - ext[i * 2], ext[i * 2 + 3] - ext[i * 2 + 1]) || onSidewalk(qx, qz) || onLot(qx, qz)
                 || (FLD && FLD.at(qx, qz) < -0.4)) { hit = true; break; }
           }
           if (hit) break;
@@ -4640,43 +4658,48 @@ export function* buildAreas(world, terrain) {
   // повороте аллея рвётся или наезжает сама на себя.
   {
     const LIFT = LIFT0 + 7 * 0.035;
+    // Пролёты, которые уже рисует дорожка OSM или полотно, выкидываем, а
+    // остаток сгущаем до 4 м (pathdup.js): иначе вторая лента висела над землёй.
+    const DUP = (pl.paths || []).length ? pathDupIndex(allRoads) : null;
     for (const pa of pl.paths || []) {
-      const q = pa.pts, m = q.length / 2;
-      if (m < 2) continue;
       const hw = Math.max(0.9, (pa.w || 3) / 2);
-      const kind = KIND.path;
-      const col = pa.s === 'ground' ? [0.412, 0.353, 0.271] : BASE.path;
-      let prev = null, along = 0;
-      if ((work += m) > 400) { work = 0; yield; }
-      for (let i = 0; i < m; i++) {
-        let nx = 0, nz = 0, cnt = 0;
-        if (i > 0) {
-          const dx = q[i * 2] - q[i * 2 - 2], dz = q[i * 2 + 1] - q[i * 2 - 1];
-          const l = Math.hypot(dx, dz);
-          if (l > 1e-6) { nx += -dz / l; nz += dx / l; cnt++; along += l; }
+      for (const q of densePath(pa.pts, hw, DUP)) {
+        const m = q.length / 2;
+        if (m < 2) continue;
+        const kind = KIND.path;
+        const col = pa.s === 'ground' ? [0.412, 0.353, 0.271] : BASE.path;
+        let prev = null, along = 0;
+        if ((work += m) > 400) { work = 0; yield; }
+        for (let i = 0; i < m; i++) {
+          let nx = 0, nz = 0, cnt = 0;
+          if (i > 0) {
+            const dx = q[i * 2] - q[i * 2 - 2], dz = q[i * 2 + 1] - q[i * 2 - 1];
+            const l = Math.hypot(dx, dz);
+            if (l > 1e-6) { nx += -dz / l; nz += dx / l; cnt++; along += l; }
+          }
+          if (i < m - 1) {
+            const dx = q[i * 2 + 2] - q[i * 2], dz = q[i * 2 + 3] - q[i * 2 + 1];
+            const l = Math.hypot(dx, dz);
+            if (l > 1e-6) { nx += -dz / l; nz += dx / l; cnt++; }
+          }
+          let len = Math.hypot(nx, nz);
+          if (!cnt || len < 1e-6) { nx = 1; nz = 0; len = 1; cnt = 1; }
+          const sc = Math.min(1.6, cnt / len);
+          nx /= len; nz /= len;
+          const cur = [];
+          for (const sg of [-1, 1]) {
+            const x = q[i * 2] + nx * sg * hw * sc, z = q[i * 2 + 1] + nz * sg * hw * sc;
+            P.push(x, H(x, z) + LIFT, z);
+            C.push(enc(col[0]), enc(col[1]), enc(col[2]));
+            U.push(along, sg * hw, hw * 2, 0);
+            K.push(kind); S.push(0);
+            cur.push(base++);
+          }
+          if (prev) I.push(prev[0], prev[1], cur[0], prev[1], cur[1], cur[0]);
+          prev = cur;
         }
-        if (i < m - 1) {
-          const dx = q[i * 2 + 2] - q[i * 2], dz = q[i * 2 + 3] - q[i * 2 + 1];
-          const l = Math.hypot(dx, dz);
-          if (l > 1e-6) { nx += -dz / l; nz += dx / l; cnt++; }
-        }
-        let len = Math.hypot(nx, nz);
-        if (!cnt || len < 1e-6) { nx = 1; nz = 0; len = 1; cnt = 1; }
-        const sc = Math.min(1.6, cnt / len);
-        nx /= len; nz /= len;
-        const cur = [];
-        for (const sg of [-1, 1]) {
-          const x = q[i * 2] + nx * sg * hw * sc, z = q[i * 2 + 1] + nz * sg * hw * sc;
-          P.push(x, H(x, z) + LIFT, z);
-          C.push(enc(col[0]), enc(col[1]), enc(col[2]));
-          U.push(along, sg * hw, hw * 2, 0);
-          K.push(kind); S.push(0);
-          cur.push(base++);
-        }
-        if (prev) I.push(prev[0], prev[1], cur[0], prev[1], cur[1], cur[0]);
-        prev = cur;
+        drawn++;
       }
-      drawn++;
     }
   }
 
