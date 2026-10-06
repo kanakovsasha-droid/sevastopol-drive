@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { lampGlow, registerLamps } from './env.js?v=b4c97018';
-import { PolyGrid } from './worldgen.js?v=b4c97018';
-import { plantFlora, crownRadius, ST } from './flora.js?v=b4c97018';
-import { streetOwnsRoad } from './street.js?v=b4c97018';
-import { forestPlanter, isForest } from './forest.js?v=b4c97018';
+import { lampGlow, registerLamps } from './env.js?v=5ecfe1f7';
+import { PolyGrid } from './worldgen.js?v=5ecfe1f7';
+import { plantFlora, crownRadius, ST } from './flora.js?v=5ecfe1f7';
+import { streetOwnsRoad } from './street.js?v=5ecfe1f7';
+import { forestPlanter, isForest } from './forest.js?v=5ecfe1f7';
 
 // Уличное наполнение. По панорамам Севастополя видно, что улицу делают не дома,
 // а то, что вдоль неё: платаны в тротуаре, сплошной ряд машин у бордюра,
