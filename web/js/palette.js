@@ -14,7 +14,7 @@
 // главнее, его разбирает worldgen.js. Типовые дома красит series.js.
 // Без кислотных цветов: всё — штукатурка, известняк, крашеная жесть.
 
-import { seriesOf } from './series.js?v=8c71f0ed';
+import { seriesOf } from './series.js?v=86fd2580';
 
 // Семейства стен
 const F = {

@@ -59,7 +59,7 @@ export function openGround(h, n, r = 2) {
 // Отметка площадки дома по id. Дом на шве попадает в окна ОБОИХ соседей, и
 // отметка обязана выйти одинаковой до сантиметра. Окна у соседей разные,
 // поэтому кто посчитал первым, тот и записал — второй берёт готовую.
-import { levelAt, hasLevels } from './roadlevels.js?v=8c71f0ed';
+import { levelAt, hasLevels } from './roadlevels.js?v=86fd2580';
 
 const LEVEL = new Map();
 
