@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом, Б. Морская 52",
+    "style": "model",
+    "x": -174.4,
+    "z": 1627,
+    "file": "bm52.glb",
+    "ox": -164.45,
+    "oz": 1599.9,
+    "skip": [
+      "w166878780"
+    ],
+    "source": "модель models/bm52/build.py; что видно на фото и что сделано наугад — models/bm52/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
