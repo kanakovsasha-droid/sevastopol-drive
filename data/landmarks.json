@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Улица Воронина, 11",
+    "style": "model",
+    "x": -318.9,
+    "z": 572.5,
+    "file": "voronina11.glb",
+    "ox": -325.25,
+    "oz": 574.2,
+    "skip": [
+      "w195694375"
+    ],
+    "source": "модель models/voronina11/build.py; что видно на фото и что сделано наугад — models/voronina11/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
