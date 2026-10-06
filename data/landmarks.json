@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Большая Морская, 4 — угловой дом со «Столовой №1»",
+    "style": "model",
+    "x": -407.4,
+    "z": 663.5,
+    "file": "bmorskaya4.glb",
+    "ox": -396.3,
+    "oz": 662.2,
+    "skip": [
+      "w95119638"
+    ],
+    "source": "модель models/bmorskaya4/build.py; что видно на фото и что сделано наугад — models/bmorskaya4/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
