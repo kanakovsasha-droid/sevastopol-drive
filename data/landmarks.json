@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом, ул. Суворова, 2/7",
+    "style": "model",
+    "x": -244.2,
+    "z": 537.8,
+    "file": "suvorova27.glb",
+    "ox": -226.4,
+    "oz": 517.4,
+    "skip": [
+      "w92717225"
+    ],
+    "source": "модель models/suvorova27/build.py; что видно на фото и что сделано наугад — models/suvorova27/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
