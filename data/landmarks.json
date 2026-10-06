@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Большая Морская, 15 — угловая сталинка у Таврической лестницы",
+    "style": "model",
+    "x": -268.8,
+    "z": 1033.2,
+    "file": "bmorskaya15.glb",
+    "ox": -284,
+    "oz": 1042,
+    "skip": [
+      "w90821885"
+    ],
+    "source": "модель models/bmorskaya15/build.py; что видно на фото и что сделано наугад — models/bmorskaya15/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
