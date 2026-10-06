@@ -10,6 +10,7 @@ import { planParking, roadSegIndex } from './parking.js?v=8c71f0ed';
 import { seriesOf, seriesWall, seriesExtras } from './series.js?v=8c71f0ed';
 import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=8c71f0ed';
 import { castleExtras } from './castle.js?v=8c71f0ed';
+import { wallColor, roofColor } from './palette.js?v=8c71f0ed';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.
@@ -70,20 +71,7 @@ export class PolyGrid {
 }
 
 // ---------------------------------------------------------------- палитра
-// Севастополь сложен из инкерманского известняка: стены кремовые и охристые,
-// крыши — терракота и шифер. Серых коробок здесь нет.
-const WALLS = [
-  [0.918, 0.871, 0.769], [0.886, 0.827, 0.706], [0.933, 0.902, 0.831],
-  [0.859, 0.784, 0.659], [0.824, 0.741, 0.604], [0.902, 0.855, 0.765],
-  [0.796, 0.706, 0.561], [0.906, 0.863, 0.769], [0.847, 0.808, 0.729],
-  [0.871, 0.816, 0.702], [0.839, 0.769, 0.643], [0.788, 0.741, 0.663],
-  [0.839, 0.722, 0.494], [0.800, 0.682, 0.463],   // охра
-  [0.906, 0.851, 0.686], [0.878, 0.831, 0.702],   // палевый
-  [0.812, 0.812, 0.788], [0.757, 0.765, 0.753],   // светло-серый
-  [0.945, 0.937, 0.914], [0.965, 0.949, 0.918],   // белёный
-];
-const ROOFS_TILE = [[0.545, 0.271, 0.196], [0.494, 0.239, 0.169], [0.612, 0.325, 0.216], [0.463, 0.255, 0.192]];
-const ROOFS_FLAT = [[0.318, 0.310, 0.294], [0.286, 0.310, 0.325], [0.361, 0.349, 0.329], [0.255, 0.267, 0.275]];
+// Стены и кровли жилых домов красит palette.js (по типу дома и району).
 // рынок: белёные ролеты и профнастил, тенты цветные
 const MARKET_WALLS = [[0.878, 0.871, 0.855], [0.827, 0.831, 0.827], [0.906, 0.894, 0.867], [0.784, 0.796, 0.796]];
 const MARKET_ROOF = [0.812, 0.831, 0.843];
@@ -3770,9 +3758,11 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
     const area = polyArea(poly);
     const market = b.k === 'market';
     const wantHip = b.rs === 'hipped';
+    // цвет стен — по типу дома и району (palette.js); кубик rand бросаем как
+    // раньше, чтобы не сдвинуть кровли и оттенки следующих домов
     const wall = b.wc ? hexRGB(b.wc)
                : market ? MARKET_WALLS[(rand() * MARKET_WALLS.length) | 0]
-                        : WALLS[(rand() * WALLS.length) | 0];
+                        : (rand(), wallColor(b));
     // Черепица в центре Севастополя лежит не только на маленьких домах:
     // послевоенный квартал — это 5–7 этажей и корпуса в пол-квартала, и они
     // тоже под скатом. Прежний порог (18 м / 900 м²) оставлял 700+ крупных,
@@ -3791,8 +3781,7 @@ export function* buildBuildings(world, terrain, chunk = 500, skip = null) {
     stats.total++; if (pitched) stats.pitched++;
     let roof = b.rc ? hexRGB(b.rc)
       : market ? MARKET_ROOF
-      : flatRoof ? ROOFS_FLAT[(rand() * ROOFS_FLAT.length) | 0]
-      : ROOFS_TILE[(rand() * ROOFS_TILE.length) | 0];
+      : (rand(), roofColor(b, flatRoof));
     if (ser && ser.roof && pitched && !b.rc) roof = ser.roof;
     const tint = 0.93 + rand() * 0.15;
     const wc0 = ser ? ser.color : wall;

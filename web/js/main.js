@@ -44,6 +44,7 @@ import { loadGuardrail, prepGuardrail, buildGuardrail } from './guardrail.js?v=8
 import { Peds } from './peds.js?v=8c71f0ed';
 import { Races } from './races.js?v=8c71f0ed';
 import { Quality, QUALITY } from './quality.js?v=8c71f0ed';
+import { farColors } from './palette.js?v=8c71f0ed';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -560,7 +561,8 @@ function buildFarCity() {
   // Цвета берём близкими к тому, что строит детальный слой: серые коробки
   // рядом с терракотовыми крышами читались как отдельный «другой город»,
   // и граница детальной загрузки бросалась в глаза сменой цвета.
-  const WALL = [0.74, 0.70, 0.62], ROOF = [0.55, 0.33, 0.24], ROAD = [0.34, 0.33, 0.32];
+  // Стены и кровли — свои у каждого дома, как в детальном слое (palette.js).
+  const ROAD = [0.34, 0.33, 0.32];
 
   for (const b of far.buildings || []) {
     const p = b.poly;
@@ -572,6 +574,7 @@ function buildFarCity() {
     for (let i = 0; i < n; i++) { sx += p[i * 2]; sz += p[i * 2 + 1]; }
     sx /= n; sz /= n;
     const a = at(cellOf(sx, sz));
+    const [WALL, ROOF] = farColors(b);
     const y0 = terrain.gridHeightAt(sx, sz) - 1.2;
     const y1 = y0 + (b.h || 9) + 1.2;
     for (let i = 0; i < n; i++) {
