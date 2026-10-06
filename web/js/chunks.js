@@ -29,6 +29,8 @@ const SUBFIELDS = {
 // бордюры сходящихся улиц полезут поперёк проезжей части.
 const CONTEXT = ['junctions'];
 
+import { seriesPrep } from './series.js?v=b67046f1';
+
 export class ChunkManager {
   constructor(base, opts = {}) {
     // Адрес приводим к абсолютному СРАЗУ: качает воркер, а относительный путь
@@ -85,6 +87,7 @@ export class ChunkManager {
     for (const c of index.chunks) this.cells.set(c.cx + '_' + c.cz, c);
 
     const far = await fetch(`${this.base}/${index.far || 'far.json'}${q}`).then(r => r.json());
+    seriesPrep(far.buildings);                 // высоты и арки типовых домов (series.js)
 
     // Воркер один: он только качает и разбирает, узкое место — сеть, а не он.
     this.worker = new Worker(new URL('./chunk-worker.js' + q, import.meta.url));
@@ -99,7 +102,7 @@ export class ChunkManager {
         this.state.delete(key);
         console.warn('чанк', key, error);
       }
-      else { this.ready.set(key, data); this.state.set(key, 'ready'); }
+      else { seriesPrep(data && data.buildings); this.ready.set(key, data); this.state.set(key, 'ready'); }
       this._pump();
     };
     return { index, far, meta: index.meta };

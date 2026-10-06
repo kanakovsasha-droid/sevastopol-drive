@@ -24,6 +24,22 @@ try {
 
 export const SERIES = S;
 
+// Высота и арка из series.json — до сборки чего бы то ни было: дом без тега
+// этажности, узнанный как хрущёвка, получает высоту пятиэтажки (h), сталинка
+// с проездом OSM под ней — арку (gate, passage.js). Правим прямо в данных
+// квадрата и дальнего слоя: высоту берут и стены, и кровля, и коллайдер, и
+// дальний слой, и вывески. Зовёт chunks.js сразу после разбора JSON.
+export function seriesPrep(list) {
+  if (!S || !list) return;
+  for (const b of list) {
+    const e = b.id && S.b[b.id];
+    if (!e) continue;
+    if (e[3]) b.h = e[3];
+    // арка по OSM: дом идёт упрощённым контуром, по нему посчитано и ребро подъездов
+    if (e[4] && !b.gate) { b.gate = e[4]; if (e[5]) b.poly = e[5]; }
+  }
+}
+
 // вид фасада в aKind и шаг пролёта по сериям — шаг тот же, что в шейдере
 const KIND = { k: 14, s: 15, p: 16 };
 const BAY = { k: 3.2, s: 3.1, p: 3.0 };
@@ -41,6 +57,13 @@ const PAL = {
       [0.863, 0.831, 0.765], [0.835, 0.835, 0.819]],
 };
 
+// Кровли. У хрущёвки — шифер по деревянной стропильной (серо-бурый, как у
+// Толстого, 4А), у сталинки — черепица или крашеная жесть вальмой.
+const ROOF = {
+  k: [[0.369, 0.329, 0.298], [0.408, 0.396, 0.376], [0.333, 0.318, 0.302], [0.447, 0.420, 0.384]],
+  s: [[0.545, 0.271, 0.196], [0.494, 0.239, 0.169], [0.612, 0.325, 0.216], [0.420, 0.420, 0.400]],
+};
+
 // Свой хеш от id: общий генератор buildBuildings трогать нельзя — лишний
 // вызов сдвинул бы кровли и цвета всех следующих домов квадрата.
 function hashId(s) {
@@ -49,13 +72,17 @@ function hashId(s) {
   return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
 }
 
+const fractH = x => x - Math.floor(x);
+
 // Серия дома или null.
 export function seriesOf(b) {
   const e = S && b.id && S.b[b.id];
   if (!e) return null;
   const code = e[0], poly = b.poly, n = poly.length / 2;
   const pal = PAL[code];
-  const ser = { code, kind: KIND[code], bay: BAY[code], edge: e[1], color: pal[(hashId(b.id) * pal.length) | 0],
+  const hr = hashId(b.id);
+  const ser = { code, kind: KIND[code], bay: BAY[code], edge: e[1], color: pal[(hr * pal.length) | 0],
+                roof: ROOF[code] ? ROOF[code][(fractH(hr * 7.31) * ROOF[code].length) | 0] : null,
                 ax: 1, az: 0, aspect: 1, doors: [], id: b.id, b, walls: [], ent: e[2] | 0 };
   // ось дома — по стене подъездов, торцы — стены поперёк неё
   if (ser.edge >= 0 && ser.edge < n) {
