@@ -43,6 +43,7 @@ import { Traffic } from './traffic.js?v=8c71f0ed';
 import { loadGuardrail, prepGuardrail, buildGuardrail } from './guardrail.js?v=8c71f0ed';
 import { Peds } from './peds.js?v=8c71f0ed';
 import { Races } from './races.js?v=8c71f0ed';
+import { Quality, QUALITY } from './quality.js?v=8c71f0ed';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -141,6 +142,7 @@ let assists = null;                            // ABS, ASR, ESP, Race Start (ass
 let traffic = null;                            // машины-боты на главных улицах (traffic.js)
 let peds = null;                               // пешеходы на тротуарах и дорожках (peds.js)
 let races = null;                              // заезды на время (races.js)
+let quality = null;                            // «Высокое» / «Низкое» и автопонижение (quality.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -190,6 +192,9 @@ async function boot() {
 
     await step('строю рельеф…', 26);
     initScene();
+    // качество графики — до первых кварталов: в «Низком» и грузим ближе (quality.js)
+    quality = new Quality({ renderer, sun, chunks, toast: t => hud?.toast(t),
+      busy: () => mapOpen || !!document.querySelector('#pause.on, #settings.on, #menu.on') });
     // warmCarEnv(renderer) здесь (cloud/e63-atlas) останавливал сборку чанков:
     // первый квартал не достраивался, город вокруг машины пустой. Убран при
     // сборке волны — отражения строятся при загрузке модели, как раньше.
@@ -288,6 +293,7 @@ async function boot() {
     // заезды на время: меню — из паузы, арки и таймер (races.js)
     races = new Races({ scene, terrain, car: () => car, mode: () => mode, jumpTo, settled: () => !wantJump,
       place: (x, z, yaw) => { car.reset(x, z, yaw); carCam.snap(car); }, toast: t => hud.toast(t), v: V });
+    settings.quality = quality;
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam: carCam, get mode() { return mode; } };
@@ -324,6 +330,7 @@ async function boot() {
     window.G.env = env;
     window.G.traffic = traffic;
     window.G.peds = peds;
+    window.G.quality = quality;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
     console.log(`до старта ${window.G.boot} мс, чанков в манифесте ${chunks.cells.size}`);
@@ -862,7 +869,7 @@ function cullFar() {
       const bs = c.o.isInstancedMesh ? c.o.boundingSphere : (g.boundingSphere || (g.computeBoundingSphere(), g.boundingSphere));
       c.s = _sph.copy(bs).applyMatrix4(c.o.matrixWorld).clone();
     }
-    c.o.visible = cp.distanceTo(c.s.center) - c.s.radius < c.o.userData.far;
+    c.o.visible = cp.distanceTo(c.s.center) - c.s.radius < c.o.userData.far * QUALITY.far;
   }
   // Дальний силуэт — по вызову отрисовки на квадрат 1 км, и с земли в кадре
   // их под сотню, большей частью там, где туман уже съел всё. Туман FogExp2:
@@ -1638,6 +1645,7 @@ function hudView() {
 
 function updateHUD(dt) {
   tunePixelRatio(dt);
+  quality?.tick(dt);
   fpsAcc += dt; fpsN++;
   // прибор и карта — каждый кадр: плавная стрелка и поворот карты; что
   // перерисовать, hud решает сам
