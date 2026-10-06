@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Нахимова 19 («Окей»)",
+    "style": "model",
+    "x": -340.3,
+    "z": 484.1,
+    "file": "nakhimova19.glb",
+    "ox": -359.85,
+    "oz": 470.55,
+    "skip": [
+      "w166764282"
+    ],
+    "source": "модель models/nakhimova19/build.py; что видно на фото и что сделано наугад — models/nakhimova19/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
