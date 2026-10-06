@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом, пр. Нахимова, 12",
+    "style": "model",
+    "x": -435.2,
+    "z": 493.7,
+    "file": "nahimova12.glb",
+    "ox": -423.75,
+    "oz": 499.75,
+    "skip": [
+      "w92028133"
+    ],
+    "source": "модель models/nahimova12/build.py; что видно на фото и что сделано наугад — models/nahimova12/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
