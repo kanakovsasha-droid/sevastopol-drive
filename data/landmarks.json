@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Большая Морская, 8 — дом с эркером-ротондой",
+    "style": "model",
+    "x": -384.7,
+    "z": 784.6,
+    "file": "w92718640.glb",
+    "ox": -377.5,
+    "oz": 760.2,
+    "skip": [
+      "w92718640"
+    ],
+    "source": "модель models/w92718640/build.py; что видно на фото и что сделано наугад — models/w92718640/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
