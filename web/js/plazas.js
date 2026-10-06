@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { pavingBuffer, pavingMesh } from './paving.js?v=90d69937';
-import { plantFlora } from './flora.js?v=90d69937';
+import { pavingBuffer, pavingMesh } from './paving.js?v=2628e755';
+import { plantFlora } from './flora.js?v=2628e755';
 
 // Мощёные площадки перед домами (data/plazas.json): у OSM их нет ни контуром,
 // ни мебелью, а на панорамах там плитка до фасадов, кадки с деревьями, летняя

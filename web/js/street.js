@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { lampGlow, registerLamps } from './env.js?v=90d69937';
-import { plantFlora, ST } from './flora.js?v=90d69937';
-import { makeAxis, paveAxis, pavingBuffer, pavingMesh } from './paving.js?v=90d69937';
+import { lampGlow, registerLamps } from './env.js?v=2628e755';
+import { plantFlora, ST } from './flora.js?v=2628e755';
+import { makeAxis, paveAxis, pavingBuffer, pavingMesh } from './paving.js?v=2628e755';
 
 // Большая Морская — витрина города. Всё, что делает её улицей, а не дорогой
 // между коробками: ряды молодых софор в газонной полосе у бордюра, стриженые

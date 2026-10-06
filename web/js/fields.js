@@ -22,7 +22,7 @@
 // Считается только по положению узла и его же высоте — шов двух квадратов
 // получает одно и то же.
 import * as THREE from 'three';
-import { sportData, inPoly, edgeDist } from './sport.js?v=5ecfe1f7';
+import { sportData, inPoly, edgeDist } from './sport.js?v=2628e755';
 
 const FULL = 13, FEATHER = 9;
 const HOUSE = 6, HOUSE_F = 4;     // у стены — дому, дальше за 4 м — полю

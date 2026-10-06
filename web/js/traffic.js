@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { ENV } from './env.js?v=90d69937';
-import { LIGHTS, lightState } from './trafficlights.js?v=90d69937';
+import { ENV } from './env.js?v=2628e755';
+import { LIGHTS, lightState } from './trafficlights.js?v=2628e755';
 
 // Трафик: машины-боты по главным улицам вокруг игрока.
 //
