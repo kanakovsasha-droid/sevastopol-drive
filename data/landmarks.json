@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Жилой дом с оптикой, Большая Морская, 27",
+    "style": "model",
+    "x": -209.1,
+    "z": 1290.4,
+    "file": "bmorskaya27.glb",
+    "ox": -218.4,
+    "oz": 1288,
+    "skip": [
+      "w90821896"
+    ],
+    "source": "модель models/bmorskaya27/build.py; что видно на фото и что сделано наугад — models/bmorskaya27/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
