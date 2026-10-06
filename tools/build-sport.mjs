@@ -90,6 +90,17 @@ function inset(p, d) {
   for (let i = 0; i < out.length; i += 2) if (!inPoly(out[i], out[i + 1], p)) return null;
   return out;
 }
+// расстояние от точки до ближайшего ребра контура
+function polyDist(x, z, p) {
+  let best = Infinity;
+  const n = p.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const ax = p[j * 2], az = p[j * 2 + 1], vx = p[i * 2] - ax, vz = p[i * 2 + 1] - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / (vx * vx + vz * vz || 1)));
+    best = Math.min(best, Math.hypot(x - ax - t * vx, z - az - t * vz));
+  }
+  return best;
+}
 // точки сетки внутри контура
 function samples(p, step) {
   const [x0, z0, x1, z1] = bbox(p), out = [];
@@ -228,7 +239,9 @@ for (const a of areas.values()) {
   const m = meta[a.id];
   if (!m || m.drop) continue;
   const p = ring(a.poly);
-  if (Math.abs(areaOf(p)) < 120) continue;
+  // от 40 м²: мелкие площадки (третье поле у Гимназии №1 — 91 м²) тоже
+  // ровные, иначе лежат волной по склону
+  if (Math.abs(areaOf(p)) < 40) continue;
   flatItems.push({ id: a.id, p, bb: bbox(p) });
 }
 const parent = flatItems.map((_, i) => i);
@@ -241,6 +254,10 @@ for (let i = 0; i < flatItems.length; i++)
     let touch = false;
     for (let k = 0; k < B.p.length && !touch; k += 2) if (inPoly(B.p[k], B.p[k + 1], A.p)) touch = true;
     for (let k = 0; k < A.p.length && !touch; k += 2) if (inPoly(A.p[k], A.p[k + 1], B.p)) touch = true;
+    // и площадки через узкий зазор (поля у Гимназии №1 — в метре друг от
+    // друга): иначе между ними ступень на пустом месте
+    for (let k = 0; k < B.p.length && !touch; k += 2) if (polyDist(B.p[k], B.p[k + 1], A.p) < g) touch = true;
+    for (let k = 0; k < A.p.length && !touch; k += 2) if (polyDist(A.p[k], A.p[k + 1], B.p) < g) touch = true;
     if (touch) parent[find(i)] = find(j);
   }
 const groups = new Map();
@@ -260,9 +277,10 @@ for (const g of groups.values()) {
   if (hs.length < 4) continue;
   hs.sort((a, b) => a - b);
   const q = f => hs[Math.min(hs.length - 1, Math.floor(hs.length * f))];
-  // На крутом склоне площадку не ровняем: срез в десять метров под кортом —
-  // это уже не подсыпка, а карьер. Пусть лежит по рельефу.
-  if (q(0.9) - q(0.1) > 9 || q(0.5) < 0.6) { steep++; continue; }
+  // На обрыве площадку не ровняем: перепад в десятки метров под кортом — это
+  // ошибка рельефа (DSM по скале), а не склон. До 13 м — ровняем: перепад к
+  // земле закрывает подпорная стенка (web/js/fields.js).
+  if (q(0.9) - q(0.1) > 13 || q(0.5) < 0.6) { steep++; continue; }
   const h = Math.round(q(0.5) * 100) / 100;
   for (const it of g) flats.push({ id: it.id, poly: it.p, h });
 }
