@@ -1266,5 +1266,19 @@
     "skip": [],
     "source": "модель models/sign_kupecheskiy/build.py; что видно на фото и что сделано наугад — models/sign_kupecheskiy/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Одесская улица, 5 (школьный корпус)",
+    "style": "model",
+    "x": -561.8,
+    "z": 566.4,
+    "file": "odesskaya5.glb",
+    "ox": -588.15,
+    "oz": 556.25,
+    "skip": [
+      "w91092545"
+    ],
+    "source": "модель models/odesskaya5/build.py; что видно на фото и что сделано наугад — models/odesskaya5/NOTES.md",
+    "checked": "2026-10-06"
   }
 ]
