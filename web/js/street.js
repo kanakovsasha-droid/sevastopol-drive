@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { lampGlow, registerLamps } from './env.js?v=5ecfe1f7';
 import { plantFlora, ST } from './flora.js?v=5ecfe1f7';
-import { roadMaterial } from './materials.js?v=5ecfe1f7';
+import { makeAxis, paveAxis, pavingBuffer, pavingMesh } from './paving.js?v=5ecfe1f7';
 
 // Большая Морская — витрина города. Всё, что делает её улицей, а не дорогой
 // между коробками: ряды молодых софор в газонной полосе у бордюра, стриженые
@@ -15,12 +15,14 @@ import { roadMaterial } from './materials.js?v=5ecfe1f7';
 // на улице отключаются — см. streetOwnsRoad и streetFurniture.
 
 let S = null;
+let EXTRA = [];         // доп. оси плитки (S.paving.extra) с готовой осью
 export async function loadStreet(V = '') {
   try {
     const r = await fetch(`../data/street-bm.json${V ? '?v=' + V : ''}`);
     if (r.ok) S = await r.json();
   } catch { /* без файла улица остаётся как её сажает props.js */ }
   if (S) prepAxis();
+  EXTRA = ((S && S.paving && S.paving.extra) || []).map(e => ({ ...e, axis: makeAxis(e.axis) }));
   return S;
 }
 
@@ -267,6 +269,7 @@ export function buildStreet(world, terrain, onRoad, buildings) {
   {
     let hit = false;
     for (let s = 0; s <= LEN && !hit; s += 10) for (const d of [-20, 20]) { const p = at(s, d); if (inSq(p.x, p.z)) hit = true; }
+    for (const e of EXTRA) for (let s = 0; s <= e.axis.LEN && !hit; s += 10) { const p = e.axis.at(s, 0); if (inSq(p.x, p.z)) hit = true; }
     if (!hit) return group;
   }
   const asphalt = (x, z) => !!(onRoad && onRoad(x, z));
@@ -518,67 +521,19 @@ export function buildStreet(world, terrain, onRoad, buildings) {
   stats['кусты'] = ((sets.hedge || []).length + (sets.box || []).length) / ST;
   plantFlora(group, sets);
 
-  // ---- плитка от тротуара до фасадов
+  // ---- плитка от тротуара до фасадов (paving.js): своя улица и оси из
+  // S.paving.extra — площадка остановки на пл. Лазарева
   {
-    const P = [], R = [], K = [], CC = [], I = [];
-    const TILE = [0.729, 0.710, 0.675].map(s2l).map(v => Math.round(v * 255));
-    const IN = hw + 2.35;          // под край тротуара buildRoads (он кончается на кромке + 2.6)
-    let quads = 0;
-    for (const side of ['W', 'E']) {
-      const sg = sideSign(side);
-      let prev = null;
-      for (let s = 0; s <= LEN; s += 2) {
-        const p = at(s, sg * IN);
-        const nx = p.nx * sg, nz = p.nz * sg;
-        const f = facade(p.x, p.z, nx, nz, 24);
-        const st = (f >= 24 || f < 0.5) ? null : { s, p, nx, nz, f: f + 0.15 };
-        if (prev && st && Math.abs(prev.f - st.f) < 4) {
-          const cx = (prev.p.x + st.p.x) / 2 + (nx * (prev.f + st.f) / 4), cz = (prev.p.z + st.p.z) / 2 + (nz * (prev.f + st.f) / 4);
-          const corners = [[prev.p.x, prev.p.z], [st.p.x, st.p.z],
-            [prev.p.x + prev.nx * prev.f, prev.p.z + prev.nz * prev.f], [st.p.x + st.nx * st.f, st.p.z + st.nz * st.f]];
-          const bad = !inSq(cx, cz) || corners.some(([x, z]) => asphalt(x, z)) || asphalt(cx, cz)
-            || noPlant(cx, cz) || inGreen(cx, cz);
-          if (!bad) {
-            // поперёк дробим по ~2 м, чтобы плитка шла по рельефу
-            const n = Math.max(1, Math.ceil(Math.max(prev.f, st.f) / 2));
-            const base = P.length / 3;
-            for (let i = 0; i <= n; i++) for (const q of [prev, st]) {
-              const t = q.f * i / n;
-              const x = q.p.x + q.nx * t, z = q.p.z + q.nz * t;
-              const y = i === 0 ? H(x, z) + 0.19 : Math.max(H(x, z), terrain.gridHeightAt(x, z)) + 0.19;
-              P.push(x, y, z); R.push(x, z, 2, 0); K.push(4); CC.push(...TILE);
-            }
-            // лицом вверх: материал двусторонний, и изнанка освещалась бы
-            // снизу, «землёй» неба — плитка правой стороны выходила бурой
-            for (let i = 0; i < n; i++) {
-              const a = base + i * 2, b = a + 2;
-              if (sg > 0) I.push(a, b + 1, a + 1, a, b, b + 1);
-              else I.push(a, a + 1, b + 1, a, b + 1, b);
-            }
-            quads++;
-          }
-        }
-        prev = st;
-      }
-    }
-    if (I.length) {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
-      g.setAttribute('color', new THREE.Uint8BufferAttribute(CC, 3, true));
-      g.setAttribute('aRoad', new THREE.Float32BufferAttribute(R, 4));
-      g.setAttribute('aCls', new THREE.Float32BufferAttribute(K, 1));
-      g.setAttribute('aSurf', new THREE.Float32BufferAttribute(new Float32Array(K.length), 1));
-      g.setAttribute('aJn', new THREE.Float32BufferAttribute(new Float32Array(K.length).fill(60), 1));
-      g.setIndex(I);
-      // плитка почти плоская, а обход у сторон улицы разный: нормаль — вверх
-      const NN = new Float32Array(P.length);
-      for (let i = 1; i < NN.length; i += 3) NN[i] = 1;
-      g.setAttribute('normal', new THREE.BufferAttribute(NN, 3));
-      const m = new THREE.Mesh(g, roadMaterial());
-      m.receiveShadow = true; m.name = 'street:paving';
-      group.add(m);
-    }
-    stats['плитка до фасадов, участков'] = quads;
+    const env = { inSq, asphalt, facade, skip: (x, z) => noPlant(x, z) || inGreen(x, z), H,
+      G: (x, z) => terrain.gridHeightAt(x, z) };
+    const PV = S.paving || {};
+    const buf = pavingBuffer();
+    paveAxis(buf, env, { axis: { at, LEN }, hw, fill: PV.fill });
+    for (const e of EXTRA) paveAxis(buf, env, { axis: e.axis, hw: e.hw, sides: e.sides, fill: e.fill ?? PV.fill, max: e.max });
+    const m = pavingMesh(buf);
+    if (m) group.add(m);
+    stats['плитка до фасадов, участков'] = buf.quads;
+    stats['плитка: разрывы между домами'] = buf.filled;
   }
 
   // ---- скамейки и урны: у полосы лицом к домам
