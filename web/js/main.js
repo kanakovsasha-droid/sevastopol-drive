@@ -39,6 +39,7 @@ import { loadSchools, prepSchools, buildSchools } from './schools.js?v=8c71f0ed'
 import { prepFuel } from './fuel.js?v=8c71f0ed';
 import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=8c71f0ed';
 import { Facades } from './facades.js?v=8c71f0ed';
+import { Quality, QUALITY } from './quality.js?v=8c71f0ed';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -134,6 +135,7 @@ let pad = null;                                // геймпад (gamepad.js)
 let pause = null;                              // меню паузы (pause.js)
 let driveModes = null;                         // Eco / Comfort / Sport / Sport+ (drivemodes.js)
 let assists = null;                            // ABS, ASR, ESP, Race Start (assists.js)
+let quality = null;                            // «Высокое» / «Низкое» и автопонижение (quality.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -182,6 +184,9 @@ async function boot() {
 
     await step('строю рельеф…', 26);
     initScene();
+    // качество графики — до первых кварталов: в «Низком» и грузим ближе (quality.js)
+    quality = new Quality({ renderer, sun, chunks, toast: t => hud?.toast(t),
+      busy: () => mapOpen || !!document.querySelector('#pause.on, #settings.on, #menu.on') });
     // warmCarEnv(renderer) здесь (cloud/e63-atlas) останавливал сборку чанков:
     // первый квартал не достраивался, город вокруг машины пустой. Убран при
     // сборке волны — отражения строятся при загрузке модели, как раньше.
@@ -274,6 +279,7 @@ async function boot() {
     // ABS, ASR, ESP (U, держать — OFF), Race Start; настройки — T → «Машина»
     assists = new Assists({ car: () => car, toast: t => hud.toast(t) });
     settings.assists = assists;
+    settings.quality = quality;
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam: carCam, get mode() { return mode; } };
@@ -307,6 +313,7 @@ async function boot() {
     window.G.pad = pad;
     window.G.pause = pause;
     window.G.env = env;
+    window.G.quality = quality;
     window.G.jumpTo = jumpTo;             // переехать и встать на дорогу, когда приедет чанк
     window.G.boot = Math.round(performance.now() - T0);
     console.log(`до старта ${window.G.boot} мс, чанков в манифесте ${chunks.cells.size}`);
@@ -842,7 +849,7 @@ function cullFar() {
       const bs = c.o.isInstancedMesh ? c.o.boundingSphere : (g.boundingSphere || (g.computeBoundingSphere(), g.boundingSphere));
       c.s = _sph.copy(bs).applyMatrix4(c.o.matrixWorld).clone();
     }
-    c.o.visible = cp.distanceTo(c.s.center) - c.s.radius < c.o.userData.far;
+    c.o.visible = cp.distanceTo(c.s.center) - c.s.radius < c.o.userData.far * QUALITY.far;
   }
   // Дальний силуэт — по вызову отрисовки на квадрат 1 км, и с земли в кадре
   // их под сотню, большей частью там, где туман уже съел всё. Туман FogExp2:
@@ -1618,6 +1625,7 @@ function hudView() {
 
 function updateHUD(dt) {
   tunePixelRatio(dt);
+  quality?.tick(dt);
   fpsAcc += dt; fpsN++;
   // прибор и карта — каждый кадр: плавная стрелка и поворот карты; что
   // перерисовать, hud решает сам
