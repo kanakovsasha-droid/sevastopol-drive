@@ -35,6 +35,7 @@ import { loadFootprints, monumentTest } from './footprints.js?v=90d69937';
 import { loadSquares, addFarSquares, addSquares, squareFurniture } from './squares.js?v=90d69937';
 import { loadSkateparks, buildSkateparks } from './skatepark.js?v=90d69937';
 import { padBlocker } from './pads.js?v=90d69937';
+import { loadPlazas, plazaBlocker, buildPlazas } from './plazas.js?v=90d69937';
 import { loadSchools, prepSchools, buildSchools } from './schools.js?v=90d69937';
 import { prepFuel } from './fuel.js?v=90d69937';
 import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './canopy.js?v=90d69937';
@@ -188,6 +189,7 @@ async function boot() {
     // Террасы скверов и площадей (tools/build-terraces.mjs): 75 КБ, нужны
     // земле с первого квадрата. Нет файла — земля просто без террас.
     await loadSquares(V);
+    await loadPlazas(V);                  // мощёные площадки перед домами (plazas.js)
     await loadSkateparks(V);
     await loadSchools(V);
     await loadGuardrail(V);               // осевая трассы на Ялту — под отбойники
@@ -798,6 +800,7 @@ function* buildChunk(d, key) {
   // не сажать на пятна памятников — весь список: памятник соседнего квадрата
   // у шва тоже (pads.js)
   w.__noPlant = padBlocker(landmarkDefs, w.__noPlant);
+  w.__noPlant = plazaBlocker(w.__noPlant);         // у площадок свои кадки (plazas.js)
   const props = buildStreetProps(w, terrain, roads, d.allBuildings);
   g.add(props);
   for (const [k, v] of Object.entries(props.userData.counts || {})) counts[k] = (counts[k] || 0) + v;
@@ -805,6 +808,7 @@ function* buildChunk(d, key) {
   yield; pt = performance.now();
   at('улица');
   g.add(buildStreet(w, terrain, props.userData.onRoad, d.allBuildings || w.buildings));
+  g.add(buildPlazas(w, terrain, props.userData.onRoad));
   lap('улица');
   yield; pt = performance.now();
   at('мебель');
