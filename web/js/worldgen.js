@@ -1511,6 +1511,62 @@ export function* buildTerrainTile(terrain, index, opts) {
       const k = j * ne + i;
       if (ext[k] < cr.h - 0.02) ext[k] = cr.h - 0.02;
     }
+  // ТРЕУГОЛЬНИК НАД ПОЛОТНОМ. Узлы сетки стоят ровно на коридоре, но клетка
+  // 9 м, а на развязках две проезжие части на разной высоте идут в 10–20 м
+  // друг от друга (7-й км: съезд в выемке под путепроводом на 146.7 м, рядом
+  // Городское шоссе на 149–150 м). Треугольник между ними ложится на нижнее
+  // полотно наклонной крышей до 0.33 м, а профиль езды не смеет быть ниже
+  // нарисованной земли — колесо и асфальт шли по треугольникам: бугор на
+  // каждой клетке. Опускаем узлы, которые задирают треугольник над полотном
+  // (пробы по 4 на ребро клетки, только над проезжей частью с отметками).
+  // Узел, на котором лежит своя проезжая часть, — не ниже, чем ей разрешён
+  // запас над землёй (groundDriveHeightAt: 0.15 + 0.95·core), с полями.
+  {
+    const SUB = 4, low = new Float32Array(ne * ne);
+    const cap0 = new Float32Array(ne * ne).fill(-1);
+    const capOf = k => {
+      if (cap0[k] < 0) {
+        const cr = corrAt(ex0 + (k % ne) * step, ez0 + Math.floor(k / ne) * step);
+        cap0[k] = !cr || cr.w <= 0.6 ? 0.6 : cr.core >= 0.5 ? Math.max(0, 0.95 * Math.min(1, cr.core) - 0.05) : 0.6;
+      }
+      return cap0[k];
+    };
+    for (let pass = 0; pass < 3; pass++) {
+      let moved = 0;
+      for (let j = 0; j < ne - 1; j++) {
+        for (let i = 0; i < ne - 1; i++) {
+          const ka = j * ne + i, kb = ka + 1, kc = ka + ne, kd = kc + 1;
+          if (cwE[ka] < 0.6 && cwE[kb] < 0.6 && cwE[kc] < 0.6 && cwE[kd] < 0.6) continue;
+          const hmin = Math.min(ext[ka], ext[kb], ext[kc], ext[kd]), hmax = Math.max(ext[ka], ext[kb], ext[kc], ext[kd]);
+          if (hmax - hmin < 0.3) continue;            // ровная клетка: треугольник и коридор совпадают
+          for (let b = 0; b < SUB; b++)
+            for (let a = 0; a < SUB; a++) {
+              const fx = (a + 0.5) / SUB, fz = (b + 0.5) / SUB;
+              const x = ex0 + (i + fx) * step, z = ez0 + (j + fz) * step;
+              if (levelWeight(x, z) <= 0) continue;
+              const cr = corrAt(x, z);
+              if (!cr || cr.w < 0.99 || cr.core < 0.5) continue;
+              // вершины и барицентрические веса — как в gridHeightAt (диагональ b–c)
+              const V = fx + fz < 1 ? [ka, 1 - fx - fz, kb, fx, kc, fz] : [kd, fx + fz - 1, kb, 1 - fz, kc, 1 - fx];
+              const tri = ext[V[0]] * V[1] + ext[V[2]] * V[3] + ext[V[4]] * V[5];
+              const over = tri - cr.h - 0.03;
+              if (over <= 0) continue;
+              let bh = 0;
+              for (let q = 0; q < 6; q += 2) if (ext[V[q]] > cr.h && low[V[q]] < capOf(V[q])) bh += V[q + 1];
+              if (bh < 0.05) continue;
+              for (let q = 0; q < 6; q += 2) {
+                const v = V[q];
+                if (ext[v] <= cr.h) continue;
+                const d = Math.min(ext[v] - cr.h, over / bh, capOf(v) - low[v]);
+                if (d > 0.005) { ext[v] -= d; low[v] += d; moved++; }
+              }
+            }
+        }
+        if ((j & 31) === 31) yield;
+      }
+      if (!moved) break;
+    }
+  }
   lap('цвет и дороги');
 
   const heights = new Float32Array(n * n);
