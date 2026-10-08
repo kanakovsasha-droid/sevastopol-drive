@@ -140,7 +140,8 @@ export function applyEdits(d) {
 const reg = new Map();          // часть → дома, как их построили
 const treeReg = new Map();      // часть → [{k, x, y, z, w, h}]
 let grid = null;
-export function registerChunk(part, buildings) { reg.set(part, buildings || []); grid = null; }
+let onRegister = null;          // редактор: перерисовать рамку, когда дом пересобран
+export function registerChunk(part, buildings) { reg.set(part, buildings || []); grid = null; onRegister?.(buildings); }
 export function dropChunkEdits(part) { if (reg.delete(part)) grid = null; treeReg.delete(part); }
 
 // Деревья: снятые выкидываем из набора квадрата, посаженные добавляем.
@@ -236,6 +237,10 @@ export class Editor {
     addEventListener('mousemove', e => this._move(e));
     addEventListener('mouseup', e => this._up(e));
     canvas.addEventListener('contextmenu', e => { if (this.on) e.preventDefault(); });
+    onRegister = list => {
+      const id = this.sel && this.sel.id;
+      if (id && list && list.some(b => b.id === id)) this._outline();
+    };
     this.render();
   }
 
