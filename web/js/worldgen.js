@@ -1523,49 +1523,76 @@ export function* buildTerrainTile(terrain, index, opts) {
   // запас над землёй (groundDriveHeightAt: 0.15 + 0.95·core), с полями.
   lap('треугольники над полотном');
   {
-    const SUB = 4, low = new Float32Array(ne * ne);
+    const SUB = 4, NS = SUB * SUB, low = new Float32Array(ne * ne);
     const cap0 = new Float32Array(ne * ne).fill(-1);
     const capOf = k => {
       if (cap0[k] < 0) {
         const cr = corrAt(ex0 + (k % ne) * step, ez0 + Math.floor(k / ne) * step);
-        cap0[k] = !cr || cr.w <= 0.6 ? 0.6 : cr.core >= 0.5 ? Math.max(0, 0.95 * Math.min(1, cr.core) - 0.05) : 0.6;
+        cap0[k] = !cr || cr.w <= 0.6 || cr.core < 0.5 ? 0.6 : Math.max(0, 0.95 * Math.min(1, cr.core) - 0.05);
       }
       return cap0[k];
     };
+    // пробы коридора клетки — один раз: высота полотна или NaN (не проезжая часть)
+    const probe = new Map();
+    const probesOf = (i, j) => {
+      const ck = j * ne + i;
+      let P = probe.get(ck);
+      if (P) return P;
+      P = new Float32Array(NS);
+      for (let b = 0; b < SUB; b++)
+        for (let a = 0; a < SUB; a++) {
+          const x = ex0 + (i + (a + 0.5) / SUB) * step, z = ez0 + (j + (b + 0.5) / SUB) * step;
+          const cr = levelWeight(x, z) > 0 ? corrAt(x, z) : null;
+          P[b * SUB + a] = cr && cr.w >= 0.99 && cr.core >= 0.5 ? cr.h : NaN;
+        }
+      probe.set(ck, P);
+      return P;
+    };
+    let dirty = null;                         // клетки у сдвинутых узлов — на следующий проход
     for (let pass = 0; pass < 3; pass++) {
+      const next = new Uint8Array((ne - 1) * (ne - 1));
       let moved = 0;
       for (let j = 0; j < ne - 1; j++) {
         for (let i = 0; i < ne - 1; i++) {
+          if (dirty && !dirty[j * (ne - 1) + i]) continue;
           const ka = j * ne + i, kb = ka + 1, kc = ka + ne, kd = kc + 1;
-          if (cwE[ka] < 0.6 && cwE[kb] < 0.6 && cwE[kc] < 0.6 && cwE[kd] < 0.6) continue;
+          // плато коридора (вес 1) шире проезжей части на 13 м: проезжая часть
+          // в клетке — значит, хоть один её узел на плато
+          if (cwE[ka] < 0.99 && cwE[kb] < 0.99 && cwE[kc] < 0.99 && cwE[kd] < 0.99) continue;
           const hmin = Math.min(ext[ka], ext[kb], ext[kc], ext[kd]), hmax = Math.max(ext[ka], ext[kb], ext[kc], ext[kd]);
           if (hmax - hmin < 0.3) continue;            // ровная клетка: треугольник и коридор совпадают
-          for (let b = 0; b < SUB; b++)
-            for (let a = 0; a < SUB; a++) {
-              const fx = (a + 0.5) / SUB, fz = (b + 0.5) / SUB;
-              const x = ex0 + (i + fx) * step, z = ez0 + (j + fz) * step;
-              if (levelWeight(x, z) <= 0) continue;
-              const cr = corrAt(x, z);
-              if (!cr || cr.w < 0.99 || cr.core < 0.5) continue;
-              // вершины и барицентрические веса — как в gridHeightAt (диагональ b–c)
-              const V = fx + fz < 1 ? [ka, 1 - fx - fz, kb, fx, kc, fz] : [kd, fx + fz - 1, kb, 1 - fz, kc, 1 - fx];
-              const tri = ext[V[0]] * V[1] + ext[V[2]] * V[3] + ext[V[4]] * V[5];
-              const over = tri - cr.h - 0.03;
-              if (over <= 0) continue;
-              let bh = 0;
-              for (let q = 0; q < 6; q += 2) if (ext[V[q]] > cr.h && low[V[q]] < capOf(V[q])) bh += V[q + 1];
-              if (bh < 0.05) continue;
-              for (let q = 0; q < 6; q += 2) {
-                const v = V[q];
-                if (ext[v] <= cr.h) continue;
-                const d = Math.min(ext[v] - cr.h, over / bh, capOf(v) - low[v]);
-                if (d > 0.005) { ext[v] -= d; low[v] += d; moved++; }
+          const P = probesOf(i, j);
+          for (let q0 = 0; q0 < NS; q0++) {
+            const ch = P[q0];
+            if (ch !== ch) continue;
+            const fx = ((q0 % SUB) + 0.5) / SUB, fz = (Math.floor(q0 / SUB) + 0.5) / SUB;
+            // вершины и барицентрические веса — как в gridHeightAt (диагональ b–c)
+            const V = fx + fz < 1 ? [ka, 1 - fx - fz, kb, fx, kc, fz] : [kd, fx + fz - 1, kb, 1 - fz, kc, 1 - fx];
+            const over = ext[V[0]] * V[1] + ext[V[2]] * V[3] + ext[V[4]] * V[5] - ch - 0.03;
+            if (over <= 0) continue;
+            let bh = 0;
+            for (let q = 0; q < 6; q += 2) if (ext[V[q]] > ch && low[V[q]] < capOf(V[q])) bh += V[q + 1];
+            if (bh < 0.05) continue;
+            for (let q = 0; q < 6; q += 2) {
+              const v = V[q];
+              if (ext[v] <= ch) continue;
+              const d = Math.min(ext[v] - ch, over / bh, capOf(v) - low[v]);
+              if (d > 0.005) {
+                ext[v] -= d; low[v] += d; moved++;
+                const vi = v % ne, vj = Math.floor(v / ne);
+                for (let dj = -1; dj <= 0; dj++)
+                  for (let di = -1; di <= 0; di++) {
+                    const ci = vi + di, cj = vj + dj;
+                    if (ci >= 0 && cj >= 0 && ci < ne - 1 && cj < ne - 1) next[cj * (ne - 1) + ci] = 1;
+                  }
               }
             }
+          }
         }
         if ((j & 31) === 31) yield;
       }
       if (!moved) break;
+      dirty = next;
     }
   }
   lap('цвет и дороги');
