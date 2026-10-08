@@ -83,7 +83,8 @@ const fractH = x => x - Math.floor(x);
 
 // Серия дома или null.
 export function seriesOf(b) {
-  const e = S && b.id && S.b[b.id];
+  // серия, выбранная в редакторе карты (editor.js): запись того же вида или null
+  const e = b.edSer !== undefined ? b.edSer : S && b.id && S.b[b.id];
   if (!e) return null;
   const code = e[0], poly = b.poly, n = poly.length / 2;
   const pal = PAL[code];

@@ -19,7 +19,6 @@
 // В обычной игре (редактор закрыт) стоимость — один проход по id домов
 // квадрата на его сборке; ни одного вызова отрисовки.
 import * as THREE from 'three';
-import { SERIES } from './series.js?v=2628e755';
 import { TREES, ST } from './flora.js?v=2628e755';
 import { PolyGrid } from './worldgen.js?v=2628e755';
 
@@ -54,8 +53,6 @@ export async function loadEdits(v) {
 }
 
 // ------------------------------------------------------------ наложение
-const serBak = new Map();                        // id → исходная запись series.json (или null)
-
 function longestEdge(p) {
   let best = 0, bl = -1;
   for (let i = 0, n = p.length / 2 - 1; i < n; i++) {
@@ -99,13 +96,7 @@ function applyOne(b, e) {
   });
   // от исходника
   b.poly = o.poly; b.holes = o.holes; b.h = o.h; b.lv = o.lv; b.wc = o.wc; b.rc = o.rc;
-  b.rs = o.rs; b.gate = o.gate; b.fx = o.fx; delete b._gate; delete b.edWc;
-  // серия: запись series.json меняем в общем словаре, исходную помним
-  if (SERIES && b.id) {
-    if (!serBak.has(b.id)) serBak.set(b.id, SERIES.b[b.id] || null);
-    const bak = serBak.get(b.id);
-    if (bak) SERIES.b[b.id] = bak; else delete SERIES.b[b.id];
-  }
+  b.rs = o.rs; b.gate = o.gate; b.fx = o.fx; delete b._gate; delete b.edWc; delete b.edSer;
   if (!e) return;
   if (e.dx || e.dz || e.rot || (e.len && e.len !== 1) || (e.wid && e.wid !== 1)) {
     const m = mover(frame(o.poly), e);
@@ -114,12 +105,12 @@ function applyOne(b, e) {
     if (o.gate) { const q = m(o.gate[0], o.gate[1]); b.gate = [q[0], q[1], ...o.gate.slice(2)]; }
   }
   if (e.lv) { b.lv = e.lv; b.h = LV_H(e.lv); }
-  if (e.ser && SERIES) {
+  if (e.ser) {
+    // серия — своей записью вида series.json прямо на доме (series.js, seriesOf)
     if (e.ser === 'k' || e.ser === 's' || e.ser === 'p') {
-      SERIES.b[b.id] = [e.ser, longestEdge(b.poly), 0];
-      b.gate = null;                             // арку серии ставил build-series по старому контуру
+      b.edSer = [e.ser, longestEdge(b.poly), 0];
       if (!e.lv) { b.lv = { k: 5, s: 4, p: 9 }[e.ser]; b.h = LV_H(b.lv); }
-    } else delete SERIES.b[b.id];
+    } else b.edSer = null;
     if (e.ser === 'box') { b.rs = 'flat'; b.fx = undefined; }
     if (e.ser === 'house') { b.rs = 'hipped'; b.fx = undefined; if (!e.lv) { b.lv = 2; b.h = LV_H(2); } }
   }
