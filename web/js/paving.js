@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { roadMaterial } from './materials.js?v=2628e755';
+import { roadMaterial } from './materials.js?v=5cd23529';
 
 // Плитка от тротуара до фасадов вдоль улицы. Тротуар buildRoads кончается на
 // кромке + 2.6 м, а дальше до стены дома — голая земля квадрата: бурая или

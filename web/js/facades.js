@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { ENV } from './env.js?v=2628e755';
-import { BUILT } from './series.js?v=2628e755';
-import { gateOf, gateCut } from './passage.js?v=2628e755';
+import { ENV } from './env.js?v=5cd23529';
+import { BUILT } from './series.js?v=5cd23529';
+import { gateOf, gateCut } from './passage.js?v=5cd23529';
 
 // Фасады типовых домов деталями (п. 18 очереди): подоконники, карнизы и
 // парапеты, балконы хрущёвок, экраны лоджий девятиэтажек, рустованный цоколь

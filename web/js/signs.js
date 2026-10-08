@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { ENV } from './env.js?v=2628e755';
-import { buildShopfronts } from './shopfronts.js?v=2628e755';
+import { ENV } from './env.js?v=5cd23529';
+import { buildShopfronts } from './shopfronts.js?v=5cd23529';
 
 // Вывески заведений на фасадах. Названия — из OSM (data/shops.json), ничего
 // не выдумано. Каждая вывеска — один квад с ячейкой атласа: в ячейке уже

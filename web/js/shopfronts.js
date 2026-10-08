@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ENV } from './env.js?v=2628e755';
+import { ENV } from './env.js?v=5cd23529';
 
 // Витрины и маркизы под вывесками (signs.js). Владелец: «город сероватый,
 // скучновато, однотипно» — первый этаж под заведением из OSM получает

@@ -1,4 +1,4 @@
-import { plantFlora, hash2, ST } from './flora.js?v=2628e755';
+import { plantFlora, hash2, ST } from './flora.js?v=5cd23529';
 
 // Леса и посадки вне центра: большие контуры OSM natural=wood / landuse=forest
 // (в мире — зелень вида wood) вдоль трассы на Ялту, на Сапун-горе, у Инкермана.

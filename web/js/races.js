@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from '../lib/BufferGeometryUtils.js?v=2628e755';
+import { mergeGeometries } from '../lib/BufferGeometryUtils.js?v=5cd23529';
 
 // Заезды на время (data/races.json, собирает tools/build-races.mjs): маршрут —
 // кратчайший путь по дорогам OSM между местами из poi.json, по нему арки-

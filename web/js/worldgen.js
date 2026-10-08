@@ -1,18 +1,18 @@
 import * as THREE from 'three';
-import { SEA_FLOOR } from './terrain.js?v=2628e755';
-import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=2628e755';
-import { buildCoverage } from './coverage.js?v=2628e755';
-import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=2628e755';
-import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt, centerWeight } from './roadlevels.js?v=2628e755';
-import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=2628e755';
-import { resolveAreas, sportSkipIds } from './sport.js?v=2628e755';
-import { planParking, roadSegIndex } from './parking.js?v=2628e755';
-import { seriesOf, seriesWall, seriesExtras } from './series.js?v=2628e755';
-import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=2628e755';
-import { castleExtras } from './castle.js?v=2628e755';
-import { wallColor, roofColor } from './palette.js?v=2628e755';
-import { pathDupIndex, densePath } from './pathdup.js?v=2628e755';
-import { applyFieldFlats, fieldLevel } from './fields.js?v=2628e755';
+import { SEA_FLOOR } from './terrain.js?v=5cd23529';
+import { buildingMaterial, roadMaterial, terrainMaterial, waterMaterial, areaMaterial } from './materials.js?v=5cd23529';
+import { buildCoverage } from './coverage.js?v=5cd23529';
+import { roadFieldGen, traceContours, simplifyChain, KERB_ISO } from './roadfield.js?v=5cd23529';
+import { ROAD_LEVELS, levelWeight, levelAt, junctionPlaneAt, hasLevels, yardRoadsIn, isBridge, bridgeLevelAt, centerWeight } from './roadlevels.js?v=5cd23529';
+import { openGround, platformsGen, applySiteCuts, modelLevels, terracesGen } from './platforms.js?v=5cd23529';
+import { resolveAreas, sportSkipIds } from './sport.js?v=5cd23529';
+import { planParking, roadSegIndex } from './parking.js?v=5cd23529';
+import { seriesOf, seriesWall, seriesExtras } from './series.js?v=5cd23529';
+import { gateOf, gateCut, gateWall, gateLining } from './passage.js?v=5cd23529';
+import { castleExtras } from './castle.js?v=5cd23529';
+import { wallColor, roofColor } from './palette.js?v=5cd23529';
+import { pathDupIndex, densePath } from './pathdup.js?v=5cd23529';
+import { applyFieldFlats, fieldLevel } from './fields.js?v=5cd23529';
 
 // Three трактует Uint8-вершинные цвета как ЛИНЕЙНЫЕ, а палитра подобрана в sRGB.
 // Без перевода город выцветает в молоко.

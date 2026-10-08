@@ -19,8 +19,8 @@
 // В обычной игре (редактор закрыт) стоимость — один проход по id домов
 // квадрата на его сборке; ни одного вызова отрисовки.
 import * as THREE from 'three';
-import { TREES, ST } from './flora.js?v=2628e755';
-import { PolyGrid } from './worldgen.js?v=2628e755';
+import { TREES, ST } from './flora.js?v=5cd23529';
+import { PolyGrid } from './worldgen.js?v=5cd23529';
 
 const LS = 'sev.edits';
 const LV_H = (lv) => lv * 3.2 + 1.2;            // как parseH в tools/build-world.mjs
