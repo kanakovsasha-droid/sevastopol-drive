@@ -604,6 +604,8 @@ export function buildStreetProps(world, terrain, roadIndex, allBuildings = null)
     bushes += sets[k].length / ST;
   }
   sets.hedge = trim(hedges, CAP_HEDGE);
+  // правки редактора карты (editor.js): снятые деревья и посаженные руками
+  if (world.__treeEdit) world.__treeEdit(sets, inSq, H);
 
   const counts = {};
   let nT = 0;

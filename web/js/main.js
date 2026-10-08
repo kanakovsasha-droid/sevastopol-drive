@@ -48,6 +48,7 @@ import { Quality, QUALITY } from './quality.js?v=2628e755';
 import { farColors } from './palette.js?v=2628e755';
 import { buildFieldWalls } from './fields.js?v=2628e755';
 import { waitGround, groundReady } from './reseat.js?v=2628e755';
+import { Editor, loadEdits, applyEdits, applyEditsTo, registerChunk, dropChunkEdits, treeHook } from './editor.js?v=2628e755';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -147,6 +148,7 @@ let traffic = null;                            // машины-боты на г�
 let peds = null;                               // пешеходы на тротуарах и дорожках (peds.js)
 let races = null;                              // заезды на время (races.js)
 let quality = null;                            // «Высокое» / «Низкое» и автопонижение (quality.js)
+let editor = null;                             // редактор карты, F2 (editor.js)
 
 // ------------------------------------------------------------------ загрузка
 async function boot() {
@@ -171,6 +173,9 @@ async function boot() {
     far = info.far;
     const meta = info.meta || far.meta;
     far.meta = far.meta || meta;
+    // слой правок редактора карты (editor.js) — до дальнего слоя и карты
+    await loadEdits(V);
+    far.buildings = applyEditsTo(far.buildings);
 
     await step('загружаю высоты…', 14);
     terrain = await loadTerrain(meta, V);
@@ -253,6 +258,8 @@ async function boot() {
     chunks.onBuild = buildChunk;
     chunks.onDrop = dropChunk;
     chunks.onBuilt = chunkBuilt;
+    // пересборка квадрата после правки (editor.js): старый стоит до показа нового
+    chunks.onReplace = (key, old) => replaced.set(key, (replaced.get(key) || []).concat(old));
     setModelWarm(root => precompile(renderer, scene, camera, root, sun));
     chunks.canBuild = chunkTerrainReady;
     chunks.prof = chunkProf;
@@ -287,7 +294,7 @@ async function boot() {
       openRaces: () => races?.open(),
       openSettings: () => settings.open(),
       toggleHelp: () => hud.toggleHelp(),
-      isBusy: () => mapOpen || $('menu').classList.contains('on') || settings.isOpen() || !!races?.isOpen(),
+      isBusy: () => mapOpen || $('menu').classList.contains('on') || settings.isOpen() || !!races?.isOpen() || !!editor?.on,
       audio: () => carFx,
     });
     // режимы езды: 1–4 или Y (drivemodes.js)
@@ -299,6 +306,17 @@ async function boot() {
     races = new Races({ scene, terrain, car: () => car, mode: () => mode, jumpTo, settled: () => !wantJump,
       place: (x, z, yaw) => { car.reset(x, z, yaw); carCam.snap(car); }, toast: t => hud.toast(t), v: V });
     settings.quality = quality;
+    // редактор карты: F2 (editor.js)
+    editor = new Editor({ scene, camera, canvas: renderer.domElement, terrain, chunks,
+      fly: () => { if (mode !== 'fly') toggleFly(); }, look: lookBy, toast: t => hud.toast(t),
+      flyTo: id => {
+        const b = far.buildings.find(x => x.id === id);
+        if (!b) return null;
+        fly.x = b.poly[0]; fly.z = b.poly[1] + 60;
+        fly.y = terrain.gridHeightAt(fly.x, fly.z) + 45;
+        fly.yaw = Math.PI; fly.pitch = -0.6;
+        return b;
+      } });
 
     window.G = { THREE, scene, camera, renderer, car, far, world: far, terrain, collider, roads, chunks, ground,
                  get info() { return renderer.info; }, walk, cam: carCam, get mode() { return mode; } };
@@ -667,6 +685,7 @@ const fill = (src, keys) => {
 // решает, доделывать в этом кадре или в следующем.
 function* buildChunk(d, key) {
   const S = chunks.chunk, PAD = 260;
+  applyEdits(d);                                   // правки редактора карты (editor.js)
   const w = {
     // Границы — квадрат чанка с запасом: по ним сборщик дорог заводит растр
     // покрытия. Границы всего мира сюда подставлять нельзя, это растр на
@@ -684,6 +703,7 @@ function* buildChunk(d, key) {
     places: fill(d.places, ['paths', 'trees', 'features', 'fences', 'structures', 'trains']),
   };
   addSquares(w);                                   // скверы без контура в OSM
+  w.__treeEdit = treeHook(d.key || key);           // деревья редактора (editor.js)
   prepSchools(w);                                  // школы: вход и табличка (schools.js)
   w.allBuildings = d.allBuildings || w.buildings;   // парковкам и оградам: дома соседа на шве
   const furniture = fill(d.furniture, ['points', 'barriers']);
@@ -790,6 +810,7 @@ function* buildChunk(d, key) {
   g.add(buildSchools(w, terrain, skip));           // школы: парапет и крыльцо
   g.add(buildCanopies(w, terrain, skip));
   g.add(buildSites(w, terrain, skip));             // фриз, вывески и драйв «Eaty»
+  registerChunk(part, w.buildings.filter((b, i) => !bskip.has(i)));   // выбор дома в редакторе
   lap('дома');
   yield; pt = performance.now();
 
@@ -935,6 +956,7 @@ function revealSome() {
     st.g.traverse(o => { if (o.userData.far) farCull.push({ o, g: st.g, s: null }); });
     const fc = farCells.get(st.key);
     if (fc) { fc.visible = false; fc.userData.covered = true; }   // под детальным кварталом силуэт не нужен
+    dropReplaced(st.key);
   }
 }
 
@@ -968,6 +990,20 @@ function drainJunk(ms = 2) {
   if (!junk.length) seen.clear();
 }
 
+// Старые группы пересобранного квадрата (редактор): снимаем, когда новый
+// показан. Индексы (стены, улицы, мосты) уже заняты новым — их не трогаем.
+const replaced = new Map();
+function dropReplaced(key) {
+  const old = replaced.get(key);
+  if (!old) return;
+  replaced.delete(key);
+  for (const g of old) {
+    if (!g.isObject3D) continue;
+    scene.remove(g);
+    g.traverse(o => { if (o.geometry || o.material) junk.push(o); });
+  }
+}
+
 function dropChunk(g, key) {
   const wasShown = g.visible;
   scene.remove(g);
@@ -975,6 +1011,8 @@ function dropChunk(g, key) {
   const part = g.userData.part;
   roads.remove(part);
   collider.remove(part);
+  dropChunkEdits(part);
+  dropReplaced(key);
   if (deckParts.delete(part)) installDeck();
   // Силуэт возвращаем, только если этот квартал его и прятал: пачка сирот
   // хозяина выгружается вместе с ним, а недособранный квартал силуэт не трогал.
@@ -1379,7 +1417,7 @@ function bindInput() {
   mapNav = new MapNav({ box: $('mapfull'), cv: $('mapcv'), map: () => cityMap, open: () => mapOpen,
                         redraw: drawMap, player: playerPos });
   renderer.domElement.addEventListener('click', () => {
-    if (!$('menu').classList.contains('on')) renderer.domElement.requestPointerLock();
+    if (!$('menu').classList.contains('on') && !editor?.on) renderer.domElement.requestPointerLock();
   });
   document.addEventListener('pointerlockchange', () => {
     pointerLocked = document.pointerLockElement === renderer.domElement;

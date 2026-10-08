@@ -91,6 +91,8 @@ export function seriesOf(b) {
   const ser = { code, kind: KIND[code], bay: BAY[code], edge: e[1], color: pal[(hr * pal.length) | 0],
                 roof: ROOF[code] ? ROOF[code][(fractH(hr * 7.31) * ROOF[code].length) | 0] : null,
                 ax: 1, az: 0, aspect: 1, doors: [], id: b.id, b, walls: [], ent: e[2] | 0 };
+  // цвет стен, выбранный в редакторе карты (editor.js), — поверх палитры серии
+  if (b.edWc) ser.color = [1, 3, 5].map(i => parseInt(b.edWc.slice(i, i + 2), 16) / 255);
   // ось дома — по стене подъездов, торцы — стены поперёк неё
   if (ser.edge >= 0 && ser.edge < n) {
     const i = ser.edge, j = (i + 1) % n;

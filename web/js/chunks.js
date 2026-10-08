@@ -449,6 +449,28 @@ export class ChunkManager {
     this.orphans.push({ data, host });
   }
 
+  // Пересобрать готовый квадрат заново из его файла (редактор карты,
+  // editor.js). Старые группы стоят на сцене, пока новые не собраны: их
+  // отдаём onReplace — main.js снимает их, когда новый квартал показан.
+  // Владение объектами квадрата отпускаем, чтобы _claim взял их снова.
+  rebuild(key) {
+    if (!this.built.has(key)) return false;
+    const old = this.groups.get(key) || [];
+    for (const id of this.contains.get(key) || []) {
+      if (this.owner.get(id) === key) this.owner.delete(id);
+      this.refs.get(id)?.delete(key);
+    }
+    this.contains.delete(key);
+    this.groups.delete(key);
+    this.built.delete(key);
+    this.dropQueue = this.dropQueue.filter(k => k !== key);
+    if (this.onReplace) try { this.onReplace(key, old); } catch (e) { console.error(e); }
+    this.state.set(key, 'queue');
+    this.queue.unshift(key);
+    this._pump();
+    return true;
+  }
+
   // Всё снести (смена набора данных, отладка)
   clear() {
     for (const key of [...this.built]) this._drop(key);
