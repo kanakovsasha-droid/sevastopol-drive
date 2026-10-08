@@ -141,6 +141,8 @@ const ROUTES = {
   km7_hrust: () => routeThrough([[-464, 5626], [121, 7422], [-792, 8988]], 2, 1),
   km7_morg: () => routeThrough([[2312, 6771], [741, 7361], [170, 7432], [-1496, 6964]], 2, 1),
   km7_gor: () => routeThrough([[408, 7007], [762, 7771], [964, 7912], [1115, 8116], [1181, 8229]], 2, 1),
+  // 7-й км → Ялтинское кольцо: Балаклавское ш., Сапунгорская улица, кольцо
+  km7_yalta: () => routeThrough([[614, 7370], [855, 7732], [2420, 9308], [4716, 8572], [5420, 8285], [5453, 8328], [5508, 8300], [5471, 8238]], 2, 1),
   severnaya: () => routeThrough(ends('улица Богданова'), 2, 1),
   korabelnaya: () => routeThrough([...ends('улица Героев Севастополя'), ...ends('улица Генерала Жидилова')], 2, 1),
   gagarin: () => routeThrough([...ends('проспект Октябрьской Революции'), ...ends('проспект Гагарина')], 2, 1),
@@ -177,13 +179,14 @@ for (const [name, fn] of Object.entries(ROUTES)) {
 
 // ---------------------------------------------------------------- браузер
 async function loadPlaywright() {
-  for (const t of [process.env.PLAYWRIGHT, 'playwright', '/Users/aleksandrkanakov/Downloads/domiro/node_modules/playwright/index.mjs'].filter(Boolean)) {
+  for (const t of [process.env.PLAYWRIGHT, 'playwright', '/Users/aleksandrkanakov/Downloads/domiro/node_modules/playwright/index.mjs', '/opt/node22/lib/node_modules/playwright/index.mjs'].filter(Boolean)) {
     try { return await import(t); } catch { /* следующий */ }
   }
   throw new Error('playwright не найден');
 }
 const { chromium } = await loadPlaywright();
-const browser = await chromium.launch({ args: ['--use-angle=metal'] });
+const browser = await chromium.launch({ args: process.platform === 'darwin' ? ['--use-angle=metal']
+  : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
 const errors = [];
 page.on('pageerror', e => errors.push(String(e).slice(0, 300)));
