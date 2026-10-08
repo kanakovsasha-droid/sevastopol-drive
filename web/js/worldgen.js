@@ -1521,6 +1521,7 @@ export function* buildTerrainTile(terrain, index, opts) {
   // (пробы по 4 на ребро клетки, только над проезжей частью с отметками).
   // Узел, на котором лежит своя проезжая часть, — не ниже, чем ей разрешён
   // запас над землёй (groundDriveHeightAt: 0.15 + 0.95·core), с полями.
+  lap('треугольники над полотном');
   {
     const SUB = 4, low = new Float32Array(ne * ne);
     const cap0 = new Float32Array(ne * ne).fill(-1);
