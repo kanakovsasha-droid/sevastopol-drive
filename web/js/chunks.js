@@ -239,12 +239,14 @@ export class ChunkManager {
     for (const key of this.ready.keys()) {
       // Не готов рельеф под квадратом — пропускаем, он дождётся своей очереди.
       if (this.canBuild && !this.canBuild(key, this.cells.get(key))) continue;
-      const s = this._score(this.cells.get(key), this._px, this._pz);
+      // пересобираемый по правке (rebuild) — вне очереди: его ждут глазами
+      const s = this.urgent?.has(key) ? -1 : this._score(this.cells.get(key), this._px, this._pz);
       if (s < bestS) { bestS = s; best = key; }
     }
     if (best === null) return;
     const data = this.ready.get(best);
     this.ready.delete(best);
+    this.urgent?.delete(best);
     if (this._dist(this.cells.get(best), this._px, this._pz) > this.keep) {
       this.state.delete(best); return;                            // уехали, уже не нужен
     }
@@ -465,9 +467,12 @@ export class ChunkManager {
     this.built.delete(key);
     this.dropQueue = this.dropQueue.filter(k => k !== key);
     if (this.onReplace) try { this.onReplace(key, old); } catch (e) { console.error(e); }
-    this.state.set(key, 'queue');
-    this.queue.unshift(key);
-    this._pump();
+    (this.urgent ||= new Set()).add(key);
+    // качаем сразу, даже если все потоки заняты: файл уже в кэше браузера
+    this.state.set(key, 'load');
+    this.loading.add(key);
+    const q = this.v ? '?v=' + this.v : '';
+    this.worker.postMessage({ key, url: `${this.base}/${key}.json${q}` });
     return true;
   }
 
