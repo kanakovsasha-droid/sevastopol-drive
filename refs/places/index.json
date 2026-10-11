@@ -1,0 +1,1974 @@
+{
+ "v": 1,
+ "about": "Референс-фото для облачных задач (docs/CLOUD.md, часть 6). Викисклад и открытые лицензии - ссылка/автор/лицензия в записи; owner = скриншоты владельца (внутренний референс). В игру не попадают.",
+ "places": {
+  "balaklava-bay": {
+   "count": 10,
+   "photos": [
+    {
+     "file": "01_quay_2002.jpg",
+     "title": "File:Набережная Балаклавы-2002.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9D%D0%B0%D0%B1%D0%B5%D1%80%D0%B5%D0%B6%D0%BD%D0%B0%D1%8F_%D0%91%D0%B0%D0%BB%D0%B0%D0%BA%D0%BB%D0%B0%D0%B2%D1%8B-2002.JPG",
+     "author": "Федір Аксенов",
+     "license": "CC BY-SA 4.0",
+     "shows": "Набережна Назукіна, Балаклава, Набережна Назукіна",
+     "date": "2002"
+    },
+    {
+     "file": "02_quay_nazukin1.jpg",
+     "title": "File:Набережная Назукіна (1).JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9D%D0%B0%D0%B1%D0%B5%D1%80%D0%B5%D0%B6%D0%BD%D0%B0%D1%8F_%D0%9D%D0%B0%D0%B7%D1%83%D0%BA%D1%96%D0%BD%D0%B0_(1).JPG",
+     "author": "HoochieCoochieV",
+     "license": "CC BY-SA 4.0",
+     "shows": "Набережна Назукіна, Балаклава, Набережна Назукіна",
+     "date": "2011-08-18 11:13:13"
+    },
+    {
+     "file": "03_quay_nazukin2.jpg",
+     "title": "File:Набережная Назукіна (2).JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9D%D0%B0%D0%B1%D0%B5%D1%80%D0%B5%D0%B6%D0%BD%D0%B0%D1%8F_%D0%9D%D0%B0%D0%B7%D1%83%D0%BA%D1%96%D0%BD%D0%B0_(2).JPG",
+     "author": "HoochieCoochieV",
+     "license": "CC BY-SA 4.0",
+     "shows": "Набережна Назукіна, Балаклава, Набережна Назукіна",
+     "date": "2011-08-18 10:07:59"
+    },
+    {
+     "file": "04_quay_nazukin3.jpg",
+     "title": "File:Набережная Назукіна(3).JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9D%D0%B0%D0%B1%D0%B5%D1%80%D0%B5%D0%B6%D0%BD%D0%B0%D1%8F_%D0%9D%D0%B0%D0%B7%D1%83%D0%BA%D1%96%D0%BD%D0%B0(3).JPG",
+     "author": "HoochieCoochieV",
+     "license": "CC BY-SA 4.0",
+     "shows": "Набережна Назукіна, Балаклава, Набережна Назукіна",
+     "date": "2011-08-18 11:04:20"
+    },
+    {
+     "file": "05_quay_nazukin5.jpg",
+     "title": "File:Набережная Назукіна (5).JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9D%D0%B0%D0%B1%D0%B5%D1%80%D0%B5%D0%B6%D0%BD%D0%B0%D1%8F_%D0%9D%D0%B0%D0%B7%D1%83%D0%BA%D1%96%D0%BD%D0%B0_(5).JPG",
+     "author": "HoochieCoochieV",
+     "license": "CC BY-SA 4.0",
+     "shows": "Набережна Назукіна, Балаклава, Набережна Назукіна",
+     "date": "2011-08-18 11:06:05"
+    },
+    {
+     "file": "06_quay_nazukin6.jpg",
+     "title": "File:Набережная Назукіна (6).JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9D%D0%B0%D0%B1%D0%B5%D1%80%D0%B5%D0%B6%D0%BD%D0%B0%D1%8F_%D0%9D%D0%B0%D0%B7%D1%83%D0%BA%D1%96%D0%BD%D0%B0_(6).JPG",
+     "author": "HoochieCoochieV",
+     "license": "CC BY-SA 4.0",
+     "shows": "Набережна Назукіна, Балаклава, Набережна Назукіна",
+     "date": "2011-08-18 11:10:06"
+    },
+    {
+     "file": "08_bay_piers.jpg",
+     "title": "File:Balaklava Bay piers.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:Balaklava_Bay_piers.JPG",
+     "author": "Mykola Swarnyk",
+     "license": "CC BY-SA 3.0",
+     "shows": "Balaklava Bay in Crimea, Ukraine. Fishing piers.",
+     "date": "2011-06-10 16:04:19"
+    },
+    {
+     "file": "10_bay_lumaca1.jpg",
+     "title": "File:Балаклавская бухта 1.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%91%D0%B0%D0%BB%D0%B0%D0%BA%D0%BB%D0%B0%D0%B2%D1%81%D0%BA%D0%B0%D1%8F_%D0%B1%D1%83%D1%85%D1%82%D0%B0_1.jpg",
+     "author": "Lumaca",
+     "license": "CC BY-SA 4.0",
+     "shows": "Balaklava Bay",
+     "date": "2019-09-16 10:48:11"
+    },
+    {
+     "file": "13_bay_lumaca4.jpg",
+     "title": "File:Балаклавская бухта 4.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%91%D0%B0%D0%BB%D0%B0%D0%BA%D0%BB%D0%B0%D0%B2%D1%81%D0%BA%D0%B0%D1%8F_%D0%B1%D1%83%D1%85%D1%82%D0%B0_4.jpg",
+     "author": "Lumaca",
+     "license": "CC BY-SA 4.0",
+     "shows": "Balaklava Bay",
+     "date": "2019-09-16 11:35:53"
+    },
+    {
+     "file": "14_bay_genoese.jpg",
+     "title": "File:Balaklava, Genoese fortress, Crimea.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Balaklava,_Genoese_fortress,_Crimea.jpg",
+     "author": "Vyacheslav Argenberg",
+     "license": "CC BY 4.0",
+     "shows": "Genoese fortress. Arid, scrub-covered hills rise on either side of a narrow, curving blue Balaklava Bay. A formerly classified submarine base was oper",
+     "date": "2006-08-19 13:35:58"
+    }
+   ]
+  },
+  "battery-35": {
+   "count": 5,
+   "photos": [
+    {
+     "file": "b02_complex.jpg",
+     "title": "File:Sevastopol Museum and memorial complex 35th Coast Battery IMG 1345 1725.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Sevastopol_Museum_and_memorial_complex_35th_Coast_Battery_IMG_1345_1725.jpg",
+     "author": "Alexxx1979",
+     "license": "CC BY-SA 3.0",
+     "shows": "Sevastopol. Museum and memorial complex \"35th Coast Battery\"",
+     "date": "2012-05-08 18:52:33"
+    },
+    {
+     "file": "b03_arch.jpg",
+     "title": "File:Мемориальная арка.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Мемориальная_арка.jpg",
+     "author": "Onegai87",
+     "license": "CC BY-SA 3.0",
+     "shows": "Мемориальная арка на 35-й бб",
+     "date": "2011-06-08"
+    },
+    {
+     "file": "b04_barbet.jpg",
+     "title": "File:Целый барбет башни.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Целый_барбет_башни.jpg",
+     "author": "Onegai87",
+     "license": "CC BY-SA 3.0",
+     "shows": "Барбет первой башни",
+     "date": "2011-07-07"
+    },
+    {
+     "file": "b05_citadel.jpg",
+     "title": "File:Цитадель.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Цитадель.jpg",
+     "author": "Onegai87",
+     "license": "CC BY-SA 3.0",
+     "shows": "Вход в цитадель",
+     "date": "2011-07-08"
+    },
+    {
+     "file": "b06_pantheon.jpg",
+     "title": "File:Пантеон памяти.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:Пантеон_памяти.JPG",
+     "author": "Onegai87",
+     "license": "CC BY-SA 3.0",
+     "shows": "Пантеон памяти последним защитникам Севастополя",
+     "date": "2011-07-07"
+    }
+   ]
+  },
+  "hersones-site": {
+   "count": 30,
+   "photos": [
+    {
+     "file": "01_overview_vladimir.jpg",
+     "title": "File:St Vladimir Chersonesos 2008 G1.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:St_Vladimir_Chersonesos_2008_G1.jpg",
+     "author": "George Chernilevsky",
+     "license": "Public domain",
+     "shows": "Chersonesos Taurica. Antique ruins and the Cathedral of Saint Vladimir.",
+     "date": "2008-07-17"
+    },
+    {
+     "file": "02_overview_aerial.jpg",
+     "title": "File:Херсонес Таврический с высоты.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81_%D0%A2%D0%B0%D0%B2%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9_%D1%81_%D0%B2%D1%8B%D1%81%D0%BE%D1%82%D1%8B.jpg",
+     "author": "Squirrel3112",
+     "license": "CC BY-SA 4.0",
+     "shows": "Заповедник «Херсонес Таврический»: улица Древняя, 1, Гагаринский район, Севастополь",
+     "date": "2019-07-29 14:43:23"
+    },
+    {
+     "file": "03_overview_wide.jpg",
+     "title": "File:Заповедник «Херсонес Таврический» обзорный вид.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%97%D0%B0%D0%BF%D0%BE%D0%B2%D0%B5%D0%B4%D0%BD%D0%B8%D0%BA_%C2%AB%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81_%D0%A2%D0%B0%D0%B2%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9%C2%BB_%D0%BE%D0%B1%D0%B7%D0%BE%D1%80%D0%BD%D1%8B%D0%B9_%D0%B2%D0%B8%D0%B4.jpg",
+     "author": "Biryuk.dm",
+     "license": "CC BY-SA 4.0",
+     "shows": "Заповедник «Херсонес Таврический»: улица Древняя, 1,  Гагаринский район, Севастополь",
+     "date": "2018-08-20 11:32:21"
+    },
+    {
+     "file": "04_entrance.jpg",
+     "title": "File:Entrance of Chersonesos Taurica.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Entrance_of_Chersonesos_Taurica.jpg",
+     "author": "Davide Mauro",
+     "license": "CC BY-SA 4.0",
+     "shows": "Entrance of Chersonesos Taurica",
+     "date": "2017-09-23 12:19:12"
+    },
+    {
+     "file": "10_gate_city.jpg",
+     "title": "File:Городские ворота Херсонеса 2.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%93%D0%BE%D1%80%D0%BE%D0%B4%D1%81%D0%BA%D0%B8%D0%B5_%D0%B2%D0%BE%D1%80%D0%BE%D1%82%D0%B0_%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81%D0%B0_2.jpg",
+     "author": "Andrey Butko",
+     "license": "CC BY-SA 3.0",
+     "shows": "City Gates of Chersonesos Taurica. The second half of the IV. BC - I-II century. BC. Made in the fortress wall. Width - 3,8 m, length of aperture - 8,",
+     "date": "2006"
+    },
+    {
+     "file": "11_gate_west.jpg",
+     "title": "File:Херсонес. Западные ворота.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81._%D0%97%D0%B0%D0%BF%D0%B0%D0%B4%D0%BD%D1%8B%D0%B5_%D0%B2%D0%BE%D1%80%D0%BE%D1%82%D0%B0.jpg",
+     "author": "Russianname",
+     "license": "CC BY 2.5",
+     "shows": "Western gate, ruins, Khersones, Sevastopol",
+     "date": "Taken on 25 August 2007"
+    },
+    {
+     "file": "12_gate_eichmann02.jpg",
+     "title": "File:Chersones-02-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-02-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:30:34"
+    },
+    {
+     "file": "13_gate_eichmann04.jpg",
+     "title": "File:Chersones-04-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-04-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:30:39"
+    },
+    {
+     "file": "14_gate_eichmann06.jpg",
+     "title": "File:Chersones-06-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-06-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:30:54"
+    },
+    {
+     "file": "15_eichmann08.jpg",
+     "title": "File:Chersones-08-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-08-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:31:31"
+    },
+    {
+     "file": "16_eichmann10.jpg",
+     "title": "File:Chersones-10-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-10-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:33:34"
+    },
+    {
+     "file": "20_columns_basilica.jpg",
+     "title": "File:Херсонес Таврийский базилика и колонны.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81_%D0%A2%D0%B0%D0%B2%D1%80%D0%B8%D0%B9%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D0%B0%D0%B7%D0%B8%D0%BB%D0%B8%D0%BA%D0%B0_%D0%B8_%D0%BA%D0%BE%D0%BB%D0%BE%D0%BD%D0%BD%D1%8B.JPG",
+     "author": "Slavikus",
+     "license": "CC BY-SA 3.0",
+     "shows": "Комплекс \"Стародавнє місто Херсонес-Таврійський\", Севастополь, вул. Древня, 1",
+     "date": "2011-07-12 18:15:00"
+    },
+    {
+     "file": "21_columns_basilica1935.jpg",
+     "title": "File:2012-09-17 Базилика 1935 года. Херсонес Таврический (1).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:2012-09-17_%D0%91%D0%B0%D0%B7%D0%B8%D0%BB%D0%B8%D0%BA%D0%B0_1935_%D0%B3%D0%BE%D0%B4%D0%B0._%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81_%D0%A2%D0%B0%D0%B2%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9_(1).jpg",
+     "author": "This photography was created by Artem Topchiy (user Art-top). Other photos see here    This photograph was taken with a Canon PowerShot SX40 IS",
+     "license": "CC BY-SA 3.0",
+     "shows": "Basilica of 1935. Chersonesos Taurica, Ukraine",
+     "date": "2012-09-17"
+    },
+    {
+     "file": "22_colonnade_a.jpg",
+     "title": "File:Колоннада Трёхнефной базилики около Владимирского собора. Херсонес. Севастополь. Крым. Март 2010 - panoramio.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9A%D0%BE%D0%BB%D0%BE%D0%BD%D0%BD%D0%B0%D0%B4%D0%B0_%D0%A2%D1%80%D1%91%D1%85%D0%BD%D0%B5%D1%84%D0%BD%D0%BE%D0%B9_%D0%B1%D0%B0%D0%B7%D0%B8%D0%BB%D0%B8%D0%BA%D0%B8_%D0%BE%D0%BA%D0%BE%D0%BB%D0%BE_%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%D1%81%D0%BA%D0%BE%D0%B3%D0%BE_%D1%81%D0%BE%D0%B1%D0%BE%D1%80%D0%B0._%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81._%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9A%D1%80%D1%8B%D0%BC._%D0%9C%D0%B0%D1%80%D1%82_2010_-_panoramio.jpg",
+     "author": "Vadim Indeikin",
+     "license": "CC BY-SA 3.0",
+     "shows": "Колоннада Трёхнефной базилики около Владимирского собора. Херсонес. Севастополь. Крым. Март 2010",
+     "date": "Taken on 28 March 2010"
+    },
+    {
+     "file": "23_colonnade_b.jpg",
+     "title": "File:Колоннада базилики 1935 г. Херсонес. Севастополь. Крым. Март 2010 - panoramio.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9A%D0%BE%D0%BB%D0%BE%D0%BD%D0%BD%D0%B0%D0%B4%D0%B0_%D0%B1%D0%B0%D0%B7%D0%B8%D0%BB%D0%B8%D0%BA%D0%B8_1935_%D0%B3._%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81._%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9A%D1%80%D1%8B%D0%BC._%D0%9C%D0%B0%D1%80%D1%82_2010_-_panoramio.jpg",
+     "author": "Vadim Indeikin",
+     "license": "CC BY-SA 3.0",
+     "shows": "Колоннада базилики 1935 г. Херсонес. Севастополь. Крым. Март 2010",
+     "date": "Taken on 28 March 2010"
+    },
+    {
+     "file": "30_walls_4c.jpg",
+     "title": "File:Комплекс \" Древний город-Херсонес Таврический\".Городская стена 4-2 в.до.н.э..jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9A%D0%BE%D0%BC%D0%BF%D0%BB%D0%B5%D0%BA%D1%81_%22_%D0%94%D1%80%D0%B5%D0%B2%D0%BD%D0%B8%D0%B9_%D0%B3%D0%BE%D1%80%D0%BE%D0%B4-%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81_%D0%A2%D0%B0%D0%B2%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9%22.%D0%93%D0%BE%D1%80%D0%BE%D0%B4%D1%81%D0%BA%D0%B0%D1%8F_%D1%81%D1%82%D0%B5%D0%BD%D0%B0_4-2_%D0%B2.%D0%B4%D0%BE.%D0%BD.%D1%8D..jpg",
+     "author": "Alex Kozlov",
+     "license": "CC BY-SA 3.0",
+     "shows": "Древнегреческие стены Херсонеса сложены из тщательно отесанных плит местного твердого известняка желтовато-серого цвета.",
+     "date": "2013-09-10 20:05:11"
+    },
+    {
+     "file": "31_walls_zenon.jpg",
+     "title": "File:2012-09-17 Херсонес Таврический. Башня Зенона (1).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:2012-09-17_%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81_%D0%A2%D0%B0%D0%B2%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9._%D0%91%D0%B0%D1%88%D0%BD%D1%8F_%D0%97%D0%B5%D0%BD%D0%BE%D0%BD%D0%B0_(1).jpg",
+     "author": "This photography was created by Artem Topchiy (user Art-top). Other photos see here    This photograph was taken with a Canon PowerShot SX40 IS",
+     "license": "CC BY-SA 3.0",
+     "shows": "Zenon tower. Chersonesos Taurica, Ukraine",
+     "date": "Taken on 17 September 2012"
+    },
+    {
+     "file": "32_walls_embrasure.jpg",
+     "title": "File:Embrasure in Curtain XIX Chersonesos Taurica.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Embrasure_in_Curtain_XIX_Chersonesos_Taurica.jpg",
+     "author": "Роман Дергунов",
+     "license": "CC BY-SA 4.0",
+     "shows": "Embrasure in Curtain XIX, Chersonesos Taurica",
+     "date": "2015-08-22 20:16:25"
+    },
+    {
+     "file": "33_walls_hersones.jpg",
+     "title": "File:Hersones.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:Hersones.JPG",
+     "author": "Eugeny1988",
+     "license": "CC BY-SA 3.0",
+     "shows": "Disruption of walls of ancient Greek town Chersonesos in Sevastopol, Crimea, Ukraine",
+     "date": "2008-08-07"
+    },
+    {
+     "file": "34_walls_mottl.jpg",
+     "title": "File:Chersonesos ruins.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersonesos_ruins.jpg",
+     "author": "Dmitry A. Mottl",
+     "license": "CC BY-SA 3.0",
+     "shows": "Ruins of Chersonesos. Crimea",
+     "date": "2009-01"
+    },
+    {
+     "file": "40_bell_a.jpg",
+     "title": "File:Туманный колокол на мысе Херсонес. Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A2%D1%83%D0%BC%D0%B0%D0%BD%D0%BD%D1%8B%D0%B9_%D0%BA%D0%BE%D0%BB%D0%BE%D0%BA%D0%BE%D0%BB_%D0%BD%D0%B0_%D0%BC%D1%8B%D1%81%D0%B5_%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81._%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "Pavel Dunyushkin",
+     "license": "CC BY-SA 4.0",
+     "shows": "Сигнальный колокол: территория заповедника «Херсонес Таврический»,  Гагаринский район, Севастополь",
+     "date": "2015-04-05 07:47:42"
+    },
+    {
+     "file": "41_bell_b.jpg",
+     "title": "File:The bell of Chersonesos.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:The_bell_of_Chersonesos.jpg",
+     "author": "Hamerani",
+     "license": "CC BY-SA 4.0",
+     "shows": "Crimea, Chersonesus, The bell of Chersonesos.",
+     "date": "2016-05-23 13:14:09"
+    },
+    {
+     "file": "42_bell_arch.jpg",
+     "title": "File:Стена с аркой и Туманный колокол.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A1%D1%82%D0%B5%D0%BD%D0%B0_%D1%81_%D0%B0%D1%80%D0%BA%D0%BE%D0%B9_%D0%B8_%D0%A2%D1%83%D0%BC%D0%B0%D0%BD%D0%BD%D1%8B%D0%B9_%D0%BA%D0%BE%D0%BB%D0%BE%D0%BA%D0%BE%D0%BB.JPG",
+     "author": "E Solo27",
+     "license": "CC BY-SA 3.0",
+     "shows": "Комплекс \"Стародавнє місто Херсонес-Таврійський\" , Севастополь , вул. Древня, 1",
+     "date": "2012-07-19 08:50:26"
+    },
+    {
+     "file": "43_bell_butko1.jpg",
+     "title": "File:Сигнальный колокол 1.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A1%D0%B8%D0%B3%D0%BD%D0%B0%D0%BB%D1%8C%D0%BD%D1%8B%D0%B9_%D0%BA%D0%BE%D0%BB%D0%BE%D0%BA%D0%BE%D0%BB_1.jpg",
+     "author": "Andrey Butko",
+     "license": "CC BY-SA 3.0",
+     "shows": "Signal bell in Chersones",
+     "date": "2006"
+    },
+    {
+     "file": "45_bell_a057.jpg",
+     "title": "File:Колокол сигнальный. Херсонес.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9A%D0%BE%D0%BB%D0%BE%D0%BA%D0%BE%D0%BB_%D1%81%D0%B8%D0%B3%D0%BD%D0%B0%D0%BB%D1%8C%D0%BD%D1%8B%D0%B9._%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81.jpg",
+     "author": "Aleksandra057",
+     "license": "CC BY-SA 4.0",
+     "shows": "Сигнальный колокол: территория заповедника «Херсонес Таврический»,  Гагаринский район, Севастополь",
+     "date": "2013-07-29 19:05:34"
+    },
+    {
+     "file": "50_theater_a.jpg",
+     "title": "File:Античный театр в Херсонесе.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%90%D0%BD%D1%82%D0%B8%D1%87%D0%BD%D1%8B%D0%B9_%D1%82%D0%B5%D0%B0%D1%82%D1%80_%D0%B2_%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81%D0%B5.jpg",
+     "author": "Vodyanitsky",
+     "license": "CC BY-SA 4.0",
+     "shows": "Античный амфитеатр (Херсонес):   Гагаринский район, Севастополь",
+     "date": "2016-11-14 12:24:18"
+    },
+    {
+     "file": "51_theater_b.jpg",
+     "title": "File:Sevastopol Chersonesus Theatre IMG 0622 1725.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Sevastopol_Chersonesus_Theatre_IMG_0622_1725.jpg",
+     "author": "Alexxx1979",
+     "license": "CC BY-SA 3.0",
+     "shows": "Sevastopol. Chersonesus. Theatre",
+     "date": "2012-05-07 11:58:46"
+    },
+    {
+     "file": "52_theater_c.jpg",
+     "title": "File:Античный театр в Херсонесе 2.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%90%D0%BD%D1%82%D0%B8%D1%87%D0%BD%D1%8B%D0%B9_%D1%82%D0%B5%D0%B0%D1%82%D1%80_%D0%B2_%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B5%D1%81%D0%B5_2.jpg",
+     "author": "Andrey Butko",
+     "license": "CC BY-SA 3.0",
+     "shows": "Chersonesos Taurica. Ancient theater. The only one theater found in the ancient cities of the Northern Black Seaside. Built in the III BC between the ",
+     "date": "2006"
+    },
+    {
+     "file": "53_theater_khersones10.jpg",
+     "title": "File:Sebastopol Khersones 10.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:Sebastopol_Khersones_10.JPG",
+     "author": "Haidamac",
+     "license": "CC BY-SA 4.0",
+     "shows": "Херсонес Таврійський",
+     "date": "2007-10-19 16:13:49"
+    },
+    {
+     "file": "54_theater_gavrilyuk.jpg",
+     "title": "File:Theatre in Chersones-2009.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Theatre_in_Chersones-2009.jpg",
+     "author": "Maxim Gavrilyuk",
+     "license": "CC BY-SA 4.0",
+     "shows": "Theatre in Chersones Taurica (Sevastopol, Autonomous Republic of Crimea, Ukraine)",
+     "date": "2009-08-20 12:12:59"
+    }
+   ]
+  },
+  "hrustalny-owner": {
+   "count": 11,
+   "photos": [
+    {
+     "file": "01_owner_pano.jpg",
+     "title": "01_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "02_owner_pano.jpg",
+     "title": "02_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "03_owner_pano.jpg",
+     "title": "03_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "04_owner_pano.jpg",
+     "title": "04_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "05_owner_pano.jpg",
+     "title": "05_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "06_owner_pano.jpg",
+     "title": "06_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "07_owner_pano.jpg",
+     "title": "07_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "08_owner_pano.jpg",
+     "title": "08_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "09_owner_pano.jpg",
+     "title": "09_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "10_owner_pano.jpg",
+     "title": "10_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "11_owner_pano.jpg",
+     "title": "11_owner_pano.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    }
+   ]
+  },
+  "hrustalny-parus": {
+   "count": 9,
+   "photos": [
+    {
+     "file": "01_commons_from_embankment_2013.jpg",
+     "title": "File:Sevastopol Crimea-5243.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Sevastopol_Crimea-5243.jpg",
+     "author": "J29",
+     "license": "CC BY-SA 3.0",
+     "shows": "Синее стеклянное ступенчатое здание-«парус» (слева) и обелиск, вид с Нахимовской набережной через бухту (2013)"
+    },
+    {
+     "file": "02_commons_from_embankment_2012.jpg",
+     "title": "File:Sevastopol IMG 4008 1725.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Sevastopol_IMG_4008_1725.jpg",
+     "author": "Alexxx1979",
+     "license": "CC BY-SA 3.0",
+     "shows": "То же здание крупнее: дугообразный скат с террасами, рядом серая высотка, справа обелиск (2012)"
+    },
+    {
+     "file": "03_commons_from_bay_hazy.jpg",
+     "title": "File:Unnamed1 - panoramio (1160).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Unnamed1_-_panoramio_(1160).jpg",
+     "author": "Дмитрий Cкляренко",
+     "license": "CC BY 3.0",
+     "shows": "Вид с воды в дымке: «Парус» мелко в левом верхнем углу, на переднем плане плита-розетка «225 лет» (плохой кадр для формы здания, годится для масштаба и расположения)"
+    },
+    {
+     "file": "04_commons_from_bay_hazy_2.jpg",
+     "title": "File:Unnamed1 - panoramio (1163).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Unnamed1_-_panoramio_(1163).jpg",
+     "author": "Дмитрий Cкляренко",
+     "license": "CC BY 3.0",
+     "shows": "Вид с воды: изогнутый голубой фасад-парус, надпись ARS Group в верхней части"
+    },
+    {
+     "file": "05_commons_cape_panorama_2015.jpg",
+     "title": "File:Панорама мыса Хрустальный. Севастополь. Крым. Россия. Май 2015 - panoramio.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%B0%D0%BD%D0%BE%D1%80%D0%B0%D0%BC%D0%B0_%D0%BC%D1%8B%D1%81%D0%B0_%D0%A5%D1%80%D1%83%D1%81%D1%82%D0%B0%D0%BB%D1%8C%D0%BD%D1%8B%D0%B9._%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9A%D1%80%D1%8B%D0%BC._%D0%A0%D0%BE%D1%81%D1%81%D0%B8%D1%8F._%D0%9C%D0%B0%D0%B9_2015_-_panoramio.jpg",
+     "author": "Vadim Indeikin",
+     "license": "CC BY-SA 3.0",
+     "shows": "Мыс Хрустальный (2015): синее здание ARS Group слева от обелиска, стеклянные ступени"
+    },
+    {
+     "file": "06_commons_parus_ferry_2013.jpg",
+     "title": "File:Парус - panoramio (2).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%B0%D1%80%D1%83%D1%81_-_panoramio_(2).jpg",
+     "author": "Дмитрий Cкляренко",
+     "license": "CC BY 3.0",
+     "shows": "Файл назван «Парус»: голубое стеклянное здание-дуга за паромом (вид с воды, заметны ступени террас)"
+    },
+    {
+     "file": "07_commons_three_monuments_2017.jpg",
+     "title": "File:3 monuments of Sevastopol by sea.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:3_monuments_of_Sevastopol_by_sea.jpg",
+     "author": "Davide Mauro",
+     "license": "CC BY-SA 4.0",
+     "shows": "Здание «Парус» слева у затонувших кораблей, обелиск справа (с воды, 2017)"
+    },
+    {
+     "file": "09_owner_blue_glass_building.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "Синее стеклянное арочное здание вблизи: ступенчатые террасы, синие дуги-рёбра, белая торцевая часть с балконами-лестницами; справа серо-голубая высотка"
+    },
+    {
+     "file": "10_owner_embankment_glass_and_stele_2021.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "СТАРОЕ (2021): набережная — «Парус» слева, обелиск, белый комплекс"
+    }
+   ],
+   "name": "Гостиничный комплекс «Парус» (синее стеклянное арочное здание), набережная Адм. Перелешина, Хрустальный мыс",
+   "notes": "ЧТО ЭТО: синее стеклянное ступенчатое здание-дуга («парус») с террасами на скате и белой торцевой частью с балконами; надпись ARS Group на верхней части в фото 2015. Название «Парус» взято из названия файла Commons («Парус - panoramio») и крымской прессы (krymr.ru), уверенность умеренная. Адрес по объявлениям: наб. Адм. Перелешина, 1. Строительство с 2010 на месте здания 1819 г.; застройщик ООО «КЦ Мыс Хрустальный» (по krymr.ru); этажность в источниках расходится: проект 3 -> 6 -> 12 эт., в объявлении 10 этажей. ФОРМА: фасад — наклонная стеклянная дуга-четверть эллипса; ступенчатые террасы по скату; тонкие синие рёбра/арки по дуге; высокая белая торцевая стена с наружными лестницами и балконами; остекление голубовато-синее. Слева/сзади серо-голубая высотка (название не установлено). Рядом гостиница «Хрустальный Resort & Spa 4*» (наб. Перелешина, 5). Фото владельца 09 и 10 — самый информативный материал; Commons 01-07 — вид с воды и с Нахимовской набережной. Кадр 03 слабый (дымка). Координаты: lat=44.6166−z/111124, lon=33.5254+x/79371 (из OSM-данных репо). Контур в OSM-данных репо не найден (в данных набережной нет подходящего здания): расположение — к северо-западу от Sunny Wave (way 258373807, lat 44.61656, lon 33.51788), на мысу рядом со стелой. В игре отсутствует (models/, data/models/, data/landmarks.json проверены 11.10.2026). НЕ УСТАНОВЛЕНО: архитектор, точное число этажей, точный контур. Закрытые страницы: krymr.ru (история строительства), объявления/сайты гостиниц, Яндекс Карты. Панорамы — refs/places/hrustalny-owner/."
+  },
+  "hrustalny-stela": {
+   "count": 31,
+   "photos": [
+    {
+     "file": "01_night_wall_blades_2026.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ (после реставрации 2024), ночь: подсвеченная стена-подножье и два лезвия обелиска"
+    },
+    {
+     "file": "02_view_from_bay_dusk_2024.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: вид со стороны бухты в сумерках, обелиск над белым комплексом, подсветка"
+    },
+    {
+     "file": "03_relief_ppsh_sailors.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: серые гранитные барельефы со сценой матросов, ППШ, на кремовой стене"
+    },
+    {
+     "file": "04_stele_over_white_terraces_2025.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ (2025): обелиск над белым террасным комплексом Sunny Wave, два лезвия"
+    },
+    {
+     "file": "05_wall_inscription_stairs_2024.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: надпись объёмными серыми буквами на стене, широкая лестница"
+    },
+    {
+     "file": "06_cannon_on_carriage.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: чёрная литая пушка на светлом бетонном лафете-трапеции"
+    },
+    {
+     "file": "07_blue_glass_arched_building.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "синее стеклянное арочное здание «Парус» рядом (вид сверху/вблизи)"
+    },
+    {
+     "file": "08_time_capsule_cannonballs.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: «капсула времени» — пирамида из 10 чёрных ядер на сером терраццо, стальная табличка (вскрыть 09.05.2074)"
+    },
+    {
+     "file": "09_from_pier_2020_old.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "СТАРОЕ (2020, до реставрации): вид с пирса, только форма/расположение"
+    },
+    {
+     "file": "10_cape_from_bay_2020_old.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "СТАРОЕ (2020): мыс со стороны бухты, только форма"
+    },
+    {
+     "file": "11_stele_stairs_2021_old_graffiti.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "СТАРОЕ (2021, граффити): лестница и подножье, только форма"
+    },
+    {
+     "file": "12_white_arcade_complex_2021.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "СТАРОЕ (2021): белый комплекс с аркадами под обелиском"
+    },
+    {
+     "file": "13_two_blades_platform_masts_2024.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: два лезвия, площадка, тонкие светлые мачты с двумя прожекторами"
+    },
+    {
+     "file": "14_embankment_view_glass_and_stele_2021.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "СТАРОЕ (2021): вид с набережной — стеклянный «Парус» слева и обелиск"
+    },
+    {
+     "file": "15_front_view_wall_blades_2024.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: фронтальный вид — стена-подножье и лезвия"
+    },
+    {
+     "file": "16_decree_text_order_lenin_gold_star.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: бронзовые орден Ленина и Золотая Звезда, панель с текстом указа"
+    },
+    {
+     "file": "17_wide_base_stairs_2024.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: широкое основание, лестница"
+    },
+    {
+     "file": "18_anchor_silhouette.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "большой чёрный Адмиралтейский якорь с цепью на низком постаменте (силуэт)"
+    },
+    {
+     "file": "19_blades_stairs_lift_2024.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: лезвия, лестницы и подъёмник сбоку"
+    },
+    {
+     "file": "20_cannon_parapet_sea_2024.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: пушка у парапета, нацеленная на море"
+    },
+    {
+     "file": "21_wall_inscription_relief_plinth.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: надпись, барельеф, тёмно-коричневый гранитный цоколь (~0,6 м)"
+    },
+    {
+     "file": "22_parapet_view_bay_2024.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: парапет (кремовый камень на тёмном граните), вид на бухту"
+    },
+    {
+     "file": "23_plaza_dusk_stairs_wall_2024.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ: площадка в сумерках, лестница, стена"
+    },
+    {
+     "file": "24_commons_front_view_2008_old.jpg",
+     "title": "File:Обелиск «Городу-Герою Севастополю» (общий вид).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9E%D0%B1%D0%B5%D0%BB%D0%B8%D1%81%D0%BA_%C2%AB%D0%93%D0%BE%D1%80%D0%BE%D0%B4%D1%83-%D0%93%D0%B5%D1%80%D0%BE%D1%8E_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8E%C2%BB_(%D0%BE%D0%B1%D1%89%D0%B8%D0%B9_%D0%B2%D0%B8%D0%B4).jpg",
+     "author": "Георгий Долгопский",
+     "license": "CC BY-SA 4.0",
+     "shows": "Общий вид обелиска спереди, до реставрации (2008): два лезвия, стена-подножье со ступенями слева"
+    },
+    {
+     "file": "25_commons_wall_relief_2008_old.jpg",
+     "title": "File:Обелиск «Городу-Герою Севастополю» (подножье).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9E%D0%B1%D0%B5%D0%BB%D0%B8%D1%81%D0%BA_%C2%AB%D0%93%D0%BE%D1%80%D0%BE%D0%B4%D1%83-%D0%93%D0%B5%D1%80%D0%BE%D1%8E_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8E%C2%BB_(%D0%BF%D0%BE%D0%B4%D0%BD%D0%BE%D0%B6%D1%8C%D0%B5).jpg",
+     "author": "Георгий Долгопский",
+     "license": "CC BY-SA 4.0",
+     "shows": "Подножье: изогнутая ступенчатая стена с серыми гранитными барельефами, до реставрации (2008)"
+    },
+    {
+     "file": "26_commons_decree_text_2008.jpg",
+     "title": "File:Обелиск «Городу-Герою Севастополю» (текст).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9E%D0%B1%D0%B5%D0%BB%D0%B8%D1%81%D0%BA_%C2%AB%D0%93%D0%BE%D1%80%D0%BE%D0%B4%D1%83-%D0%93%D0%B5%D1%80%D0%BE%D1%8E_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8E%C2%BB_(%D1%82%D0%B5%D0%BA%D1%81%D1%82).jpg",
+     "author": "Георгий Долгопский",
+     "license": "CC BY-SA 4.0",
+     "shows": "Текст Указа о присвоении Севастополю звания Город-герой и бронзовые Орден Ленина и Золотая Звезда на грани обелиска"
+    },
+    {
+     "file": "27_commons_before_restoration_2023.jpg",
+     "title": "File:Обелиск \"Штык и парус\" в Севастополе, 2023 год (до начала реставрации).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9E%D0%B1%D0%B5%D0%BB%D0%B8%D1%81%D0%BA_%22%D0%A8%D1%82%D1%8B%D0%BA_%D0%B8_%D0%BF%D0%B0%D1%80%D1%83%D1%81%22_%D0%B2_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D0%B5,_2023_%D0%B3%D0%BE%D0%B4_(%D0%B4%D0%BE_%D0%BD%D0%B0%D1%87%D0%B0%D0%BB%D0%B0_%D1%80%D0%B5%D1%81%D1%82%D0%B0%D0%B2%D1%80%D0%B0%D1%86%D0%B8%D0%B8).jpg",
+     "author": "Halifers",
+     "license": "CC BY-SA 4.0",
+     "shows": "Обелиск с юга/востока перед реставрацией 2023 (серый облупившийся камень), форма двух лезвий"
+    },
+    {
+     "file": "28_commons_from_bay_2017.jpg",
+     "title": "File:Sevastopol Hero City Obelisk 02.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Sevastopol_Hero_City_Obelisk_02.jpg",
+     "author": "Davide Mauro",
+     "license": "CC BY-SA 4.0",
+     "shows": "Обелиск со стороны бухты с памятником Солдату и Матросу (2017), силуэт, парусный раскос основания"
+    },
+    {
+     "file": "29_commons_over_arcade_2012.jpg",
+     "title": "File:Sevastopol Obelisk Bayonet-sail IMG 3982 1725.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Sevastopol_Obelisk_Bayonet-sail_IMG_3982_1725.jpg",
+     "author": "Alexxx1979",
+     "license": "CC BY-SA 3.0",
+     "shows": "Обелиск над белой аркадой комплекса на набережной (2012), парусный изгиб основания"
+    },
+    {
+     "file": "30_commons_from_water_2012.jpg",
+     "title": "File:Obelisk - panoramio (5).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Obelisk_-_panoramio_(5).jpg",
+     "author": "Vladimir Yaitskiy",
+     "license": "CC BY-SA 3.0",
+     "shows": "Обелиск с воды: высокий задний клинок с косой вершиной (2012)"
+    },
+    {
+     "file": "31_commons_cape_panorama_cc0_2013.jpg",
+     "title": "File:Обелиск «Штык-парус».JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9E%D0%B1%D0%B5%D0%BB%D0%B8%D1%81%D0%BA_%C2%AB%D0%A8%D1%82%D1%8B%D0%BA-%D0%BF%D0%B0%D1%80%D1%83%D1%81%C2%BB.JPG",
+     "author": "Zlobny M",
+     "license": "CC0",
+     "shows": "Панорама мыса: обелиск, набережная, склон (CC0, 2013)"
+    }
+   ],
+   "name": "Обелиск «Городу-герою Севастополю» («Штык и парус»), Хрустальный мыс",
+   "notes": "ЧТО ЭТО: обелиск-стела «Городу-герою Севастополю» («Штык и парус»), 1977 г., на Хрустальном мысу над набережной Адм. Перелешина; железобетон, облицовка белым алминским известняком; высота около 40-50 м (точная цифра в открытых источниках не сверена). Реставрация и благоустройство завершены в 2024 г. МОДЕЛИРОВАТЬ ВИД ПОСЛЕ РЕКОНСТРУКЦИИ: фото 01-08, 13, 15-17, 19-23 владельца (НОВОЕ) главные; 09-12, 14 (2020-2021, граффити) и Commons 24-27 (2008/2023, до реставрации) — только для формы. ОПИСАНИЕ ОТ ВЛАДЕЛЬЦА: два высоких лезвия из кремового известняка: задний выше, с наклонной слегка изогнутой вершиной; передний ниже, с расширяющейся парусоподобной базой до земли. Бронзовые орден Ленина и Золотая Звезда, под ними панель с текстом указа. Подножье: изогнутая ступенчатая стена из кремового известняка на тёмно-коричневом гранитном цоколе (~0,6 м). Серые гранитные барельефы с лицами моряков и ППШ. Большая надпись серыми объёмными буквами: «ПОДВИГИ И СЛАВА ТВОИ, СЕВАСТОПОЛЬ, ВЕЧНО В СЕРДЦАХ БЛАГОДАРНЫХ ЛЮДЕЙ». Площадка: верхняя платформа светло-серый терраццо, широкие лестницы, сбоку подъёмник. Парапеты из кремового камня на тёмном гранитном основании. Бетонные скамьи-блоки с деревянными сиденьями. Высокие тонкие светлые мачты по 2 прожектора. Реквизит: чёрные литые пушки на светлых бетонных лафетах-трапециях, нацелены на море; «капсула времени» — пирамида из 10 чёрных ядер на сером терраццо со стальной табличкой (вскрыть 09.05.2074); большой чёрный Адмиралтейский якорь с цепью на низком постаменте. КОНТЕКСТ: стела стоит над белым террасным комплексом Sunny Wave/«Династия» (аркады, балюстрады, двойные лестницы); слева — синее стеклянное арочное здание «Парус»; внизу набережная Перелешина и пирс; виды на Константиновский равелин и через бухту. Ночной кадр и кадры с моря — для света и ориентации. За стелой (с севера/суши) стоит бежевое 5-этажное модернистское здание 2006-2019 (гостиница?), название не установлено. Координаты: lat=44.6166−z/111124, lon=33.5254+x/79371 (из OSM-данных репо). Точный контур/координату стелы в OSM-данных репо найти не удалось; ориентир — комплекс way 258373807 (Перелешина, 2; x=-597,z=4; lat 44.61656, lon 33.51788), стела на склоне мыса выше него. Памятник Матросу и Солдату (x=-885,z=155) уже в игре: models/soldat_matros (не собирался). В игре отсутствует (models/, data/models/, data/landmarks.json проверены 11.10.2026). НЕ УСТАНОВЛЕНО: архитекторы/скульпторы в проверенных источниках не сверены; точная высота. Закрытые страницы с фото (не скачивались): tonkosti.ru «Мемориал «Штык и парус»», sevastopol.su, rg.ru (2026/01/15), ruinformer.com, Яндекс Карты (фото пользователей). Панорамы Яндекса комплекса — в refs/places/hrustalny-owner/ (сделаны другой сессией)."
+  },
+  "hrustalny-sunny-wave": {
+   "count": 4,
+   "photos": [
+    {
+     "file": "01_commons_arcade_and_hotel.jpg",
+     "title": "File:Артбухта - panoramio (2).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%90%D1%80%D1%82%D0%B1%D1%83%D1%85%D1%82%D0%B0_-_panoramio_(2).jpg",
+     "author": "tarosys",
+     "license": "CC BY 3.0",
+     "shows": "Белый террасный комплекс с аркадами и балюстрадами над набережной, сзади бежевая гостиница и обелиск"
+    },
+    {
+     "file": "03_commons_from_embankment.jpg",
+     "title": "File:Unnamed1 - panoramio (1016).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Unnamed1_-_panoramio_(1016).jpg",
+     "author": "Svetlov Artem",
+     "license": "CC BY 3.0",
+     "shows": "Комплекс аркад, гостиница и обелиск с Нахимовской набережной"
+    },
+    {
+     "file": "05_owner_stele_over_white_terraces_2025.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "НОВОЕ (2025): белые аркады и балюстрады у подножия обелиска"
+    },
+    {
+     "file": "06_owner_white_arcade_complex_2021.jpg",
+     "title": "owner photo",
+     "url": "owner-supplied (Яндекс Карты, фото пользователей)",
+     "author": "неизвестен (пользователь Яндекс Карт)",
+     "license": "фото пользователя Яндекс Карт, присланы владельцем проекта; открытой лицензии нет, только внутренний референс (не публиковать)",
+     "shows": "СТАРОЕ (2021): двойные белые лестницы, балюстрады, аркады, обелиск над комплексом"
+    }
+   ],
+   "name": "Белый террасный комплекс с аркадами (Sunny Wave / «Династия»), наб. Адм. Перелешина 2-11",
+   "notes": "ЧТО ЭТО: белый многоуровневый комплекс на набережной под обелиском: аркады, балюстрады, двойные парадные лестницы, террасы, кафе; в народе и на картах — Sunny Wave («Солнечная волна»), также «Династия». Адрес: наб. Адм. Перелешина, 2-11. В OSM way 258373807 = «Перелешина, 2», 3 уровня, A=785 м2, центр x=-597, z=4, lat 44.61656, lon 33.51788; остальные корпуса комплекса в OSM-данных репо не оконтурены. ФОРМА: белая штукатурка/камень, арочные галереи (аркады) на уровне набережной, над ними ступенчатые террасы с белыми балюстрадами, две симметричные лестницы, красные/тёмные кровли отдельных частей. Координаты: lat=44.6166−z/111124, lon=33.5254+x/79371 (из OSM-данных репо). В игре отсутствует (models/, data/models/, data/landmarks.json проверены 11.10.2026). НЕ УСТАНОВЛЕНО: архитектор, год, точное число корпусов и этажей. Закрытые страницы: сайты отелей/ресторанов, Яндекс Карты. Фото владельца 05-06 (новое/старое); панорамы Яндекса — refs/places/hrustalny-owner/."
+  },
+  "katernaya-villas": {
+   "count": 2,
+   "photos": [
+    {
+     "file": "01_katernaya28_owner.jpg",
+     "title": "01_katernaya28_owner.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "02_map_owner.jpg",
+     "title": "02_map_owner.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    }
+   ]
+  },
+  "opera-akademiya-horeografii": {
+   "count": 2,
+   "photos": [
+    {
+     "file": "01_gov_academy_facade.jpg",
+     "title": "government.ru/news/54520 (Академия хореографии, Севастополь)",
+     "url": "http://government.ru/news/54520/",
+     "author": "Пресс-служба Правительства России",
+     "license": "CC BY 4.0 (на странице government.ru: все материалы сайта доступны по лицензии CC BY 4.0)",
+     "shows": "Академия хореографии: белые фасадные панели с органичной перфорацией-«пятнами», за ними тёмное стекло, вход с лестницей, слева остеклённый корпус со стальными раскосами"
+    },
+    {
+     "file": "02_gov_academy_swings_facade.jpg",
+     "title": "government.ru/news/52115 (выезд на площадку кластера)",
+     "url": "http://government.ru/news/52115/",
+     "author": "Пресс-служба Правительства России",
+     "license": "CC BY 4.0 (на странице government.ru: все материалы сайта доступны по лицензии CC BY 4.0)",
+     "shows": "Фасад академии вблизи: белая перфорированная панель (камуфляжный узор из округлых проёмов), синее остекление, деревянные качели-рамы на плитке перед входом"
+    }
+   ],
+   "name": "Академия хореографии (Капитанская, 20) — кластер Coop Himmelb(l)au рядом с оперой",
+   "notes": "ЧТО ЭТО: Академия хореографии, Севастополь, Капитанская, 20; OSM way 1094669609; 5 уровней, построена к августу 2024, работает с осени 2024. Часть комплекса Coop Himmelb(l)au. ФОРМА: протяжённый объём с белой перфорированной фасадной панелью (узор из округлых «пятен»-проёмов, за ними тёмное остекление), приподнятый вход с лестницей, рядом остеклённый корпус с наружными стальными раскосами. Деревянные качели-рамы на плитке перед входом. Не заказывалась пользователем напрямую — собрана как соседний объект. В игре отсутствует. НЕ УСТАНОВЛЕНО: точные размеры и контур (координаты не сверялись). Фото — government.ru (CC BY 4.0)."
+  },
+  "opera-new": {
+   "count": 16,
+   "photos": [
+    {
+     "file": "01_owner_f83410dd.jpg",
+     "title": "01_owner_f83410dd.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "02_owner_470025cb.jpg",
+     "title": "02_owner_470025cb.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "03_owner_aa11873c.jpg",
+     "title": "03_owner_aa11873c.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "04_owner_924c76f6.jpg",
+     "title": "04_owner_924c76f6.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "05_owner_94ed0533.jpg",
+     "title": "05_owner_94ed0533.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "06_owner_161178d5.jpg",
+     "title": "06_owner_161178d5.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "07_owner_4554c8e6.jpg",
+     "title": "07_owner_4554c8e6.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "08_owner_c3bde151.jpg",
+     "title": "08_owner_c3bde151.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "09_owner_3033d3ae.jpg",
+     "title": "09_owner_3033d3ae.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "10_owner_38ab839c.jpg",
+     "title": "10_owner_38ab839c.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "11_owner_be09af58.jpg",
+     "title": "11_owner_be09af58.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "12_owner_804372a1.jpg",
+     "title": "12_owner_804372a1.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "13_owner_d0dde8f8.jpg",
+     "title": "13_owner_d0dde8f8.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "14_owner_289a4a82.jpg",
+     "title": "14_owner_289a4a82.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "15_owner_4cef8d14.jpg",
+     "title": "15_owner_4cef8d14.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    },
+    {
+     "file": "16_owner_7224362a.jpg",
+     "title": "16_owner_7224362a.jpg",
+     "author": "владелец проекта",
+     "license": "открытой лицензии нет; внутренний референс владельца, не для публикации",
+     "shows": "скриншот владельца, панорама Яндекса 2026"
+    }
+   ]
+  },
+  "opera-opposite": {
+   "count": 4,
+   "photos": [
+    {
+     "file": "01_gallery_government_press_2025-12.jpg",
+     "title": "File:Российская галерея искусств Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A0%D0%BE%D1%81%D1%81%D0%B8%D0%B9%D1%81%D0%BA%D0%B0%D1%8F_%D0%B3%D0%B0%D0%BB%D0%B5%D1%80%D0%B5%D1%8F_%D0%B8%D1%81%D0%BA%D1%83%D1%81%D1%81%D1%82%D0%B2_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "Пресс-служба Правительства России",
+     "license": "CC BY 4.0",
+     "shows": "Здание Российской галереи искусств (дек. 2025, фото пресс-службы Правительства РФ)"
+    },
+    {
+     "file": "02_gov_office_view_to_memorial_2025-12.jpg",
+     "title": "government.ru/news/57457 (галерея)",
+     "url": "http://government.ru/news/57457/",
+     "author": "Пресс-служба Правительства России",
+     "license": "CC BY 4.0 (на странице government.ru: все материалы сайта доступны по лицензии CC BY 4.0)",
+     "shows": "Интерьер офисной зоны у остеклённого фасада со стальными раскосами; в окне — памятник Матросу и Солдату и бухта (ориентир по взаимному положению)"
+    },
+    {
+     "file": "03_gov_dome_interior_a_2025-12.jpg",
+     "title": "government.ru/news/57457 (галерея)",
+     "url": "http://government.ru/news/57457/",
+     "author": "Пресс-служба Правительства России",
+     "license": "CC BY 4.0 (на странице government.ru: все материалы сайта доступны по лицензии CC BY 4.0)",
+     "shows": "Интерьер под стеклянным геодезическим куполом: белые «облачные» объёмы, эскалатор, кольцевые светильники"
+    },
+    {
+     "file": "04_gov_dome_interior_b_2025-12.jpg",
+     "title": "government.ru/news/57457 (галерея)",
+     "url": "http://government.ru/news/57457/",
+     "author": "Пресс-служба Правительства России",
+     "license": "CC BY 4.0 (на странице government.ru: все материалы сайта доступны по лицензии CC BY 4.0)",
+     "shows": "Фойе под куполом: белые изогнутые галереи, стеклянные стены, эскалатор"
+    }
+   ],
+   "name": "Российская галерея искусств в Севастополе (Капитанская, 13) — здание напротив Театра оперы и балета",
+   "notes": "ЧТО ЭТО: Российская галерея искусств (Севастополь), часть музейного и театрально-образовательного комплекса, напротив Театра оперы и балета (Капитанская, 12) через улицу. Адрес: Капитанская, 13. OSM way 1547729146 (A=6344 м2, tourism=museum), x=-847, z=317, lat 44.61374, lon 33.51473. Архитектор: Вольф Прикс (Coop Himmelb(l)au). Этажность: 2 подземных и 3 надземных, 14 000+ м2; выставочные залы в «облачном» объёме; стеклянный геодезический купол около 260 т; куполный зал на 43 места; введена в эксплуатацию в декабре 2025. ФОРМА (по фото 01 и госфото): светлый панельный объём-«облако», приподнятый на колонне/консоли, щелевое окно, прозрачный стеклянный купол из треугольников рядом, белые изогнутые внутренние галереи, стеклянные стены со стальными раскосами. Цвета: белый/светло-серый панели, бетон, голубое стекло. Само здание оперы уже в игре: models/opera (way 1547727809, x=-1011,z=192). Эта галерея и Академия хореографии (Капитанская, 20; отдельный slug opera-akademiya-horeografii) в игре отсутствуют. Координаты: lat=44.6166−z/111124, lon=33.5254+x/79371 (из OSM-данных репо). НЕ УСТАНОВЛЕНО: открытых фото с земли мало (одно Commons + госфото); нет вида сзади и с торцов. Закрытые страницы: sevastopol.su, coop-himmelblau.at (рендеры, проект), krymr.ru, rg.ru (2026/01/15), overclockers.ru. Фото 01 = то же, что на government.ru/news/57457."
+  },
+  "park-hersones": {
+   "count": 23,
+   "photos": [
+    {
+     "file": "h01_entrance.jpg",
+     "title": "File:Entrance of Chersonesos Taurica.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Entrance_of_Chersonesos_Taurica.jpg",
+     "author": "Davide Mauro",
+     "license": "CC BY-SA 4.0",
+     "shows": "Entrance of Chersonesos Taurica",
+     "date": "2017-09-23 12:19:12"
+    },
+    {
+     "file": "h02_cathedral_a.jpg",
+     "title": "File:Sevastopol. St. Vladimir Cathedral in Chersonese.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Sevastopol._St._Vladimir_Cathedral_in_Chersonese.jpg",
+     "author": "Bestalex",
+     "license": "CC BY-SA 4.0",
+     "shows": "Владимирский собор: улица Древняя, 1, Гагаринский район, Севастополь",
+     "date": "2020-08-25 16:21:59"
+    },
+    {
+     "file": "h04_cathedral_c.jpg",
+     "title": "File:Владимирский собор,Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Владимирский_собор,Севастополь.jpg",
+     "author": "Mveselnickij",
+     "license": "CC BY-SA 4.0",
+     "shows": "Владимирский собор: улица Древняя, 1,  Гагаринский район, Севастополь",
+     "date": "2016-07-26 10:48:00"
+    },
+    {
+     "file": "h05_kath02.jpg",
+     "title": "File:Chersones-Kathedrale-02-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-Kathedrale-02-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Cathedral in Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:37:02"
+    },
+    {
+     "file": "h06_kath04.jpg",
+     "title": "File:Chersones-Kathedrale-04-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-Kathedrale-04-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Cathedral in Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 15:26:05"
+    },
+    {
+     "file": "h07_kath10.jpg",
+     "title": "File:Chersones-Kathedrale-10-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-Kathedrale-10-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Cathedral in Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 15:35:58"
+    },
+    {
+     "file": "h08_kath12.jpg",
+     "title": "File:Chersones-Kathedrale-12-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-Kathedrale-12-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Cathedral in Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 15:43:16"
+    },
+    {
+     "file": "h09_cathedral_bell.jpg",
+     "title": "File:Владимирский собор и колокол.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Владимирский_собор_и_колокол.jpg",
+     "author": "Ted.ns",
+     "license": "CC BY-SA 4.0",
+     "shows": "Владимирский собор: улица Древняя, 1, Гагаринский район, Севастополь",
+     "date": "2016-04-22 19:06:20"
+    },
+    {
+     "file": "h10_ch02.jpg",
+     "title": "File:Chersones-02-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-02-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:30:34"
+    },
+    {
+     "file": "h12_ch08.jpg",
+     "title": "File:Chersones-08-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-08-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:31:31"
+    },
+    {
+     "file": "h13_ch16.jpg",
+     "title": "File:Chersones-16-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-16-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:47:00"
+    },
+    {
+     "file": "h14_ch20.jpg",
+     "title": "File:Chersones-20-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-20-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:52:12"
+    },
+    {
+     "file": "h15_ch24.jpg",
+     "title": "File:Chersones-24-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-24-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 14:56:37"
+    },
+    {
+     "file": "h16_ch32.jpg",
+     "title": "File:Chersones-32-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-32-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 15:16:01"
+    },
+    {
+     "file": "h17_ch40.jpg",
+     "title": "File:Chersones-40-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-40-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 15:34:50"
+    },
+    {
+     "file": "h18_ch46.jpg",
+     "title": "File:Chersones-46-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-46-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 15:39:33"
+    },
+    {
+     "file": "h19_ch58.jpg",
+     "title": "File:Chersones-58-2017-gje.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersones-58-2017-gje.jpg",
+     "author": "Gerd Eichmann",
+     "license": "CC BY 4.0",
+     "shows": "Ancient city of Chersonesos in Sevastopol on the Crimean peninsula",
+     "date": "2017-09-07 16:02:16"
+    },
+    {
+     "file": "h20_045_11.jpg",
+     "title": "File:045-11 Херсонес.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:045-11_Херсонес.jpg",
+     "author": "Члены семей Семёновых и Шакуриных: Юрий Поликарпович Шакурин (1938-2000). Загружено единственной наследницей.",
+     "license": "CC BY-SA 4.0",
+     "shows": "Херсонес",
+     "date": "1970s<div style=\"display: none;\">date QS:P,+1970-00-00T00:00:00Z/8</div> (?)"
+    },
+    {
+     "file": "h21_045_14.jpg",
+     "title": "File:045-14 Херсонес.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:045-14_Херсонес.jpg",
+     "author": "Члены семей Семёновых и Шакуриных: Юрий Поликарпович Шакурин (1938-2000). Загружено единственной наследницей.",
+     "license": "CC BY-SA 4.0",
+     "shows": "Херсонес",
+     "date": "1970s<div style=\"display: none;\">date QS:P,+1970-00-00T00:00:00Z/8</div> (?)"
+    },
+    {
+     "file": "h22_045_15.jpg",
+     "title": "File:045-15 Херсонес.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:045-15_Херсонес.jpg",
+     "author": "Члены семей Семёновых и Шакуриных: Юрий Поликарпович Шакурин (1938-2000). Загружено единственной наследницей.",
+     "license": "CC BY-SA 4.0",
+     "shows": "Херсонес",
+     "date": "1970s<div style=\"display: none;\">date QS:P,+1970-00-00T00:00:00Z/8</div> (?)"
+    },
+    {
+     "file": "h23_andrey.jpg",
+     "title": "File:Chersonesos - Apostol Andrey.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Chersonesos_-_Apostol_Andrey.jpg",
+     "author": "Dmitry A. Mottl",
+     "license": "CC BY-SA 3.0",
+     "shows": "Monument of Saint Andrew in Chersonesos. Crimea.",
+     "date": "2009-01"
+    },
+    {
+     "file": "h24_cathedral_d.jpg",
+     "title": "File:Владимирский собор, Херсонес Таврический.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Владимирский_собор,_Херсонес_Таврический.jpg",
+     "author": "Squirrel3112",
+     "license": "CC BY-SA 4.0",
+     "shows": "Владимирский собор: улица Древняя, 1,  Гагаринский район, Севастополь",
+     "date": "2019-07-29 15:30:42"
+    },
+    {
+     "file": "h25_cathedral_e.jpg",
+     "title": "File:Владимирский собор (17350429784).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Владимирский_собор_(17350429784).jpg",
+     "author": "Dmitry Dzhus",
+     "license": "CC BY 2.0",
+     "shows": "Владимирский собор",
+     "date": "2015-05-15 09:37"
+    }
+   ]
+  },
+  "park-historic": {
+   "count": 8,
+   "photos": [
+    {
+     "file": "01__.jpg",
+     "title": "File:Севастополь. Исторический бульвар.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%98%D1%81%D1%82%D0%BE%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80.jpg",
+     "author": "VladFedotov",
+     "license": "CC BY-SA 4.0",
+     "shows": "Исторический бульвар: пл. Ушакова,  Севастополь, Севастополь",
+     "date": "Taken on 30 July 201"
+    },
+    {
+     "file": "02__.jpg",
+     "title": "File:Памятник Обороны Севастополя. бульвар Исторический, Ленинский район, Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%B0%D0%BC%D1%8F%D1%82%D0%BD%D0%B8%D0%BA_%D0%9E%D0%B1%D0%BE%D1%80%D0%BE%D0%BD%D1%8B_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8F._%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%98%D1%81%D1%82%D0%BE%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9,_%D0%9B%D0%B5%D0%BD%D0%B8%D0%BD%D1%81%D0%BA%D0%B8%D0%B9_%D1%80%D0%B0%D0%B9%D0%BE%D0%BD,_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "СветланаИР",
+     "license": "CC BY-SA 4.0",
+     "shows": "Памятник Э.И. Тотлебену: бульвар Исторический,  Ленинский район, Севастополь",
+     "date": "2016-09-12 16:15:39"
+    },
+    {
+     "file": "03__4_.jpg",
+     "title": "File:Рогожкин. Бруствер 4-го бастиона, бульвар Исторический, Ленинский район, Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A0%D0%BE%D0%B3%D0%BE%D0%B6%D0%BA%D0%B8%D0%BD._%D0%91%D1%80%D1%83%D1%81%D1%82%D0%B2%D0%B5%D1%80_4-%D0%B3%D0%BE_%D0%B1%D0%B0%D1%81%D1%82%D0%B8%D0%BE%D0%BD%D0%B0,_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%98%D1%81%D1%82%D0%BE%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9,_%D0%9B%D0%B5%D0%BD%D0%B8%D0%BD%D1%81%D0%BA%D0%B8%D0%B9_%D1%80%D0%B0%D0%B9%D0%BE%D0%BD,_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "СветланаИР",
+     "license": "CC BY-SA 4.0",
+     "shows": "Укрепления переднего бруствера 4-го бастиона: бульвар Исторический,  Ленинский район, Севастополь",
+     "date": "2016-09-12 16:36:33"
+    },
+    {
+     "file": "04__4_.jpg",
+     "title": "File:Рогожкин. Укрепление бруствера 4-го бастиона, бульвар Исторический, Ленинский район, Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A0%D0%BE%D0%B3%D0%BE%D0%B6%D0%BA%D0%B8%D0%BD._%D0%A3%D0%BA%D1%80%D0%B5%D0%BF%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_%D0%B1%D1%80%D1%83%D1%81%D1%82%D0%B2%D0%B5%D1%80%D0%B0_4-%D0%B3%D0%BE_%D0%B1%D0%B0%D1%81%D1%82%D0%B8%D0%BE%D0%BD%D0%B0,_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%98%D1%81%D1%82%D0%BE%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9,_%D0%9B%D0%B5%D0%BD%D0%B8%D0%BD%D1%81%D0%BA%D0%B8%D0%B9_%D1%80%D0%B0%D0%B9%D0%BE%D0%BD,_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "СветланаИР",
+     "license": "CC BY-SA 4.0",
+     "shows": "Укрепления переднего бруствера 4-го бастиона: бульвар Исторический,  Ленинский район, Севастополь",
+     "date": "2016-09-12 16:47:19"
+    },
+    {
+     "file": "05__4_.jpg",
+     "title": "File:Рогожкин. Укрепления переднего бруствера 4-го бастиона, бульвар Исторический, Ленинский район, Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A0%D0%BE%D0%B3%D0%BE%D0%B6%D0%BA%D0%B8%D0%BD._%D0%A3%D0%BA%D1%80%D0%B5%D0%BF%D0%BB%D0%B5%D0%BD%D0%B8%D1%8F_%D0%BF%D0%B5%D1%80%D0%B5%D0%B4%D0%BD%D0%B5%D0%B3%D0%BE_%D0%B1%D1%80%D1%83%D1%81%D1%82%D0%B2%D0%B5%D1%80%D0%B0_4-%D0%B3%D0%BE_%D0%B1%D0%B0%D1%81%D1%82%D0%B8%D0%BE%D0%BD%D0%B0,_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%98%D1%81%D1%82%D0%BE%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9,_%D0%9B%D0%B5%D0%BD%D0%B8%D0%BD%D1%81%D0%BA%D0%B8%D0%B9_%D1%80%D0%B0%D0%B9%D0%BE%D0%BD,_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "СветланаИР",
+     "license": "CC BY-SA 4.0",
+     "shows": "Укрепления переднего бруствера 4-го бастиона: бульвар Исторический,  Ленинский район, Севастополь",
+     "date": "2016-09-12 16:47:21"
+    },
+    {
+     "file": "06__1854_1855_.jpg",
+     "title": "File:Рогожкин. Панорама «Оборона Севастополя 1854—1855 гг.» Взрыв. бульвар Исторический, Ленинский район, Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A0%D0%BE%D0%B3%D0%BE%D0%B6%D0%BA%D0%B8%D0%BD._%D0%9F%D0%B0%D0%BD%D0%BE%D1%80%D0%B0%D0%BC%D0%B0_%C2%AB%D0%9E%D0%B1%D0%BE%D1%80%D0%BE%D0%BD%D0%B0_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8F_1854%E2%80%941855_%D0%B3%D0%B3.%C2%BB_%D0%92%D0%B7%D1%80%D1%8B%D0%B2._%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%98%D1%81%D1%82%D0%BE%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9,_%D0%9B%D0%B5%D0%BD%D0%B8%D0%BD%D1%81%D0%BA%D0%B8%D0%B9_%D1%80%D0%B0%D0%B9%D0%BE%D0%BD,_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "СветланаИР",
+     "license": "CC BY-SA 4.0",
+     "shows": "Панорама «Оборона Севастополя 1854—1855 гг.»: бульвар Исторический,  Ленинский район, Севастополь",
+     "date": "2016-09-12 17:49:13"
+    },
+    {
+     "file": "07__1854_1855_.jpg",
+     "title": "File:Рогожкин. Панорама «Оборона Севастополя 1854—1855 гг.» Окопы. бульвар Исторический, Ленинский район, Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A0%D0%BE%D0%B3%D0%BE%D0%B6%D0%BA%D0%B8%D0%BD._%D0%9F%D0%B0%D0%BD%D0%BE%D1%80%D0%B0%D0%BC%D0%B0_%C2%AB%D0%9E%D0%B1%D0%BE%D1%80%D0%BE%D0%BD%D0%B0_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8F_1854%E2%80%941855_%D0%B3%D0%B3.%C2%BB_%D0%9E%D0%BA%D0%BE%D0%BF%D1%8B._%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%98%D1%81%D1%82%D0%BE%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9,_%D0%9B%D0%B5%D0%BD%D0%B8%D0%BD%D1%81%D0%BA%D0%B8%D0%B9_%D1%80%D0%B0%D0%B9%D0%BE%D0%BD,_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "СветланаИР",
+     "license": "CC BY-SA 4.0",
+     "shows": "Панорама «Оборона Севастополя 1854—1855 гг.»: бульвар Исторический,  Ленинский район, Севастополь",
+     "date": "2016-09-12 17:48:39"
+    },
+    {
+     "file": "08__1854_1855_.jpg",
+     "title": "File:Рогожкин. Панорама «Оборона Севастополя 1854—1855 гг.» Бухта. бульвар Исторический, Ленинский район, Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A0%D0%BE%D0%B3%D0%BE%D0%B6%D0%BA%D0%B8%D0%BD._%D0%9F%D0%B0%D0%BD%D0%BE%D1%80%D0%B0%D0%BC%D0%B0_%C2%AB%D0%9E%D0%B1%D0%BE%D1%80%D0%BE%D0%BD%D0%B0_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8F_1854%E2%80%941855_%D0%B3%D0%B3.%C2%BB_%D0%91%D1%83%D1%85%D1%82%D0%B0._%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%98%D1%81%D1%82%D0%BE%D1%80%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9,_%D0%9B%D0%B5%D0%BD%D0%B8%D0%BD%D1%81%D0%BA%D0%B8%D0%B9_%D1%80%D0%B0%D0%B9%D0%BE%D0%BD,_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "СветланаИР",
+     "license": "CC BY-SA 4.0",
+     "shows": "Панорама «Оборона Севастополя 1854—1855 гг.»: бульвар Исторический,  Ленинский район, Севастополь",
+     "date": "2016-09-12 17:49:45"
+    }
+   ]
+  },
+  "park-malahov": {
+   "count": 6,
+   "photos": [
+    {
+     "file": "03__.jpg",
+     "title": "File:Севастополь. Малахов курган. Корабельна гармата.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9C%D0%B0%D0%BB%D0%B0%D1%85%D0%BE%D0%B2_%D0%BA%D1%83%D1%80%D0%B3%D0%B0%D0%BD._%D0%9A%D0%BE%D1%80%D0%B0%D0%B1%D0%B5%D0%BB%D1%8C%D0%BD%D0%B0_%D0%B3%D0%B0%D1%80%D0%BC%D0%B0%D1%82%D0%B0.JPG",
+     "author": "Star61",
+     "license": "CC BY-SA 3.0",
+     "shows": "Меморіальний комплекс пам'яток оборони міста в 1854–1855 роках, 1941–1944 роках «Малахов курган», Севастополь, Малахов курган",
+     "date": "2013-09-30 22:14:32"
+    },
+    {
+     "file": "04__01.jpg",
+     "title": "File:Малахов курган 01.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9C%D0%B0%D0%BB%D0%B0%D1%85%D0%BE%D0%B2_%D0%BA%D1%83%D1%80%D0%B3%D0%B0%D0%BD_01.jpg",
+     "author": "ViktaKotik",
+     "license": "CC BY-SA 3.0",
+     "shows": "Меморіальний комплекс пам'яток оборони міста в 1854 - 1855 роках, 1941 - 1944 роках \"Малахів курган\", Севастополь, Малахів курган",
+     "date": "2008-07-23 16:05:47"
+    },
+    {
+     "file": "05__02.jpg",
+     "title": "File:Малахов курган 02.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9C%D0%B0%D0%BB%D0%B0%D1%85%D0%BE%D0%B2_%D0%BA%D1%83%D1%80%D0%B3%D0%B0%D0%BD_02.jpg",
+     "author": "ViktaKotik",
+     "license": "CC BY-SA 3.0",
+     "shows": "Меморіальний комплекс пам'яток оборони міста в 1854 - 1855 роках, 1941 - 1944 роках \"Малахів курган\", Севастополь, Малахів курган",
+     "date": "2008-07-23 16:05:47"
+    },
+    {
+     "file": "06__.jpg",
+     "title": "File:Пушки батареи Сенявина. Малахов курган.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9F%D1%83%D1%88%D0%BA%D0%B8_%D0%B1%D0%B0%D1%82%D0%B0%D1%80%D0%B5%D0%B8_%D0%A1%D0%B5%D0%BD%D1%8F%D0%B2%D0%B8%D0%BD%D0%B0._%D0%9C%D0%B0%D0%BB%D0%B0%D1%85%D0%BE%D0%B2_%D0%BA%D1%83%D1%80%D0%B3%D0%B0%D0%BD.JPG",
+     "author": "Ekaterina Kruchinina",
+     "license": "CC BY-SA 3.0",
+     "shows": "Меморіальний комплекс пам'яток оборони міста в 1854 - 1855 роках, 1941 - 1944 роках \"Малахів курган\", Севастополь, Малахів курган",
+     "date": "2013-09-08 16:22:59"
+    },
+    {
+     "file": "07__.jpg",
+     "title": "File:Вход на Малахов курган. Фасад ворот.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%92%D1%85%D0%BE%D0%B4_%D0%BD%D0%B0_%D0%9C%D0%B0%D0%BB%D0%B0%D1%85%D0%BE%D0%B2_%D0%BA%D1%83%D1%80%D0%B3%D0%B0%D0%BD._%D0%A4%D0%B0%D1%81%D0%B0%D0%B4_%D0%B2%D0%BE%D1%80%D0%BE%D1%82.JPG",
+     "author": "Ekaterina Kruchinina",
+     "license": "CC BY-SA 3.0",
+     "shows": "Меморіальний комплекс пам'яток оборони міста в 1854 - 1855 роках, 1941 - 1944 роках \"Малахів курган\", Севастополь, Малахів курган",
+     "date": "2013-09-08 16:01:55"
+    },
+    {
+     "file": "08__.jpg",
+     "title": "File:Мемориальная доска батареи Сенявина. Малахов курган.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9C%D0%B5%D0%BC%D0%BE%D1%80%D0%B8%D0%B0%D0%BB%D1%8C%D0%BD%D0%B0%D1%8F_%D0%B4%D0%BE%D1%81%D0%BA%D0%B0_%D0%B1%D0%B0%D1%82%D0%B0%D1%80%D0%B5%D0%B8_%D0%A1%D0%B5%D0%BD%D1%8F%D0%B2%D0%B8%D0%BD%D0%B0._%D0%9C%D0%B0%D0%BB%D0%B0%D1%85%D0%BE%D0%B2_%D0%BA%D1%83%D1%80%D0%B3%D0%B0%D0%BD.JPG",
+     "author": "Ekaterina Kruchinina",
+     "license": "CC BY-SA 3.0",
+     "shows": "Меморіальний комплекс пам'яток оборони міста в 1854 - 1855 роках, 1941 - 1944 роках \"Малахів курган\", Севастополь, Малахів курган",
+     "date": "2013-09-08 16:30:46"
+    }
+   ]
+  },
+  "park-matrosky": {
+   "count": 7,
+   "photos": [
+    {
+     "file": "01__.jpg",
+     "title": "File:Матросский бульвар Мальчик.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9C%D0%B0%D1%82%D1%80%D0%BE%D1%81%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%9C%D0%B0%D0%BB%D1%8C%D1%87%D0%B8%D0%BA.jpg",
+     "author": "Naive rm",
+     "license": "CC BY-SA 4.0",
+     "shows": "Севастополь. Матросский бульвар. Мальчик с корабликом",
+     "date": "2020-08-15"
+    },
+    {
+     "file": "02__.jpg",
+     "title": "File:Матросский бульвар Лев.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9C%D0%B0%D1%82%D1%80%D0%BE%D1%81%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%9B%D0%B5%D0%B2.jpg",
+     "author": "Naive rm",
+     "license": "CC BY-SA 4.0",
+     "shows": "Севастополь. Матросский бульвар Лев на входе.",
+     "date": "2020-08-15"
+    },
+    {
+     "file": "03__.jpg",
+     "title": "File:Матросский бульвар Меркурий.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9C%D0%B0%D1%82%D1%80%D0%BE%D1%81%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%9C%D0%B5%D1%80%D0%BA%D1%83%D1%80%D0%B8%D0%B9.jpg",
+     "author": "Naive rm",
+     "license": "CC BY-SA 4.0",
+     "shows": "Севастополь. Матросский бульвар. Памятный знак, посвященный подвигу брига «Меркурий»",
+     "date": "2020-08-15"
+    },
+    {
+     "file": "04__.jpg",
+     "title": "File:Матросский бульвар Мавританская Беседка.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9C%D0%B0%D1%82%D1%80%D0%BE%D1%81%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80_%D0%9C%D0%B0%D0%B2%D1%80%D0%B8%D1%82%D0%B0%D0%BD%D1%81%D0%BA%D0%B0%D1%8F_%D0%91%D0%B5%D1%81%D0%B5%D0%B4%D0%BA%D0%B0.jpg",
+     "author": "Naive rm",
+     "license": "CC BY-SA 4.0",
+     "shows": "Севастополь. Матросский бульвар. Мавританская беседка",
+     "date": "2020-08-15"
+    },
+    {
+     "file": "05__2015_panoramio.jpg",
+     "title": "File:Аллея к памятнику А.И. Казарскому (Потомкам в назидании). Севастополь. Крым. Россия. Май 2015 - panoramio.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%90%D0%BB%D0%BB%D0%B5%D1%8F_%D0%BA_%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%BD%D0%B8%D0%BA%D1%83_%D0%90.%D0%98._%D0%9A%D0%B0%D0%B7%D0%B0%D1%80%D1%81%D0%BA%D0%BE%D0%BC%D1%83_(%D0%9F%D0%BE%D1%82%D0%BE%D0%BC%D0%BA%D0%B0%D0%BC_%D0%B2_%D0%BD%D0%B0%D0%B7%D0%B8%D0%B4%D0%B0%D0%BD%D0%B8%D0%B8)._%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9A%D1%80%D1%8B%D0%BC._%D0%A0%D0%BE%D1%81%D1%81%D0%B8%D1%8F._%D0%9C%D0%B0%D0%B9_2015_-_panoramio.jpg",
+     "author": "Vadim Indeikin",
+     "license": "CC BY-SA 3.0",
+     "shows": "Аллея к памятнику А.И. Казарскому (Потомкам в назидании). Севастополь. Крым. Россия. Май 2015",
+     "date": "Taken on 14 May 2015"
+    },
+    {
+     "file": "06__3.jpg",
+     "title": "File:Памятник Казарскому 3.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%B0%D0%BC%D1%8F%D1%82%D0%BD%D0%B8%D0%BA_%D0%9A%D0%B0%D0%B7%D0%B0%D1%80%D1%81%D0%BA%D0%BE%D0%BC%D1%83_3.jpg",
+     "author": "Andrey Butko",
+     "license": "CC BY-SA 3.0",
+     "shows": "Севастополь. Памятник Казарскому",
+     "date": "2006"
+    },
+    {
+     "file": "07_1358_.jpg",
+     "title": "File:1358 Казарскому.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:1358_%D0%9A%D0%B0%D0%B7%D0%B0%D1%80%D1%81%D0%BA%D0%BE%D0%BC%D1%83.jpg",
+     "author": "GIC198",
+     "license": "CC BY-SA 4.0",
+     "shows": "Памятник Казарскому: бульвар Матросский,  Ленинский район, Севастополь",
+     "date": "2015-03-25 18:49:47"
+    }
+   ]
+  },
+  "park-primorsky": {
+   "count": 8,
+   "photos": [
+    {
+     "file": "01__panoramio.jpg",
+     "title": "File:Севастополь (Приморский бульвар, кафе Островок) - panoramio.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C_(%D0%9F%D1%80%D0%B8%D0%BC%D0%BE%D1%80%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80,_%D0%BA%D0%B0%D1%84%D0%B5_%D0%9E%D1%81%D1%82%D1%80%D0%BE%D0%B2%D0%BE%D0%BA)_-_panoramio.jpg",
+     "author": "tiger rus",
+     "license": "CC BY 3.0",
+     "shows": "Севастополь (Приморский бульвар, кафе Островок)",
+     "date": "Taken on 15 July 200"
+    },
+    {
+     "file": "02__.jpg",
+     "title": "File:Севастополь. Приморский бульвар. День ВМФ.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9F%D1%80%D0%B8%D0%BC%D0%BE%D1%80%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80._%D0%94%D0%B5%D0%BD%D1%8C_%D0%92%D0%9C%D0%A4.jpg",
+     "author": "VladFedotov",
+     "license": "CC BY-SA 4.0",
+     "shows": "Приморский бульвар: пл. Нахимова,  Севастополь, Севастополь",
+     "date": "Taken on 30 July 201"
+    },
+    {
+     "file": "03__.jpg",
+     "title": "File:Приморский бульвар, Памятник затопленным кораблям, Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9F%D1%80%D0%B8%D0%BC%D0%BE%D1%80%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80,_%D0%9F%D0%B0%D0%BC%D1%8F%D1%82%D0%BD%D0%B8%D0%BA_%D0%B7%D0%B0%D1%82%D0%BE%D0%BF%D0%BB%D0%B5%D0%BD%D0%BD%D1%8B%D0%BC_%D0%BA%D0%BE%D1%80%D0%B0%D0%B1%D0%BB%D1%8F%D0%BC,_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "Ясас Александр",
+     "license": "CC BY-SA 4.0",
+     "shows": "Приморский бульвар: пл. Нахимова,  Севастополь, Севастополь",
+     "date": "Taken on 8 June 2019"
+    },
+    {
+     "file": "04__2015_panoramio.jpg",
+     "title": "File:Ель. Приморский бульвар. Севастополь. Крым. Россия. Май 2015 - panoramio.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%95%D0%BB%D1%8C._%D0%9F%D1%80%D0%B8%D0%BC%D0%BE%D1%80%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80._%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9A%D1%80%D1%8B%D0%BC._%D0%A0%D0%BE%D1%81%D1%81%D0%B8%D1%8F._%D0%9C%D0%B0%D0%B9_2015_-_panoramio.jpg",
+     "author": "Vadim Indeikin",
+     "license": "CC BY-SA 3.0",
+     "shows": "Ель. Приморский бульвар. Севастополь. Крым. Россия. Май 2015",
+     "date": "Taken on 14 May 2015"
+    },
+    {
+     "file": "05__.jpg",
+     "title": "File:Крым. Севастополь. Вид на Приморский бульвар.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9A%D1%80%D1%8B%D0%BC._%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%92%D0%B8%D0%B4_%D0%BD%D0%B0_%D0%9F%D1%80%D0%B8%D0%BC%D0%BE%D1%80%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80.jpg",
+     "author": "VladFedotov",
+     "license": "CC BY-SA 4.0",
+     "shows": "Приморский бульвар: пл. Нахимова,  Севастополь, Севастополь",
+     "date": "Taken on 30 July 201"
+    },
+    {
+     "file": "06__2015_panoramio.jpg",
+     "title": "File:Адмиральский якорь. Приморский бульвар. Севастополь. Крым. Россия. Май 2015 - panoramio.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%90%D0%B4%D0%BC%D0%B8%D1%80%D0%B0%D0%BB%D1%8C%D1%81%D0%BA%D0%B8%D0%B9_%D1%8F%D0%BA%D0%BE%D1%80%D1%8C._%D0%9F%D1%80%D0%B8%D0%BC%D0%BE%D1%80%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80._%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9A%D1%80%D1%8B%D0%BC._%D0%A0%D0%BE%D1%81%D1%81%D0%B8%D1%8F._%D0%9C%D0%B0%D0%B9_2015_-_panoramio.jpg",
+     "author": "Vadim Indeikin",
+     "license": "CC BY-SA 3.0",
+     "shows": "Адмиральский якорь. Приморский бульвар. Севастополь. Крым. Россия. Май 2015",
+     "date": "Taken on 14 May 2015"
+    },
+    {
+     "file": "07__.jpg",
+     "title": "File:Севастополь. Приморский бульвар.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9F%D1%80%D0%B8%D0%BC%D0%BE%D1%80%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80.JPG",
+     "author": "Nastya Sharina",
+     "license": "CC BY-SA 3.0",
+     "date": "2010-12-25 09:34:11"
+    },
+    {
+     "file": "08__2015_panoramio.jpg",
+     "title": "File:Платаны без коры. Приморский бульвар. Севастополь. Крым. Россия. Май 2015 - panoramio.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%BB%D0%B0%D1%82%D0%B0%D0%BD%D1%8B_%D0%B1%D0%B5%D0%B7_%D0%BA%D0%BE%D1%80%D1%8B._%D0%9F%D1%80%D0%B8%D0%BC%D0%BE%D1%80%D1%81%D0%BA%D0%B8%D0%B9_%D0%B1%D1%83%D0%BB%D1%8C%D0%B2%D0%B0%D1%80._%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9A%D1%80%D1%8B%D0%BC._%D0%A0%D0%BE%D1%81%D1%81%D0%B8%D1%8F._%D0%9C%D0%B0%D0%B9_2015_-_panoramio.jpg",
+     "author": "Vadim Indeikin",
+     "license": "CC BY-SA 3.0",
+     "shows": "Платаны без коры. Приморский бульвар. Севастополь. Крым. Россия. Май 2015",
+     "date": "Taken on 14 May 2015"
+    }
+   ]
+  },
+  "park-sapun": {
+   "count": 20,
+   "photos": [
+    {
+     "file": "s01_dioramabuilding1.jpg",
+     "title": "File:Building of Diorama Storm of Sapun Mountain on May 7, 1944 in Sevastopol.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Building_of_Diorama_Storm_of_Sapun_Mountain_on_May_7,_1944_in_Sevastopol.jpg",
+     "author": "Cmapm",
+     "license": "CC BY 3.0",
+     "shows": "Building of the museum-diorama \"Storm of Sapun Mountain on May 7, 1944\" on Sapun Mountain in Sevastopol. Constructed on a project by V.P.Petropavlovsky in 1959. Opened on November 4, 1959.",
+     "date": "2007-08-15"
+    },
+    {
+     "file": "s02_dioramabuilding2.jpg",
+     "title": "File:Диорама Сапун-гора.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Диорама_Сапун-гора.jpg",
+     "author": "Almo59",
+     "license": "CC BY-SA 4.0",
+     "shows": "Здание диорамы: Сапун-гора,  Балаклавский район, Севастополь",
+     "date": "2016-07-25 03:31:19"
+    },
+    {
+     "file": "s03_dioramabuilding3.jpg",
+     "title": "File:Здание диорамы «Штурм Сапун-горы 7 мая 1944 г.». Севастополь. Крым. Май 2015 - panoramio.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Здание_диорамы_«Штурм_Сапун-горы_7_мая_1944_г.»._Севастополь._Крым._Май_2015_-_panoramio.jpg",
+     "author": "Vadim Indeikin",
+     "license": "CC BY-SA 3.0",
+     "shows": "Здание диорамы «Штурм Сапун-горы 7 мая 1944 г.». Севастополь. Крым. Россия. Май 2015",
+     "date": "Taken on 15 May 2015"
+    },
+    {
+     "file": "s04_dioramabuilding4.jpg",
+     "title": "File:Діорама \"Штурм Сапун-гори 7 травня 1944 року\", Будинок.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Діорама_\"Штурм_Сапун-гори_7_травня_1944_року\",_Будинок.jpg",
+     "author": "Vikcos75",
+     "license": "CC BY-SA 4.0",
+     "shows": "Будинок діорами, Севастополь, Сапун-гора",
+     "date": "2010-05-01 13:00:35"
+    },
+    {
+     "file": "s05_dioramabuilding5.jpg",
+     "title": "File:Діорама Штурм Сапун-гори.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Діорама_Штурм_Сапун-гори.jpg",
+     "author": "SNCH",
+     "license": "CC BY-SA 4.0",
+     "shows": "Будинок діорами, Севастополь, Сапун-гора",
+     "date": "2012-07-08 12:03:08"
+    },
+    {
+     "file": "s07_unn4106.jpg",
+     "title": "File:Unnamed2 - panoramio (4106).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Unnamed2_-_panoramio_(4106).jpg",
+     "author": "Анатолий Таранцов",
+     "license": "CC BY 3.0",
+     "date": "Taken on 21 June 2015"
+    },
+    {
+     "file": "s08_unn4123.jpg",
+     "title": "File:Unnamed2 - panoramio (4123).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Unnamed2_-_panoramio_(4123).jpg",
+     "author": "Анатолий Таранцов",
+     "license": "CC BY 3.0",
+     "date": "Taken on 21 June 2015"
+    },
+    {
+     "file": "s09_memorials03.jpg",
+     "title": "File:View of Great Patriotic War memorials 03.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:View_of_Great_Patriotic_War_memorials_03.jpg",
+     "author": "Главархив Москвы",
+     "license": "CC BY 4.0",
+     "shows": "Здание диорамы «Штурм Сапун-горы 7 мая 1944 года». г. Севастополь. 1961 г. Фото И. Ефимова.",
+     "date": "1961"
+    },
+    {
+     "file": "s10_zdaniediorami.jpg",
+     "title": "File:ЗданиеДиорамы.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:ЗданиеДиорамы.jpg",
+     "author": "KatieCat",
+     "license": "CC BY-SA 4.0",
+     "shows": "Здание диорамы: Сапун-гора,  Балаклавский район, Севастополь",
+     "date": "2016-09-14"
+    },
+    {
+     "file": "s12_mk04.jpg",
+     "title": "File:Меморіальний комплекс «Сапун-гора» 04.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:Меморіальний_комплекс_«Сапун-гора»_04.JPG",
+     "author": "Сарапулов",
+     "license": "CC BY-SA 3.0",
+     "shows": "1944 - 1979 роки",
+     "date": "2013-05-18 15:12:27"
+    },
+    {
+     "file": "s13_mk05.jpg",
+     "title": "File:Меморіальний комплекс «Сапун-гора» 05.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:Меморіальний_комплекс_«Сапун-гора»_05.JPG",
+     "author": "Сарапулов",
+     "license": "CC BY-SA 3.0",
+     "shows": "1944 - 1979 роки",
+     "date": "2013-05-18 15:16:03"
+    },
+    {
+     "file": "s16_pinealley.jpg",
+     "title": "File:Сосновая аллея - panoramio.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Сосновая_аллея_-_panoramio.jpg",
+     "author": "Дмитрий Cкляренко",
+     "license": "CC BY 3.0",
+     "shows": "Сосновая аллея",
+     "date": "Taken on 25 September 2011"
+    },
+    {
+     "file": "s17_wall9393.jpg",
+     "title": "File:Севас9393.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Севас9393.jpg",
+     "author": "Voky89",
+     "license": "CC BY-SA 4.0",
+     "shows": "Меморіальна стіна на честь 118 з’єднань і частин, удостоєних звання Севастопольських,  арх. Артюхов В., Севастополь, Сапун-гора",
+     "date": "2011-09-01 11:20:31"
+    },
+    {
+     "file": "s18_eternalflame.jpg",
+     "title": "File:Сапун-гора, Вечный огонь, мемориальные доски.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Сапун-гора,_Вечный_огонь,_мемориальные_доски.jpg",
+     "author": "DrDeemon",
+     "license": "CC BY-SA 3.0",
+     "shows": "This is a photo of a monument in Ukraine, number: 85-363-0024",
+     "date": "2012-09-01"
+    },
+    {
+     "file": "s19_trench.jpg",
+     "title": "File:Окопы на территории Мемориального комплекса «Сапун-гора» 1.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Окопы_на_территории_Мемориального_комплекса_«Сапун-гора»_1.jpg",
+     "author": "DeusEx23",
+     "license": "CC BY-SA 4.0",
+     "shows": "Мемориальный комплекс «Сапун-гора»: Сапун-гора,  Балаклавский район, Севастополь",
+     "date": "2018-02-08 13:12:16"
+    },
+    {
+     "file": "s21_045_16.jpg",
+     "title": "File:045-16 Сапун-гора.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:045-16_Сапун-гора.jpg",
+     "author": "Члены семей Семёновых и Шакуриных: Юрий Поликарпович Шакурин (1938-2000). Загружено единственной наследницей.",
+     "license": "CC BY-SA 4.0",
+     "shows": "Сапун-гора",
+     "date": "1970s<div style=\"display: none;\">date QS:P,+1970-00-00T00:00:00Z/8</div> (?)"
+    },
+    {
+     "file": "s22_unn4105.jpg",
+     "title": "File:Unnamed2 - panoramio (4105).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Unnamed2_-_panoramio_(4105).jpg",
+     "author": "Анатолий Таранцов",
+     "license": "CC BY 3.0",
+     "date": "Taken on 21 June 2015"
+    },
+    {
+     "file": "s23_unn4117.jpg",
+     "title": "File:Unnamed2 - panoramio (4117).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Unnamed2_-_panoramio_(4117).jpg",
+     "author": "Анатолий Таранцов",
+     "license": "CC BY 3.0",
+     "date": "Taken on 21 June 2015"
+    },
+    {
+     "file": "s25_mk02.jpg",
+     "title": "File:Сапун-гора, Меморіальний комплекс «Сапун-гора» (1944-1979) (02).jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Сапун-гора,_Меморіальний_комплекс_«Сапун-гора»_(1944-1979)_(02).jpg",
+     "author": "Dmytro Perevoznyi",
+     "license": "CC BY-SA 4.0",
+     "shows": "`Sapun hora` Memorial Complex (1944-1979)",
+     "date": "2012-07-23 12:07:59"
+    },
+    {
+     "file": "s26_wall9401.jpg",
+     "title": "File:Севас9401.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Севас9401.jpg",
+     "author": "Voky89",
+     "license": "CC BY-SA 4.0",
+     "shows": "Меморіальна стіна на честь 51 з’єднання і частини, нагороджених орденами за визволення Севастополя в 1944, арх. Артюхов В., Севастополь, Сапун-гора",
+     "date": "2011-09-01 11:22:31"
+    }
+   ]
+  },
+  "park-uchkuevka": {
+   "count": 12,
+   "photos": [
+    {
+     "file": "u01_park01.jpg",
+     "title": "File:Парк Учкуевка, июнь 2022, 01.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Парк_Учкуевка,_июнь_2022,_01.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Парк Учкуевка в июне 2022 года.",
+     "date": "2022-06-01 12:15:43"
+    },
+    {
+     "file": "u03_park10.jpg",
+     "title": "File:Парк Учкуевка, июнь 2022, 10.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Парк_Учкуевка,_июнь_2022,_10.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Парк Учкуевка в июне 2022 года.",
+     "date": "2022-06-01 12:19:52"
+    },
+    {
+     "file": "u05_park20.jpg",
+     "title": "File:Парк Учкуевка, июнь 2022, 20.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Парк_Учкуевка,_июнь_2022,_20.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Парк Учкуевка в июне 2022 года.",
+     "date": "2022-06-01 12:24:13"
+    },
+    {
+     "file": "u06_park25.jpg",
+     "title": "File:Парк Учкуевка, июнь 2022, 25.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Парк_Учкуевка,_июнь_2022,_25.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Парк Учкуевка в июне 2022 года.",
+     "date": "2022-06-01 12:26:57"
+    },
+    {
+     "file": "u07_park30.jpg",
+     "title": "File:Парк Учкуевка, июнь 2022, 30.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Парк_Учкуевка,_июнь_2022,_30.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Парк Учкуевка в июне 2022 года.",
+     "date": "2022-06-01 12:29:31"
+    },
+    {
+     "file": "u09_park40.jpg",
+     "title": "File:Парк Учкуевка, июнь 2022, 40.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Парк_Учкуевка,_июнь_2022,_40.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Парк Учкуевка в июне 2022 года.",
+     "date": "2022-06-01 12:47:03"
+    },
+    {
+     "file": "u11_emb01.jpg",
+     "title": "File:Набережная в Учкуевке, июнь 2022, 01.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Набережная_в_Учкуевке,_июнь_2022,_01.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Набережная в Учкуевке в июне 2022 года.",
+     "date": "2022-06-01 13:07:10"
+    },
+    {
+     "file": "u12_emb03.jpg",
+     "title": "File:Набережная в Учкуевке, июнь 2022, 03.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Набережная_в_Учкуевке,_июнь_2022,_03.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Набережная в Учкуевке в июне 2022 года.",
+     "date": "2022-06-01 13:07:52"
+    },
+    {
+     "file": "u13_emb05.jpg",
+     "title": "File:Набережная в Учкуевке, июнь 2022, 05.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Набережная_в_Учкуевке,_июнь_2022,_05.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Набережная в Учкуевке в июне 2022 года.",
+     "date": "2022-06-01 13:08:30"
+    },
+    {
+     "file": "u14_emb07.jpg",
+     "title": "File:Набережная в Учкуевке, июнь 2022, 07.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Набережная_в_Учкуевке,_июнь_2022,_07.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Набережная в Учкуевке в июне 2022 года.",
+     "date": "2022-06-01 13:10:36"
+    },
+    {
+     "file": "u17_beach03.jpg",
+     "title": "File:Пляж в Учкуевке, июнь 2022, 03.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Пляж_в_Учкуевке,_июнь_2022,_03.jpg",
+     "author": "Mitte27",
+     "license": "CC BY-SA 4.0",
+     "shows": "Пляж в Учкуевке в июне 2022 года.",
+     "date": "2022-06-01 13:07:30"
+    },
+    {
+     "file": "u19_uchk.jpg",
+     "title": "File:Uchkuevka.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:Uchkuevka.JPG",
+     "author": "Dudkaa ss",
+     "license": "CC BY-SA 3.0",
+     "shows": "Uchkuevka",
+     "date": "2013-02-09 13:47:33"
+    }
+   ]
+  },
+  "sq-nahimova": {
+   "count": 7,
+   "photos": [
+    {
+     "file": "01__.jpg",
+     "title": "File:Площадь нахимова севастополь.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%BB%D0%BE%D1%89%D0%B0%D0%B4%D1%8C_%D0%BD%D0%B0%D1%85%D0%B8%D0%BC%D0%BE%D0%B2%D0%B0_%D1%81%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.JPG",
+     "author": "Благородные дамы",
+     "license": "CC BY-SA 4.0",
+     "shows": "Памятник Нахимову: площадь Нахимова,  Ленинский район, Севастополь",
+     "date": "2015-09-10 14:20:48"
+    },
+    {
+     "file": "02__.jpg",
+     "title": "File:Севастополь. Площадь Нахимова.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C._%D0%9F%D0%BB%D0%BE%D1%89%D0%B0%D0%B4%D1%8C_%D0%9D%D0%B0%D1%85%D0%B8%D0%BC%D0%BE%D0%B2%D0%B0.jpg",
+     "author": "VladFedotov",
+     "license": "CC BY-SA 4.0",
+     "shows": "Приморский бульвар: пл. Нахимова,  Севастополь, Севастополь",
+     "date": "Taken on 30 July 201"
+    },
+    {
+     "file": "03_041_33_.jpg",
+     "title": "File:041-33 Севастополь, площадь Нахимова.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:041-33_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C,_%D0%BF%D0%BB%D0%BE%D1%89%D0%B0%D0%B4%D1%8C_%D0%9D%D0%B0%D1%85%D0%B8%D0%BC%D0%BE%D0%B2%D0%B0.jpg",
+     "author": "Члены семей Семёновых и Шакуриных: Юрий Поликарпович Шакурин (1938-2000). Загруж",
+     "license": "CC BY-SA 4.0",
+     "shows": "Севастополь. Площадь Нахимова",
+     "date": "1972"
+    },
+    {
+     "file": "04__.jpg",
+     "title": "File:Рогожкина. Памятник Нахимову, площадь Нахимова, Ленинский район, Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%A0%D0%BE%D0%B3%D0%BE%D0%B6%D0%BA%D0%B8%D0%BD%D0%B0._%D0%9F%D0%B0%D0%BC%D1%8F%D1%82%D0%BD%D0%B8%D0%BA_%D0%9D%D0%B0%D1%85%D0%B8%D0%BC%D0%BE%D0%B2%D1%83,_%D0%BF%D0%BB%D0%BE%D1%89%D0%B0%D0%B4%D1%8C_%D0%9D%D0%B0%D1%85%D0%B8%D0%BC%D0%BE%D0%B2%D0%B0,_%D0%9B%D0%B5%D0%BD%D0%B8%D0%BD%D1%81%D0%BA%D0%B8%D0%B9_%D1%80%D0%B0%D0%B9%D0%BE%D0%BD,_%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "СветланаИР",
+     "license": "CC BY-SA 4.0",
+     "shows": "Памятник Нахимову: площадь Нахимова,  Ленинский район, Севастополь",
+     "date": "2016-09-11 20:21:01"
+    },
+    {
+     "file": "05__.jpg",
+     "title": "File:Площадь Лазарева (Севастополь), вид в сторону проспекта Нахимова.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%BB%D0%BE%D1%89%D0%B0%D0%B4%D1%8C_%D0%9B%D0%B0%D0%B7%D0%B0%D1%80%D0%B5%D0%B2%D0%B0_(%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C),_%D0%B2%D0%B8%D0%B4_%D0%B2_%D1%81%D1%82%D0%BE%D1%80%D0%BE%D0%BD%D1%83_%D0%BF%D1%80%D0%BE%D1%81%D0%BF%D0%B5%D0%BA%D1%82%D0%B0_%D0%9D%D0%B0%D1%85%D0%B8%D0%BC%D0%BE%D0%B2%D0%B0.jpg",
+     "author": "Halifers",
+     "license": "CC0",
+     "shows": "Площадь Лазарева (Севастополь), вид в сторону проспекта Нахимова",
+     "date": "2022-05-08 08:45:39"
+    },
+    {
+     "file": "06__.jpg",
+     "title": "File:ГрафскаяПристань. Севастополь.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%93%D1%80%D0%B0%D1%84%D1%81%D0%BA%D0%B0%D1%8F%D0%9F%D1%80%D0%B8%D1%81%D1%82%D0%B0%D0%BD%D1%8C._%D0%A1%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.jpg",
+     "author": "KatieCat",
+     "license": "CC BY-SA 4.0",
+     "shows": "Графская пристань: площадь Нахимова,  Ленинский район, Севастополь",
+     "date": "2010-05-29 17:16:55"
+    },
+    {
+     "file": "07__.jpg",
+     "title": "File:Памятник нахимову севастополь.JPG",
+     "url": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%B0%D0%BC%D1%8F%D1%82%D0%BD%D0%B8%D0%BA_%D0%BD%D0%B0%D1%85%D0%B8%D0%BC%D0%BE%D0%B2%D1%83_%D1%81%D0%B5%D0%B2%D0%B0%D1%81%D1%82%D0%BE%D0%BF%D0%BE%D0%BB%D1%8C.JPG",
+     "author": "Благородные дамы",
+     "license": "CC BY-SA 4.0",
+     "shows": "Памятник Нахимову: площадь Нахимова,  Ленинский район, Севастополь",
+     "date": "2015-09-10 14:20:59"
+    }
+   ]
+  },
+  "sq-vladimir": {
+   "count": 4,
+   "photos": [
+    {
+     "file": "03_Vladimir_Cathedral_in_Sevastopol_4.jpg",
+     "title": "File:Vladimir Cathedral in Sevastopol 4.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Vladimir_Cathedral_in_Sevastopol_4.jpg",
+     "author": "Leon petrosyan",
+     "license": "CC BY-SA 4.0",
+     "shows": "Vladimir Cathedral in Sevastopol (the altar in the first level church)",
+     "date": "2021-05-02 15:19:08"
+    },
+    {
+     "file": "04_Vladimir_Cathedral_in_Sevastopol_5.jpg",
+     "title": "File:Vladimir Cathedral in Sevastopol 5.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Vladimir_Cathedral_in_Sevastopol_5.jpg",
+     "author": "Leon petrosyan",
+     "license": "CC BY-SA 4.0",
+     "shows": "Vladimir Cathedral in Sevastopol",
+     "date": "2021-05-02 15:32:32"
+    },
+    {
+     "file": "05_Vladimir_Cathedral_in_Sevastopol_1.jpg",
+     "title": "File:Vladimir Cathedral in Sevastopol 1.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Vladimir_Cathedral_in_Sevastopol_1.jpg",
+     "author": "Leon petrosyan",
+     "license": "CC BY-SA 4.0",
+     "shows": "Vladimir Cathedral in Sevastopol",
+     "date": "2021-05-02 15:29:22"
+    },
+    {
+     "file": "06_Vladimir_Cathedral_in_Sevastopol_3.jpg",
+     "title": "File:Vladimir Cathedral in Sevastopol 3.jpg",
+     "url": "https://commons.wikimedia.org/wiki/File:Vladimir_Cathedral_in_Sevastopol_3.jpg",
+     "author": "Leon petrosyan",
+     "license": "CC BY-SA 4.0",
+     "shows": "Vladimir Cathedral in Sevastopol, the tombs of admirals",
+     "date": "2021-05-02 15:16:17"
+    }
+   ]
+  }
+ }
+}
