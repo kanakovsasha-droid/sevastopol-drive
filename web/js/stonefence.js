@@ -87,7 +87,7 @@ function stoneTexture() {
   let seed = 41;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const P = [];
-  for (let i = 0; i < 46; i++) P.push([rnd() * N, rnd() * N, 0.50 + rnd() * 0.22, rnd() * 0.04]);
+  for (let i = 0; i < 46; i++) P.push([rnd() * N, rnd() * N, 0.46 + rnd() * 0.26, 0.03 + rnd() * 0.03]);
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     let d1 = 1e9, d2 = 1e9, c = null;
     for (const p of P) {
@@ -103,7 +103,7 @@ function stoneTexture() {
     // серый с лёгкой голубизной, как сланец на фото
     img.data[k] = Math.round((g - c[3]) * 255);
     img.data[k + 1] = Math.round(g * 255);
-    img.data[k + 2] = Math.round((g + 0.02 + c[3]) * 255);
+    img.data[k + 2] = Math.round((g + c[3]) * 255);
     img.data[k + 3] = 255;
   }
   cx.putImageData(img, 0, 0);
@@ -119,7 +119,7 @@ function stoneTexture() {
 const s2l = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 const WHITE = [0.90, 0.90, 0.87].map(s2l), CAP = [0.84, 0.84, 0.81].map(s2l),
       IRON = [0.07, 0.07, 0.075].map(s2l), STONEC = [1, 1, 1];
-const UVM = 1.6;                            // метров камня на повтор холста
+const UVM = 2.6;                            // метров камня на повтор холста
 
 // Сетка из повёрнутых брусков: позиция, нормаль, цвет, uv (u — вдоль, в м).
 function Mesher() {
