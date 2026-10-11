@@ -1743,5 +1743,19 @@
     ],
     "source": "модель models/galereya/build.py; что видно на фото и что сделано наугад — models/galereya/NOTES.md",
     "checked": "2026-10-11"
+  },
+  {
+    "name": "Академия хореографии",
+    "style": "model",
+    "x": -1274.1,
+    "z": 191.1,
+    "file": "akademiya_horeo.glb",
+    "ox": -1260,
+    "oz": 190,
+    "skip": [
+      "w1094669609"
+    ],
+    "source": "модель models/akademiya_horeo/build.py; что видно на фото и что сделано наугад — models/akademiya_horeo/NOTES.md",
+    "checked": "2026-10-11"
   }
 ]
