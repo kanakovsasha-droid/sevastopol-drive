@@ -1728,5 +1728,20 @@
     ],
     "source": "модель models/bmorskaya15/build.py; что видно на фото и что сделано наугад — models/bmorskaya15/NOTES.md",
     "checked": "2026-10-06"
+  },
+  {
+    "name": "Российская галерея искусств",
+    "style": "model",
+    "x": -859.1,
+    "z": 317.4,
+    "file": "galereya.glb",
+    "ox": -880,
+    "oz": 300,
+    "skip": [
+      "w1547729146",
+      "w1436135092"
+    ],
+    "source": "модель models/galereya/build.py; что видно на фото и что сделано наугад — models/galereya/NOTES.md",
+    "checked": "2026-10-11"
   }
 ]
