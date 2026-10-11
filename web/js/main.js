@@ -42,6 +42,7 @@ import { prepSites, buildCanopies, buildSites, canopyWalls, isCanopy } from './c
 import { Facades } from './facades.js?v=5cd23529';
 import { Traffic } from './traffic.js?v=5cd23529';
 import { loadGuardrail, prepGuardrail, buildGuardrail } from './guardrail.js?v=5cd23529';
+import { loadStoneFences, stoneFenceWalls, buildStoneFences } from './stonefence.js?v=5cd23529';
 import { Peds } from './peds.js?v=5cd23529';
 import { Races } from './races.js?v=5cd23529';
 import { Quality, QUALITY } from './quality.js?v=5cd23529';
@@ -195,6 +196,7 @@ async function boot() {
     // земле с первого квадрата. Нет файла — земля просто без террас.
     await loadSquares(V);
     await loadPlazas(V);                  // мощёные площадки перед домами (plazas.js)
+    await loadStoneFences(V);             // каменные заборы по фото (stonefence.js)
     await loadSkateparks(V);
     await loadSchools(V);
     await loadGuardrail(V);               // осевая трассы на Ялту — под отбойники
@@ -751,7 +753,7 @@ function* buildChunk(d, key) {
   const railWalls = prepGuardrail(w, terrain, d, S);
   // Навесы (building=roof) машину не держат — только их столбы (canopy.js)
   // Дом с аркой-проездом — двумя половинами по бокам проезда (passage.js)
-  collider.add(part, w.buildings.filter(b => !b.fuelBox && !isCanopy(b)).flatMap(gatePolys).concat(fuelWalls, canopyWalls(w), railWalls));
+  collider.add(part, w.buildings.filter(b => !b.fuelBox && !isCanopy(b)).flatMap(gatePolys).concat(fuelWalls, canopyWalls(w), railWalls, stoneFenceWalls(w)));
   lap('дороги');
   yield; pt = performance.now();
 
@@ -830,6 +832,7 @@ function* buildChunk(d, key) {
   at('улица');
   g.add(buildStreet(w, terrain, props.userData.onRoad, d.allBuildings || w.buildings));
   g.add(buildPlazas(w, terrain, props.userData.onRoad));
+  g.add(buildStoneFences(w, terrain));             // каменные заборы по фото (stonefence.js)
   lap('улица');
   yield; pt = performance.now();
   at('мебель');
